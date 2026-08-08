@@ -76,6 +76,7 @@ export default function Home() {
   const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState("");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
+  const [selectedDong, setSelectedDong] = useState("all");
   const [area, setArea] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
   const [markets, setMarkets] = useState<OverviewMarket[]>([]); const [marketMonth, setMarketMonth] = useState("");
   const [buildingSort, setBuildingSort] = useState<"volume" | "price" | "rise" | "fall">("volume"); const [minVolume, setMinVolume] = useState(0); const [marketSort, setMarketSort] = useState<"volume" | "price" | "rise" | "fall">("volume");
@@ -99,7 +100,8 @@ export default function Home() {
     const controller = new AbortController(); fetch("/api/policies", { signal: controller.signal }).then((response) => response.json()).then((data) => { if (data.policies?.length) { setPolicyItems(data.policies); setPolicyUpdated(data.updatedAt); } }).catch(() => undefined); return () => controller.abort();
   }, []);
 
-  const propertyTrades = useMemo(() => selectedKey ? trades.filter((trade) => trade.propertyKey === selectedKey) : trades, [trades, selectedKey]);
+  const scopedTrades = useMemo(() => selectedDong === "all" ? trades : trades.filter((trade) => trade.dong === selectedDong), [trades, selectedDong]);
+  const propertyTrades = useMemo(() => selectedKey ? scopedTrades.filter((trade) => trade.propertyKey === selectedKey) : scopedTrades, [scopedTrades, selectedKey]);
   const areas = useMemo(() => [...new Set(propertyTrades.map((trade) => Math.round(trade.area * 10) / 10).filter(Boolean))].sort((a, b) => a - b), [propertyTrades]);
   const filteredTrades = useMemo(() => propertyTrades.filter((trade) => area === "all" || Math.abs(trade.area - Number(area)) < .15), [propertyTrades, area]);
   const chartPoints = useMemo(() => {
@@ -110,21 +112,31 @@ export default function Home() {
   const latest = chartPoints.at(-1)?.price || 0; const previous = chartPoints.at(-2)?.price || latest; const change = previous ? (latest / previous - 1) * 100 : 0;
   const high = chartPoints.length ? Math.max(...chartPoints.map((point) => point.price)) : 0; const low = chartPoints.length ? Math.min(...chartPoints.map((point) => point.price)) : 0;
   const selectedProperty = properties.find((property) => property.key === selectedKey); const displayName = selectedProperty?.name || (submittedQuery ? `${submittedQuery} 검색 결과` : `${activeRegion.sigungu} 전체`);
-  const latestMonth = trades.at(-1)?.date.slice(0, 7) || "";
+  const latestMonth = scopedTrades.at(-1)?.date.slice(0, 7) || "";
   const previousMonth = chartPoints.at(-2)?.month || "";
-  const propertyRows = useMemo(() => properties.map((property) => {
-    const rows = trades.filter((trade) => trade.propertyKey === property.key); const latestValues = rows.filter((trade) => trade.date.startsWith(latestMonth)).map((trade) => trade.amount); const previousValues = rows.filter((trade) => trade.date.startsWith(previousMonth)).map((trade) => trade.amount);
+  const propertyRows = useMemo(() => properties.filter((property) => selectedDong === "all" || property.dong === selectedDong).map((property) => {
+    const rows = scopedTrades.filter((trade) => trade.propertyKey === property.key); const latestValues = rows.filter((trade) => trade.date.startsWith(latestMonth)).map((trade) => trade.amount); const previousValues = rows.filter((trade) => trade.date.startsWith(previousMonth)).map((trade) => trade.amount);
     const current = latestValues.length ? median(latestValues) : property.lastAmount; const before = previousValues.length ? median(previousValues) : current;
     return { ...property, current, change: before ? (current / before - 1) * 100 : 0, monthCount: latestValues.length };
-  }).sort((a, b) => b.monthCount - a.monthCount || b.count - a.count), [properties, trades, latestMonth, previousMonth]);
-  const latestMonthTrades = trades.filter((trade) => trade.date.startsWith(latestMonth));
+  }).sort((a, b) => b.monthCount - a.monthCount || b.count - a.count), [properties, scopedTrades, selectedDong, latestMonth, previousMonth]);
+  const latestMonthTrades = scopedTrades.filter((trade) => trade.date.startsWith(latestMonth));
   const risingCount = propertyRows.filter((property) => property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change < 0).length;
   const visibleProperties = useMemo(() => propertyRows.filter((property) => property.monthCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? b.change - a.change : buildingSort === "fall" ? a.change - b.change : b.monthCount - a.monthCount), [propertyRows, buildingSort, minVolume]);
   const sortedMarkets = useMemo(() => [...markets].sort((a, b) => marketSort === "price" ? b.median - a.median : marketSort === "rise" ? b.change - a.change : marketSort === "fall" ? a.change - b.change : b.count - a.count), [markets, marketSort]);
   const nationalDeals = markets.reduce((sum, market) => sum + market.count, 0); const activeMarkets = markets.filter((market) => market.median > 0); const nationalMedian = activeMarkets.length ? median(activeMarkets.map((market) => market.median)) : 0; const nationalChange = nationalDeals ? markets.reduce((sum, market) => sum + market.change * market.count, 0) / nationalDeals : 0;
-  const regionSuggestions = useMemo(() => { const needle = regionInput.replaceAll(" ", "").toLowerCase(); return (regions as Region[]).filter((item) => `${item.sido}${item.sigungu}`.replaceAll(" ", "").toLowerCase().includes(needle)).slice(0, 8); }, [regionInput]);
-
-  const chooseRegion = (region: Region) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSubmittedQuery(""); setQuery(""); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const sidoOptions = useMemo(() => [...new Set((regions as Region[]).map((region) => region.sido))].sort(), []);
+  const sigunguOptions = useMemo(() => (regions as Region[]).filter((region) => region.sido === activeRegion.sido), [activeRegion.sido]);
+  const dongOptions = useMemo(() => [...new Set(trades.map((trade) => trade.dong).filter(Boolean))].sort(), [trades]);
+  const targetTrade = filteredTrades.at(-1); const targetArea = area === "all" ? targetTrade?.area || 0 : Number(area);
+  const subjectPerPy = filteredTrades.filter((trade) => trade.area > 0 && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15)).slice(-20).map((trade) => trade.amount / (trade.area / 3.3058));
+  const latestPeers = scopedTrades.filter((trade) => trade.propertyKey !== selectedKey && trade.area > 0 && trade.date.startsWith(latestMonth) && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15));
+  const fallbackPeers = scopedTrades.filter((trade) => trade.propertyKey !== selectedKey && trade.area > 0 && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15));
+  const peerRows = latestPeers.length >= 5 ? latestPeers : fallbackPeers.slice(-200); const peerPerPy = peerRows.map((trade) => trade.amount / (trade.area / 3.3058));
+  const subjectPyeongPrice = subjectPerPy.length ? median(subjectPerPy) : 0; const peerPyeongPrice = peerPerPy.length ? median(peerPerPy) : 0; const valuationGap = peerPyeongPrice ? (subjectPyeongPrice / peerPyeongPrice - 1) * 100 : 0;
+  const fairPrice = targetArea && peerPyeongPrice ? peerPyeongPrice * (targetArea / 3.3058) : 0; const valuationScore = peerPyeongPrice ? Math.max(0, Math.min(100, Math.round(100 - Math.abs(valuationGap) * 2))) : 0; const valuationLabel = valuationGap <= -5 ? "저평가 구간" : valuationGap >= 5 ? "고평가 구간" : "적정가격 구간";
+  const chooseRegion = (region: Region) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedDong("all"); setSelectedKey(""); setSubmittedQuery(""); setQuery(""); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const selectSido = (sido: string) => { const next = (regions as Region[]).find((region) => region.sido === sido); if (next) chooseRegion(next); };
+  const selectSigungu = (code: string) => { const next = (regions as Region[]).find((region) => region.code === code); if (next) chooseRegion(next); };
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = (regions as Region[]).find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); setSubmittedQuery(query.trim()); };
 
   return <main className="terminal-shell">
@@ -132,11 +144,13 @@ export default function Home() {
     <section className="command" id="top">
       <div className="type-tabs">{PROPERTY_TYPES.map((item) => <button key={item.key} className={type === item.key ? "active" : ""} onClick={() => { setType(item.key); setSelectedKey(""); }}>{item.label}</button>)}</div>
       <form className="search-console" onSubmit={submitSearch}>
-        <label><span>지역</span><input list="region-list" value={regionInput} onChange={(event) => setRegionInput(event.target.value)} aria-label="시군구 검색"/><datalist id="region-list">{regionSuggestions.map((region) => <option key={region.code} value={`${region.sido} ${region.sigungu}`} />)}</datalist></label>
-        <label className="property-search"><span>단지·건물 검색 · 비워두면 전체</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 은마, 래미안, 센트럴파크" aria-label="단지 또는 건물명" /></label>
+        <label><span>시·도</span><select value={activeRegion.sido} onChange={(event) => selectSido(event.target.value)} aria-label="시도 선택">{sidoOptions.map((sido) => <option key={sido} value={sido}>{sido}</option>)}</select></label>
+        <label><span>시·군·구</span><select value={regionCode} onChange={(event) => selectSigungu(event.target.value)} aria-label="시군구 선택">{sigunguOptions.map((region) => <option key={region.code} value={region.code}>{region.sigungu}</option>)}</select></label>
+        <label><span>읍·면·동</span><select value={selectedDong} onChange={(event) => { setSelectedDong(event.target.value); setSelectedKey(""); setArea("all"); }} aria-label="읍면동 선택"><option value="all">전체 읍·면·동</option>{dongOptions.map((dong) => <option key={dong} value={dong}>{dong}</option>)}</select></label>
+        <label className="property-search"><span>단지·건물명 · 비워두면 전체</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 행당대림, 서울숲리버뷰" aria-label="단지 또는 건물명" /></label>
         <button type="submit">시장 조회 <b>↗</b></button>
       </form>
-      <div className="scope-note"><span>{activeRegion.sido}</span><b>{activeRegion.sigungu}</b><i /> 검색어 없이 지역 내 전체 건물을 조회할 수 있습니다.</div>
+      <div className="scope-note"><span>{activeRegion.sido}</span><b>{activeRegion.sigungu}</b>{selectedDong !== "all" && <><i /><b>{selectedDong}</b></>}<i /> 단계별 지역 선택 후 단지·건물을 고르면 평수 대비 가격까지 비교합니다.</div>
     </section>
 
     <section className="national-overview" id="national"><div><p>KOREA REAL ESTATE MARKET</p><h1>대한민국 부동산 시장</h1><span>전국 253개 시군구 탐색 · 17개 시도 대표 시장 실거래 온도</span></div><article><span>전국 표본 거래량</span><strong>{nationalDeals.toLocaleString()}<em>건</em></strong><small>{marketMonth || "최근월"} 대표 권역 집계</small></article><article><span>전국 중위가격</span><strong>{formatPrice(nationalMedian)}</strong><small>17개 대표 권역 중위값</small></article><article><span>거래 강도</span><strong className={nationalChange >= 0 ? "up" : "down"}>{nationalChange >= 0 ? "+" : ""}{nationalChange.toFixed(2)}%</strong><small>거래량 가중 전월 대비</small></article><a href="#map">전국 순위 보기 ↓</a></section>
@@ -167,6 +181,16 @@ export default function Home() {
           <div className="canvas-wrap">{loading ? <div className="state"><i /> 실거래 데이터를 불러오는 중입니다</div> : error ? <div className="state error"><b>데이터 연결 오류</b><span>{error}</span></div> : chartPoints.length ? <PriceChart points={chartPoints} unit={unit} /> : <div className="state"><b>선택 조건의 거래가 없습니다</b><span>왼쪽 목록에서 다른 건물을 선택하거나 전체 면적을 선택하세요.</span></div>}</div>
         </article>
         <div className="stat-strip"><article><span>최근 월 중위가</span><strong>{formatPrice(latest)}</strong></article><article><span>기간 최고 / 최저</span><strong>{compactPrice(high)} <em>/</em> {compactPrice(low)}</strong></article><article><span>실거래 건수</span><strong>{filteredTrades.length.toLocaleString()}<em>건</em></strong></article><article><span>시장 신호</span><strong className={change >= 0 ? "up" : "down"}>{change > 2 ? "매수 우위" : change < -2 ? "조정 구간" : "보합 구간"}</strong></article></div>
+        <section className="valuation-panel">
+          {selectedKey && targetTrade && peerPyeongPrice ? <>
+            <div className="valuation-score"><p>AREA-ADJUSTED VALUE</p><strong>{valuationScore}<em>/100</em></strong><span className={valuationGap <= -5 ? "value-low" : valuationGap >= 5 ? "value-high" : "value-fair"}>{valuationLabel}</span></div>
+            <div className="valuation-body">
+              <div className="valuation-metrics"><article><span>선택 단지 평당가</span><strong>{formatPrice(subjectPyeongPrice)}<em>/평</em></strong></article><article><span>유사 면적 지역 중위</span><strong>{formatPrice(peerPyeongPrice)}<em>/평</em></strong></article><article><span>추정 적정가격</span><strong>{formatPrice(fairPrice)}</strong><small>{targetArea.toFixed(1)}㎡ · 적정 범위 {formatPrice(fairPrice * .95)}~{formatPrice(fairPrice * 1.05)}</small></article><article><span>지역 대비 가격차</span><strong className={valuationGap <= -5 ? "down" : valuationGap >= 5 ? "up" : ""}>{valuationGap >= 0 ? "+" : ""}{valuationGap.toFixed(1)}%</strong><small>비교 거래 {peerRows.length}건</small></article></div>
+              <div className="valuation-gauge"><div><span>저평가</span><span>적정</span><span>고평가</span></div><i style={{ left: `${Math.max(2, Math.min(98, 50 + valuationGap))}%` }} /></div>
+              <p>같은 선택 지역에서 전용면적 ±15%인 실거래의 평당가 중위와 비교한 참고 지표입니다. 감정평가나 매수 권유가 아니며 층·향·수리 상태는 반영되지 않습니다.</p>
+            </div>
+          </> : <div className="valuation-empty"><p>AREA-ADJUSTED VALUE</p><strong>평수 대비 가격 적정성</strong><span>왼쪽 목록에서 단지·건물을 선택하면 같은 지역의 유사 면적 거래와 비교해 저평가·적정·고평가 구간을 보여드립니다.</span></div>}
+        </section>
       </div>
     </section>
 
