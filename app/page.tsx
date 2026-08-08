@@ -1,178 +1,130 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import regions from "./data/regions.json";
 
-type Region = { id: string; name: string; fullName: string; value: number; change: number };
-type Point = { period: string; date: string; value: number };
+type PropertyType = "apt" | "rowhouse" | "house" | "officetel" | "commercial" | "factory";
+type Region = { code: string; sido: string; sigungu: string };
+type Trade = { id: string; date: string; amount: number; area: number; floor: number | null; name: string; propertyKey: string; dong: string; jibun: string; buildYear: number | null; dealingType: string; cancelled: boolean };
+type Property = { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; areas: number[] };
+type ChartPoint = { month: string; price: number; average: number; volume: number };
 
-const TOP_REGIONS = ["전국", "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
+const PROPERTY_TYPES: { key: PropertyType; label: string }[] = [
+  { key: "apt", label: "아파트" }, { key: "rowhouse", label: "연립·다세대" },
+  { key: "house", label: "단독·다가구" }, { key: "officetel", label: "오피스텔" },
+  { key: "commercial", label: "상가·업무" }, { key: "factory", label: "공장·창고" },
+];
+const PERIODS = [{ label: "3개월", value: 3 }, { label: "6개월", value: 6 }, { label: "1년", value: 12 }, { label: "3년", value: 36 }, { label: "5년", value: 60 }];
 
-function percent(value: number) {
-  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+function formatPrice(value: number) {
+  if (!value) return "-";
+  const eok = Math.floor(value / 10000); const man = Math.round(value % 10000);
+  return `${eok ? `${eok}억` : ""}${man ? ` ${man.toLocaleString()}만원` : ""}`.trim();
 }
+function compactPrice(value: number) { return value >= 10000 ? `${(value / 10000).toFixed(value >= 100000 ? 0 : 1)}억` : `${Math.round(value / 1000)}천`; }
+function median(values: number[]) { const sorted = [...values].sort((a, b) => a - b); const middle = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2; }
+function monthLabel(value: string) { const [year, month] = value.split("-"); return `${year.slice(2)}.${month}`; }
 
-function toMonthlySeries(points: Point[]) {
-  const monthEnds = new Map<string, Point>();
-  points.forEach((point) => {
-    const month = point.date.slice(0, 7);
-    monthEnds.set(month, { ...point, date: month });
-  });
-  return [...monthEnds.values()];
-}
-
-function MarketChart({ points }: { points: Point[] }) {
+function PriceChart({ points, unit }: { points: ChartPoint[]; unit: "price" | "py" }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [hover, setHover] = useState<number | null>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    const host = canvas?.parentElement;
-    if (!canvas || !host || points.length < 2) return;
+    const canvas = canvasRef.current; const host = canvas?.parentElement;
+    if (!canvas || !host || !points.length) return;
     const draw = () => {
-      const ratio = window.devicePixelRatio || 1;
-      const width = host.clientWidth;
-      const height = host.clientHeight;
-      canvas.width = width * ratio; canvas.height = height * ratio;
-      canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
-      const ctx = canvas.getContext("2d"); if (!ctx) return;
-      ctx.scale(ratio, ratio); ctx.clearRect(0, 0, width, height);
-      const pad = { left: 14, right: 58, top: 18, bottom: 34 };
-      const plotW = width - pad.left - pad.right; const plotH = height - pad.top - pad.bottom;
-      const values = points.map((p) => p.value);
-      const rawMin = Math.min(...values); const rawMax = Math.max(...values);
-      const margin = Math.max((rawMax - rawMin) * .22, .12);
-      const min = rawMin - margin; const max = rawMax + margin;
-
-      ctx.font = "10px Arial"; ctx.textAlign = "left";
-      for (let i = 0; i < 5; i++) {
-        const y = pad.top + plotH / 4 * i;
-        ctx.strokeStyle = "#e9e7df"; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke();
-        ctx.fillStyle = "#8f8d84"; ctx.fillText((max - (max - min) / 4 * i).toFixed(1), width - pad.right + 10, y + 3);
-      }
-      const coords = points.map((p, i) => ({ x: pad.left + plotW / (points.length - 1) * i, y: pad.top + plotH - (p.value - min) / (max - min) * plotH }));
-      const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
-      gradient.addColorStop(0, "rgba(255,92,56,.24)"); gradient.addColorStop(1, "rgba(255,92,56,0)");
-      ctx.beginPath(); ctx.moveTo(coords[0].x, pad.top + plotH); coords.forEach((p) => ctx.lineTo(p.x, p.y)); ctx.lineTo(coords.at(-1)!.x, pad.top + plotH); ctx.closePath(); ctx.fillStyle = gradient; ctx.fill();
-      ctx.beginPath(); coords.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.strokeStyle = "#ff5c38"; ctx.lineWidth = 2.5; ctx.lineJoin = "round"; ctx.stroke();
-      const last = coords.at(-1)!; ctx.beginPath(); ctx.arc(last.x, last.y, 4, 0, Math.PI * 2); ctx.fillStyle = "#ff5c38"; ctx.fill();
-      ctx.fillStyle = "#ff5c38"; ctx.fillRect(width - pad.right + 4, last.y - 10, 49, 20); ctx.fillStyle = "#fff"; ctx.font = "bold 10px Arial"; ctx.fillText(points.at(-1)!.value.toFixed(2), width - pad.right + 8, last.y + 4);
-      const labelCount = Math.min(6, points.length);
-      for (let i = 0; i < labelCount; i++) {
-        const index = Math.round(i * (points.length - 1) / (labelCount - 1));
-        ctx.fillStyle = "#99978f"; ctx.font = "9px Arial"; ctx.fillText(points[index].date.slice(2, 7).replace("-", "."), pad.left + plotW / (labelCount - 1) * i - 12, height - 10);
-      }
+      const ratio = window.devicePixelRatio || 1; const width = host.clientWidth; const height = host.clientHeight;
+      canvas.width = width * ratio; canvas.height = height * ratio; canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
+      const ctx = canvas.getContext("2d"); if (!ctx) return; ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height);
+      const pad = { left: 15, right: 72, top: 22, bottom: 30 }; const volumeH = 64; const gap = 18;
+      const chartBottom = height - pad.bottom - volumeH - gap; const plotW = width - pad.left - pad.right; const plotH = chartBottom - pad.top;
+      const all = points.flatMap((point) => [point.price, point.average]).filter(Boolean); const rawMin = Math.min(...all); const rawMax = Math.max(...all);
+      const margin = Math.max((rawMax - rawMin) * .18, rawMax * .035, 1); const min = rawMin - margin; const max = rawMax + margin;
+      const xAt = (index: number) => points.length === 1 ? pad.left + plotW / 2 : pad.left + plotW * index / (points.length - 1);
+      const yAt = (value: number) => pad.top + (max - value) / (max - min) * plotH;
+      ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace"; ctx.textAlign = "left";
+      for (let i = 0; i < 5; i++) { const y = pad.top + plotH * i / 4; ctx.strokeStyle = "#263142"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.fillStyle = "#7f8b9c"; ctx.fillText(compactPrice(max - (max - min) * i / 4), width - pad.right + 10, y + 4); }
+      const labelStep = Math.max(1, Math.ceil(points.length / 7));
+      points.forEach((point, index) => { if (index % labelStep === 0 || index === points.length - 1) { const x = xAt(index); ctx.strokeStyle = "#202b3a"; ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, height - pad.bottom); ctx.stroke(); ctx.fillStyle = "#697589"; ctx.textAlign = "center"; ctx.fillText(monthLabel(point.month), x, height - 8); } });
+      const maxVolume = Math.max(...points.map((point) => point.volume), 1); const barW = Math.max(3, Math.min(18, plotW / points.length * .58));
+      points.forEach((point, index) => { const x = xAt(index); const h = point.volume / maxVolume * volumeH; ctx.fillStyle = index && point.price < points[index - 1].price ? "#27678a" : "#5b3c3f"; ctx.fillRect(x - barW / 2, height - pad.bottom - h, barW, h); });
+      const renderLine = (field: "price" | "average", color: string, widthLine: number) => { ctx.beginPath(); points.forEach((point, index) => { const x = xAt(index); const y = yAt(point[field]); index ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.strokeStyle = color; ctx.lineWidth = widthLine; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.stroke(); };
+      renderLine("average", "#7a8ba6", 1.5); renderLine("price", "#ff7452", 2.3);
+      const active = hover ?? points.length - 1; const point = points[active]; const x = xAt(active); const y = yAt(point.price);
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = "#9aa8ba88"; ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, height - pad.bottom); ctx.stroke(); ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = "#ff7452"; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#101722"; ctx.lineWidth = 2; ctx.stroke();
+      const tag = compactPrice(point.price); ctx.fillStyle = "#ff7452"; ctx.fillRect(width - pad.right + 4, y - 11, 64, 22); ctx.fillStyle = "#fff"; ctx.font = "700 11px ui-monospace"; ctx.textAlign = "center"; ctx.fillText(tag, width - pad.right + 36, y + 4);
+      const boxW = 166; const boxX = Math.min(width - pad.right - boxW - 8, Math.max(pad.left + 8, x + (x > width / 2 ? -boxW - 14 : 14))); const boxY = pad.top + 8;
+      ctx.fillStyle = "#182231ee"; ctx.strokeStyle = "#344156"; ctx.lineWidth = 1; ctx.fillRect(boxX, boxY, boxW, 66); ctx.strokeRect(boxX, boxY, boxW, 66);
+      ctx.textAlign = "left"; ctx.fillStyle = "#8c99aa"; ctx.font = "10px sans-serif"; ctx.fillText(`${point.month} · 거래 ${point.volume}건`, boxX + 11, boxY + 17); ctx.fillStyle = "#fff"; ctx.font = "700 13px sans-serif"; ctx.fillText(formatPrice(point.price), boxX + 11, boxY + 38); ctx.fillStyle = "#8493a8"; ctx.font = "10px sans-serif"; ctx.fillText(`3개월 이동평균 ${formatPrice(point.average)}`, boxX + 11, boxY + 56);
     };
     draw(); const observer = new ResizeObserver(draw); observer.observe(host); return () => observer.disconnect();
-  }, [points]);
+  }, [points, hover, unit]);
 
-  return <canvas ref={canvasRef} aria-label="선택 지역 월별 아파트 매매가격지수 차트" />;
+  return <canvas ref={canvasRef} onPointerMove={(event) => { const rect = event.currentTarget.getBoundingClientRect(); const plotWidth = rect.width - 87; const index = Math.round(((event.clientX - rect.left - 15) / plotWidth) * (points.length - 1)); setHover(Math.max(0, Math.min(points.length - 1, index))); }} onPointerLeave={() => setHover(null)} aria-label="월별 실거래 중위가격과 거래량 차트" />;
 }
 
 export default function Home() {
-  const [regions, setRegions] = useState<Region[]>([]);
-  const [selected, setSelected] = useState("50001");
-  const [series, setSeries] = useState<Point[]>([]);
-  const [regionName, setRegionName] = useState("전국");
-  const [regionPath, setRegionPath] = useState("전국");
-  const [period, setPeriod] = useState("1년");
-  const [search, setSearch] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [asOf, setAsOf] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [saved, setSaved] = useState<string[]>([]);
-  const [notice, setNotice] = useState("");
+  const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
+  const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState("은마"); const [submittedQuery, setSubmittedQuery] = useState("은마");
+  const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
+  const [area, setArea] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
+  const activeRegion = (regions as Region[]).find((item) => item.code === regionCode) || regions[0] as Region;
 
   useEffect(() => {
-    fetch("/api/market?mode=regions").then((r) => r.json()).then((data) => {
-      if (data.error) throw new Error(data.error);
-      setRegions(data.regions); setAsOf(data.asOf);
-    }).catch(() => setError("전국 지역 목록을 불러오지 못했습니다."));
-  }, []);
+    const controller = new AbortController(); setLoading(true); setError(""); setSelectedKey(""); setArea("all");
+    const params = new URLSearchParams({ type, lawd: regionCode, months: String(period), query: submittedQuery });
+    fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { setTrades(data.trades); setProperties(data.properties); if (data.properties.length === 1) setSelectedKey(data.properties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") setError(reason.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [type, regionCode, period, submittedQuery]);
 
-  useEffect(() => {
-    setLoading(true); setError("");
-    fetch(`/api/market?region=${selected}`).then((r) => r.json()).then((data) => {
-      if (data.error) throw new Error(data.error);
-      setSeries(data.series); setRegionName(data.region.name); setRegionPath(data.region.fullName); setSearch("");
-    }).catch(() => setError("한국부동산원 데이터를 불러오지 못했습니다.")).finally(() => setLoading(false));
-  }, [selected]);
+  const propertyTrades = useMemo(() => selectedKey ? trades.filter((trade) => trade.propertyKey === selectedKey) : trades, [trades, selectedKey]);
+  const areas = useMemo(() => [...new Set(propertyTrades.map((trade) => Math.round(trade.area * 10) / 10).filter(Boolean))].sort((a, b) => a - b), [propertyTrades]);
+  const filteredTrades = useMemo(() => propertyTrades.filter((trade) => area === "all" || Math.abs(trade.area - Number(area)) < .15), [propertyTrades, area]);
+  const chartPoints = useMemo(() => {
+    const grouped = new Map<string, number[]>(); filteredTrades.forEach((trade) => { const month = trade.date.slice(0, 7); const value = unit === "py" && trade.area ? trade.amount / (trade.area / 3.3058) : trade.amount; grouped.set(month, [...(grouped.get(month) || []), value]); });
+    const base = [...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([month, values]) => ({ month, price: median(values), volume: values.length }));
+    return base.map((point, index) => ({ ...point, average: median(base.slice(Math.max(0, index - 2), index + 1).map((item) => item.price)) }));
+  }, [filteredTrades, unit]);
+  const latest = chartPoints.at(-1)?.price || 0; const previous = chartPoints.at(-2)?.price || latest; const change = previous ? (latest / previous - 1) * 100 : 0;
+  const high = chartPoints.length ? Math.max(...chartPoints.map((point) => point.price)) : 0; const low = chartPoints.length ? Math.min(...chartPoints.map((point) => point.price)) : 0;
+  const selectedProperty = properties.find((property) => property.key === selectedKey); const displayName = selectedProperty?.name || (submittedQuery ? `${submittedQuery} 검색 결과` : `${activeRegion.sigungu} 전체`);
+  const regionSuggestions = useMemo(() => { const needle = regionInput.replaceAll(" ", "").toLowerCase(); return (regions as Region[]).filter((item) => `${item.sido}${item.sigungu}`.replaceAll(" ", "").toLowerCase().includes(needle)).slice(0, 8); }, [regionInput]);
 
-  const monthlySeries = useMemo(() => toMonthlySeries(series), [series]);
-  const pointCount = period === "3개월" ? 3 : period === "6개월" ? 6 : period === "1년" ? 12 : period === "3년" ? 36 : monthlySeries.length;
-  const visible = monthlySeries.slice(-pointCount);
-  const current = monthlySeries.at(-1)?.value || 0;
-  const previous = monthlySeries.at(-2)?.value || current;
-  const quarterAgo = monthlySeries.at(-4)?.value || previous;
-  const monthlyChange = previous ? (current / previous - 1) * 100 : 0;
-  const quarterChange = quarterAgo ? (current / quarterAgo - 1) * 100 : 0;
-  const signal = monthlyChange > .15 && quarterChange > .3 ? "상승 우위" : monthlyChange < -.15 && quarterChange < -.3 ? "하락 우위" : "보합 흐름";
+  const chooseRegion = (region: Region) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); };
+  const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = (regions as Region[]).find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); setSubmittedQuery(query.trim()); };
 
-  const searchResults = useMemo(() => {
-    const query = search.trim().toLowerCase(); if (!query) return [];
-    return regions.filter((r) => `${r.name} ${r.fullName}`.toLowerCase().includes(query)).slice(0, 9);
-  }, [regions, search]);
-  const provinceCards = TOP_REGIONS.map((name) => regions.find((r) => r.name === name && (r.fullName === name || name === "전국"))).filter(Boolean) as Region[];
-  const ranking = [...provinceCards].filter((r) => r.name !== "전국").sort((a, b) => b.change - a.change);
-
-  const flash = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 2200); };
-  const choose = (region: Region) => { setSelected(region.id); setSearchOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
-
-  return <main>
-    <header className="topbar" id="top">
-      <a className="brand" href="#top"><span>집</span>값의 정석</a>
-      <nav><a className="active" href="#market">전국 차트</a><a href="#regions">지역 비교</a><a href="#community">커뮤니티</a></nav>
-      <div className="official"><i /> REB 공식 데이터 연결</div>
-    </header>
-
-    <section className="nation-hero">
-      <div className="hero-copy"><p>대한민국 부동산 시장 한눈에</p><h1>전국 236개 권역의 흐름을<br />하나의 차트로 비교하세요.</h1><span>한국부동산원 아파트 매매가격지수 월별 집계 · {asOf || "최신 공표"} 기준</span></div>
-      <div className="region-search">
-        <label htmlFor="region-search">지역 찾기</label>
-        <div className="search-box"><span>⌕</span><input id="region-search" value={search} onFocus={() => setSearchOpen(true)} onChange={(e) => { setSearch(e.target.value); setSearchOpen(true); }} placeholder="시·도, 시·군·구를 검색하세요" autoComplete="off" /><kbd>전국</kbd></div>
-        {searchOpen && search && <div className="search-popover">{searchResults.length ? searchResults.map((r) => <button key={r.id} onClick={() => choose(r)}><b>{r.name}</b><span>{r.fullName.replaceAll(">", " › ")}</span></button>) : <p>검색 결과가 없습니다.</p>}</div>}
-        <div className="quick-regions">{provinceCards.slice(0, 8).map((r) => <button key={r.id} onClick={() => choose(r)} className={selected === r.id ? "active" : ""}>{r.name}</button>)}</div>
-      </div>
+  return <main className="terminal-shell">
+    <header className="topbar"><a href="#top" className="brand"><span>집값</span>의 정석 <em>PRO</em></a><nav><a className="active" href="#chart">실거래 차트</a><a href="#transactions">거래 내역</a><a href="#insight">분석</a><a href="#community">커뮤니티</a></nav><div className="live"><i /> 국토교통부 실거래가 연동</div></header>
+    <section className="command" id="top">
+      <div className="type-tabs">{PROPERTY_TYPES.map((item) => <button key={item.key} className={type === item.key ? "active" : ""} onClick={() => setType(item.key)}>{item.label}</button>)}</div>
+      <form className="search-console" onSubmit={submitSearch}>
+        <label><span>지역</span><input list="region-list" value={regionInput} onChange={(event) => setRegionInput(event.target.value)} aria-label="시군구 검색"/><datalist id="region-list">{regionSuggestions.map((region) => <option key={region.code} value={`${region.sido} ${region.sigungu}`} />)}</datalist></label>
+        <label className="property-search"><span>단지·건물명</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 은마, 래미안, 센트럴파크" aria-label="단지 또는 건물명" /></label>
+        <button type="submit">조회하기 <b>↗</b></button>
+      </form>
+      <div className="scope-note"><span>{activeRegion.sido}</span><b>{activeRegion.sigungu}</b><i /> 전국 253개 시군구 · 월별 실거래 신고자료</div>
     </section>
 
-    <section className="data-ribbon"><div><span>선택 지역</span><strong>{regionPath.replaceAll(">", " › ")}</strong></div><div><span>현재 지수</span><strong>{current ? current.toFixed(2) : "—"}</strong></div><div><span>월간 변동</span><strong className={monthlyChange >= 0 ? "rise" : "fall"}>{current ? percent(monthlyChange) : "—"}</strong></div><p>기준시점 2026.07.06 = 100.0</p></section>
-
-    <section className="dashboard" id="market">
-      <div className="market-heading"><div><p>월별 아파트 매매가격지수</p><h2>{regionName} 시장 흐름</h2></div><button className={saved.includes(selected) ? "saved" : ""} onClick={() => setSaved(saved.includes(selected) ? saved.filter((id) => id !== selected) : [...saved, selected])}>☆ {saved.includes(selected) ? "관심지역 저장됨" : "관심지역"}</button></div>
-      <div className="metric-grid">
-        <article><span>현재 가격지수</span><h3>{loading ? "···" : current.toFixed(2)}</h3><p>월별 마지막 공표값</p></article>
-        <article><span>전월 대비</span><h3 className={monthlyChange >= 0 ? "rise" : "fall"}>{loading ? "···" : percent(monthlyChange)}</h3><p>{monthlySeries.at(-1)?.date || "—"}</p></article>
-        <article><span>3개월 모멘텀</span><h3 className={quarterChange >= 0 ? "rise" : "fall"}>{loading ? "···" : percent(quarterChange)}</h3><p>최근 3개월 누적</p></article>
-        <article className="signal-card"><span>시장 신호</span><h3>{loading ? "분석 중" : signal}</h3><div className={`signal-line ${signal === "상승 우위" ? "hot" : signal === "하락 우위" ? "cold" : ""}`}><i /></div></article>
-      </div>
-
-      <div className="content-grid">
-        <article className="chart-panel panel">
-          <div className="panel-top"><div><span>{regionPath.replaceAll(">", " · ")}</span><h3>{current.toFixed(2)} <em className={monthlyChange >= 0 ? "rise" : "fall"}>{percent(monthlyChange)}</em></h3></div><div className="periods">{["3개월", "6개월", "1년", "3년", "전체"].map((p) => <button key={p} className={period === p ? "active" : ""} onClick={() => setPeriod(p)}>{p}</button>)}</div></div>
-          <div className="chart-wrap">{error ? <div className="chart-state">{error}</div> : loading ? <div className="chart-state">공식 데이터를 불러오는 중입니다…</div> : <MarketChart points={visible} />}</div>
-          <div className="chart-caption"><span><i /> 월별 아파트 매매가격지수</span><b>주간 지수의 월별 마지막 공표값 · 출처: 한국부동산원</b></div>
+    <section className="workspace" id="chart">
+      <div className="ticker-head"><div><p>{PROPERTY_TYPES.find((item) => item.key === type)?.label} / {activeRegion.sido} {activeRegion.sigungu}</p><h1>{displayName}</h1><span>{selectedProperty ? `${selectedProperty.dong} ${selectedProperty.jibun} · ${selectedProperty.count}건` : properties.length ? `${properties.length}개 단지·건물 발견` : "실거래 검색"}</span></div><div className="ticker-price"><strong>{formatPrice(latest)}</strong><em className={change >= 0 ? "up" : "down"}>{change >= 0 ? "▲" : "▼"} {Math.abs(change).toFixed(2)}%</em><small>{unit === "py" ? "만원/평" : "월 중위가격"}</small></div></div>
+      <div className="chart-toolbar"><div className="period-switch">{PERIODS.map((item) => <button key={item.value} className={period === item.value ? "active" : ""} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div><div className="view-switch"><select value={area} onChange={(event) => setArea(event.target.value)} aria-label="전용면적 선택"><option value="all">전체 면적</option>{areas.map((value) => <option key={value} value={value}>전용 {value}㎡ ({(value / 3.3058).toFixed(1)}평)</option>)}</select><button className={unit === "price" ? "active" : ""} onClick={() => setUnit("price")}>실거래가</button><button className={unit === "py" ? "active" : ""} onClick={() => setUnit("py")}>평당가</button></div></div>
+      <div className="chart-layout">
+        <article className="chart-card">
+          <div className="chart-legend"><span><i className="price-dot" />월 중위가격</span><span><i className="ma-dot" />3개월 이동평균</span><span><i className="volume-dot" />거래량</span><small>마우스를 움직여 월별 상세 확인</small></div>
+          <div className="canvas-wrap">{loading ? <div className="state"><i /> 공공데이터를 불러오는 중입니다</div> : error ? <div className="state error"><b>데이터 연결 오류</b><span>{error}</span></div> : chartPoints.length ? <PriceChart points={chartPoints} unit={unit} /> : <div className="state"><b>조건에 맞는 거래가 없습니다</b><span>검색어·기간·면적을 바꿔보세요.</span></div>}</div>
         </article>
-
-        <aside className="ranking panel">
-          <div className="ranking-head"><div><span>이번 주 시·도 순위</span><h3>상승률 TOP 5</h3></div><small>{asOf}</small></div>
-          <div className="ranking-list">{ranking.slice(0, 5).map((r, i) => <button key={r.id} onClick={() => choose(r)}><em>{String(i + 1).padStart(2, "0")}</em><b>{r.name}</b><span className={r.change >= 0 ? "rise" : "fall"}>{percent(r.change)}</span></button>)}</div>
-          <div className="ranking-bottom"><span>전국 평균</span><b className={(provinceCards[0]?.change || 0) >= 0 ? "rise" : "fall"}>{percent(provinceCards[0]?.change || 0)}</b></div>
-        </aside>
+        <aside className="market-stats"><article><span>최근 월 중위가</span><strong>{formatPrice(latest)}</strong><small>{chartPoints.at(-1)?.month || "-"}</small></article><article><span>기간 최고 / 최저</span><strong>{compactPrice(high)} <em>/</em> {compactPrice(low)}</strong><small>{period}개월 기준</small></article><article><span>실거래 건수</span><strong>{filteredTrades.length.toLocaleString()}<em>건</em></strong><small>취소거래 제외</small></article><article><span>시장 체결 강도</span><strong className={change >= 0 ? "up" : "down"}>{change > 2 ? "매수 우위" : change < -2 ? "조정 구간" : "보합 구간"}</strong><small>월 중위가 변화 기준</small></article></aside>
       </div>
     </section>
 
-    <section className="region-section" id="regions">
-      <div className="section-heading"><div><p>전국 시장 온도</p><h2>17개 시·도 주간 변동률</h2></div><span>지역을 누르면 상세 차트가 바뀝니다</span></div>
-      <div className="region-board">{provinceCards.filter((r) => r.name !== "전국").map((r) => <button key={r.id} onClick={() => choose(r)} className={selected === r.id ? "active" : ""}><span>{r.name}</span><strong className={r.change >= 0 ? "rise" : "fall"}>{percent(r.change)}</strong><i style={{ width: `${Math.min(100, Math.abs(r.change) * 240 + 10)}%` }} /></button>)}</div>
-      <p className="method-note"><b>읽는 법</b> 가격지수는 개별 아파트의 거래가격이 아니라 표본주택의 가격 변화를 지수화한 공식 시장지표입니다. 지역 간 흐름과 방향성을 비교할 때 활용하세요.</p>
+    <section className="lower-grid">
+      <article className="property-panel"><div className="section-title"><div><p>SEARCH RESULTS</p><h2>단지·건물 선택</h2></div><span>{properties.length}개 결과</span></div><button className={!selectedKey ? "selected" : ""} onClick={() => { setSelectedKey(""); setArea("all"); }}><div><b>{submittedQuery ? `“${submittedQuery}” 전체` : `${activeRegion.sigungu} 전체 거래`}</b><span>검색 결과를 합산해 시장 흐름 확인</span></div><strong>{trades.length}건</strong></button>{properties.slice(0, 10).map((property) => <button key={property.key} className={selectedKey === property.key ? "selected" : ""} onClick={() => { setSelectedKey(property.key); setArea("all"); }}><div><b>{property.name}</b><span>{property.dong} {property.jibun || "지번 비공개"} · {property.areas.slice(0, 3).join(" / ")}㎡</span></div><strong>{formatPrice(property.lastAmount)}<small>{property.count}건</small></strong></button>)}</article>
+      <article className="trade-panel" id="transactions"><div className="section-title"><div><p>RECENT CONTRACTS</p><h2>최근 실거래 내역</h2></div><span>단위: 만원</span></div><div className="trade-table"><div className="table-head"><span>계약일</span><span>전용면적</span><span>층</span><span>거래금액</span><span>평당가</span></div>{[...filteredTrades].reverse().slice(0, 12).map((trade) => <div className="table-row" key={trade.id}><span>{trade.date.replaceAll("-", ".")}</span><span>{trade.area ? `${trade.area.toFixed(1)}㎡` : "-"}</span><span>{trade.floor === null ? "-" : `${trade.floor}층`}</span><strong>{formatPrice(trade.amount)}</strong><span>{trade.area ? `${Math.round(trade.amount / (trade.area / 3.3058)).toLocaleString()}만` : "-"}</span></div>)}</div></article>
     </section>
 
-    <section className="community-section" id="community">
-      <div className="section-heading"><div><p>지역의 목소리</p><h2>{regionName}, 지금 현장 분위기는 어떤가요?</h2></div><button onClick={() => flash("관점 공유 기능을 준비 중입니다")}>+ 관점 공유하기</button></div>
-      <div className="opinion-grid"><article><div className="avatar orange">J</div><div><span>집보는 직장인 · 2시간 전</span><b>지수 흐름과 현장 매물 분위기가 비슷하게 움직이고 있어요.</b><p>급매가 줄었지만 매수자는 여전히 신중합니다. 한두 건의 거래보다 몇 주간의 방향을 함께 보는 게 좋겠어요.</p><small>♡ 24　답글</small></div></article><article><div className="avatar blue">M</div><div><span>주말 임장러 · 5시간 전</span><b>생활권별 온도 차이는 꽤 큽니다.</b><p>같은 시 안에서도 역세권과 외곽의 분위기가 달라요. 시군구 지수까지 내려가서 비교해보세요.</p><small>♡ 18　답글</small></div></article></div>
-    </section>
-
-    <footer><a className="brand" href="#top"><span>집</span>값의 정석</a><p>전국 부동산 시장의 흐름을 더 선명하게.</p><div>공식 데이터: 한국부동산원 R-ONE</div><small>본 서비스의 지수와 분석은 참고용이며, 개별 부동산의 실제 거래가격 또는 투자수익을 보장하지 않습니다.</small></footer>
-    {notice && <div className="toast" role="status">{notice}</div>}
+    <section className="insight" id="insight"><div><p>DATA NOTE</p><h2>차트는 실제 신고된 계약을 월 단위로 집계합니다.</h2></div><p>월 중위가격은 고가·저가 한 건의 영향을 줄여 시장 흐름을 보여줍니다. 연립·다세대, 단독·다가구, 상가·업무, 공장·창고는 공공데이터의 주소 마스킹 또는 건물명 미제공으로 동일 건물 구분이 제한될 수 있습니다. 본 정보는 참고용이며 투자 판단의 근거가 아닙니다.</p></section>
+    <section className="community" id="community"><div><p>COMMUNITY PREVIEW</p><h2>같은 단지를 보는 사람들의 관점</h2><span>관심 단지 토론과 가격 전망 공유 기능은 다음 업데이트에서 열립니다.</span></div><button disabled>관점 공유 준비 중</button></section>
+    <footer><a className="brand" href="#top"><span>집값</span>의 정석</a><p>대한민국 부동산 실거래를 차트로 읽다.</p><span>데이터: 국토교통부 실거래가 공개시스템</span></footer>
   </main>;
 }
