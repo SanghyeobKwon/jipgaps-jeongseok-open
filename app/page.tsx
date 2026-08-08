@@ -11,6 +11,15 @@ function percent(value: number) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
+function toMonthlySeries(points: Point[]) {
+  const monthEnds = new Map<string, Point>();
+  points.forEach((point) => {
+    const month = point.date.slice(0, 7);
+    monthEnds.set(month, { ...point, date: month });
+  });
+  return [...monthEnds.values()];
+}
+
 function MarketChart({ points }: { points: Point[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -56,7 +65,7 @@ function MarketChart({ points }: { points: Point[] }) {
     draw(); const observer = new ResizeObserver(draw); observer.observe(host); return () => observer.disconnect();
   }, [points]);
 
-  return <canvas ref={canvasRef} aria-label="선택 지역 주간 아파트 매매가격지수 차트" />;
+  return <canvas ref={canvasRef} aria-label="선택 지역 월별 아파트 매매가격지수 차트" />;
 }
 
 export default function Home() {
@@ -89,14 +98,15 @@ export default function Home() {
     }).catch(() => setError("한국부동산원 데이터를 불러오지 못했습니다.")).finally(() => setLoading(false));
   }, [selected]);
 
-  const pointCount = period === "6개월" ? 26 : period === "1년" ? 52 : period === "3년" ? 156 : series.length;
-  const visible = series.slice(-pointCount);
-  const current = series.at(-1)?.value || 0;
-  const previous = series.at(-2)?.value || current;
-  const quarterAgo = series.at(-14)?.value || previous;
-  const weeklyChange = previous ? (current / previous - 1) * 100 : 0;
+  const monthlySeries = useMemo(() => toMonthlySeries(series), [series]);
+  const pointCount = period === "3개월" ? 3 : period === "6개월" ? 6 : period === "1년" ? 12 : period === "3년" ? 36 : monthlySeries.length;
+  const visible = monthlySeries.slice(-pointCount);
+  const current = monthlySeries.at(-1)?.value || 0;
+  const previous = monthlySeries.at(-2)?.value || current;
+  const quarterAgo = monthlySeries.at(-4)?.value || previous;
+  const monthlyChange = previous ? (current / previous - 1) * 100 : 0;
   const quarterChange = quarterAgo ? (current / quarterAgo - 1) * 100 : 0;
-  const signal = weeklyChange > .05 && quarterChange > .2 ? "상승 우위" : weeklyChange < -.05 && quarterChange < -.2 ? "하락 우위" : "보합 흐름";
+  const signal = monthlyChange > .15 && quarterChange > .3 ? "상승 우위" : monthlyChange < -.15 && quarterChange < -.3 ? "하락 우위" : "보합 흐름";
 
   const searchResults = useMemo(() => {
     const query = search.trim().toLowerCase(); if (!query) return [];
@@ -116,7 +126,7 @@ export default function Home() {
     </header>
 
     <section className="nation-hero">
-      <div className="hero-copy"><p>대한민국 부동산 시장 한눈에</p><h1>전국 236개 권역의 흐름을<br />하나의 차트로 비교하세요.</h1><span>한국부동산원 주간 아파트 매매가격지수 · {asOf || "최신 공표"} 기준</span></div>
+      <div className="hero-copy"><p>대한민국 부동산 시장 한눈에</p><h1>전국 236개 권역의 흐름을<br />하나의 차트로 비교하세요.</h1><span>한국부동산원 아파트 매매가격지수 월별 집계 · {asOf || "최신 공표"} 기준</span></div>
       <div className="region-search">
         <label htmlFor="region-search">지역 찾기</label>
         <div className="search-box"><span>⌕</span><input id="region-search" value={search} onFocus={() => setSearchOpen(true)} onChange={(e) => { setSearch(e.target.value); setSearchOpen(true); }} placeholder="시·도, 시·군·구를 검색하세요" autoComplete="off" /><kbd>전국</kbd></div>
@@ -125,22 +135,22 @@ export default function Home() {
       </div>
     </section>
 
-    <section className="data-ribbon"><div><span>선택 지역</span><strong>{regionPath.replaceAll(">", " › ")}</strong></div><div><span>현재 지수</span><strong>{current ? current.toFixed(2) : "—"}</strong></div><div><span>주간 변동</span><strong className={weeklyChange >= 0 ? "rise" : "fall"}>{current ? percent(weeklyChange) : "—"}</strong></div><p>기준시점 2026.07.06 = 100.0</p></section>
+    <section className="data-ribbon"><div><span>선택 지역</span><strong>{regionPath.replaceAll(">", " › ")}</strong></div><div><span>현재 지수</span><strong>{current ? current.toFixed(2) : "—"}</strong></div><div><span>월간 변동</span><strong className={monthlyChange >= 0 ? "rise" : "fall"}>{current ? percent(monthlyChange) : "—"}</strong></div><p>기준시점 2026.07.06 = 100.0</p></section>
 
     <section className="dashboard" id="market">
-      <div className="market-heading"><div><p>주간 아파트 매매가격지수</p><h2>{regionName} 시장 흐름</h2></div><button className={saved.includes(selected) ? "saved" : ""} onClick={() => setSaved(saved.includes(selected) ? saved.filter((id) => id !== selected) : [...saved, selected])}>☆ {saved.includes(selected) ? "관심지역 저장됨" : "관심지역"}</button></div>
+      <div className="market-heading"><div><p>월별 아파트 매매가격지수</p><h2>{regionName} 시장 흐름</h2></div><button className={saved.includes(selected) ? "saved" : ""} onClick={() => setSaved(saved.includes(selected) ? saved.filter((id) => id !== selected) : [...saved, selected])}>☆ {saved.includes(selected) ? "관심지역 저장됨" : "관심지역"}</button></div>
       <div className="metric-grid">
-        <article><span>현재 가격지수</span><h3>{loading ? "···" : current.toFixed(2)}</h3><p>공식 주간 지수</p></article>
-        <article><span>전주 대비</span><h3 className={weeklyChange >= 0 ? "rise" : "fall"}>{loading ? "···" : percent(weeklyChange)}</h3><p>{series.at(-1)?.date || "—"}</p></article>
-        <article><span>13주 모멘텀</span><h3 className={quarterChange >= 0 ? "rise" : "fall"}>{loading ? "···" : percent(quarterChange)}</h3><p>약 3개월 누적</p></article>
+        <article><span>현재 가격지수</span><h3>{loading ? "···" : current.toFixed(2)}</h3><p>월별 마지막 공표값</p></article>
+        <article><span>전월 대비</span><h3 className={monthlyChange >= 0 ? "rise" : "fall"}>{loading ? "···" : percent(monthlyChange)}</h3><p>{monthlySeries.at(-1)?.date || "—"}</p></article>
+        <article><span>3개월 모멘텀</span><h3 className={quarterChange >= 0 ? "rise" : "fall"}>{loading ? "···" : percent(quarterChange)}</h3><p>최근 3개월 누적</p></article>
         <article className="signal-card"><span>시장 신호</span><h3>{loading ? "분석 중" : signal}</h3><div className={`signal-line ${signal === "상승 우위" ? "hot" : signal === "하락 우위" ? "cold" : ""}`}><i /></div></article>
       </div>
 
       <div className="content-grid">
         <article className="chart-panel panel">
-          <div className="panel-top"><div><span>{regionPath.replaceAll(">", " · ")}</span><h3>{current.toFixed(2)} <em className={weeklyChange >= 0 ? "rise" : "fall"}>{percent(weeklyChange)}</em></h3></div><div className="periods">{["6개월", "1년", "3년", "전체"].map((p) => <button key={p} className={period === p ? "active" : ""} onClick={() => setPeriod(p)}>{p}</button>)}</div></div>
+          <div className="panel-top"><div><span>{regionPath.replaceAll(">", " · ")}</span><h3>{current.toFixed(2)} <em className={monthlyChange >= 0 ? "rise" : "fall"}>{percent(monthlyChange)}</em></h3></div><div className="periods">{["3개월", "6개월", "1년", "3년", "전체"].map((p) => <button key={p} className={period === p ? "active" : ""} onClick={() => setPeriod(p)}>{p}</button>)}</div></div>
           <div className="chart-wrap">{error ? <div className="chart-state">{error}</div> : loading ? <div className="chart-state">공식 데이터를 불러오는 중입니다…</div> : <MarketChart points={visible} />}</div>
-          <div className="chart-caption"><span><i /> 아파트 매매가격지수</span><b>출처: 한국부동산원 전국주택가격동향조사</b></div>
+          <div className="chart-caption"><span><i /> 월별 아파트 매매가격지수</span><b>주간 지수의 월별 마지막 공표값 · 출처: 한국부동산원</b></div>
         </article>
 
         <aside className="ranking panel">
