@@ -9,6 +9,7 @@ type Trade = { id: string; date: string; amount: number; area: number; floor: nu
 type Property = { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; areas: number[] };
 type ChartPoint = { month: string; price: number; average: number; volume: number };
 type OverviewMarket = { short: string; sido: string; code: string; count: number; median: number; change: number };
+type PolicyItem = { date: string; tone: string; label: string; scope: string; title: string; summary: string; url: string };
 
 const PROPERTY_TYPES: { key: PropertyType; label: string }[] = [
   { key: "apt", label: "아파트" }, { key: "rowhouse", label: "연립·다세대" },
@@ -16,6 +17,12 @@ const PROPERTY_TYPES: { key: PropertyType; label: string }[] = [
   { key: "commercial", label: "상가·업무" }, { key: "factory", label: "공장·창고" },
 ];
 const PERIODS = [{ label: "3개월", value: 3 }, { label: "6개월", value: 6 }, { label: "1년", value: 12 }, { label: "3년", value: 36 }, { label: "5년", value: 60 }];
+const POLICIES = [
+  { date: "2026.07.20", tone: "positive", label: "호재", scope: "비아파트·임대", title: "비아파트 공급 보완조치 전면 시행", summary: "토지 확보 지원금 상향과 PF 보증 강화로 오피스텔·도시형생활주택 공급 사업의 초기 자금 부담이 완화됩니다.", url: "https://www.korea.kr/news/policyNewsView.do?newsId=148968416" },
+  { date: "2026.07.15", tone: "negative", label: "악재", scope: "분양·신축", title: "기본형건축비 0.77% 인상", summary: "공사비 상승분이 분양가에 반영될 가능성이 있어 신규 주택 구매자의 가격 부담에는 부정적으로 해석됩니다.", url: "https://www.molit.go.kr/portal.do" },
+  { date: "2026.05.12", tone: "neutral", label: "중립", scope: "토지거래허가", title: "세입자 있는 주택 실거주 유예 확대", summary: "임대 중 주택의 매도 편의는 개선되지만 갭투자 제한 원칙은 유지돼 수요·공급 양쪽 효과가 혼재합니다.", url: "https://www.molit.go.kr/USR/NEWS/m_71/dtl.jsp?id=95091995" },
+  { date: "2026 업무계획", tone: "positive", label: "호재", scope: "주거복지·공급", title: "공적 임대주택 최소 15.2만호 공급", summary: "공공임대 14만호와 공공지원 민간임대 1.2만호 공급 계획으로 무주택 실수요자의 선택지가 확대됩니다.", url: "https://www.molit.go.kr/2026plan/251212%28%EC%9E%90%EB%A3%8C%29_%EA%B5%AD%ED%86%A0%EA%B5%90%ED%86%B5%EB%B6%80_%EC%97%85%EB%AC%B4%EB%B3%B4%EA%B3%A0_%EC%84%9C%EB%A9%B4%EC%9E%90%EB%A3%8C.pdf" },
+];
 
 function formatPrice(value: number) {
   if (!value) return "-";
@@ -71,6 +78,8 @@ export default function Home() {
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
   const [area, setArea] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
   const [markets, setMarkets] = useState<OverviewMarket[]>([]); const [marketMonth, setMarketMonth] = useState("");
+  const [buildingSort, setBuildingSort] = useState<"volume" | "price" | "rise" | "fall">("volume"); const [minVolume, setMinVolume] = useState(0); const [marketSort, setMarketSort] = useState<"volume" | "price" | "rise" | "fall">("volume");
+  const [policyItems, setPolicyItems] = useState<readonly PolicyItem[]>(POLICIES); const [policyUpdated, setPolicyUpdated] = useState("");
   const activeRegion = (regions as Region[]).find((item) => item.code === regionCode) || regions[0] as Region;
 
   useEffect(() => {
@@ -85,6 +94,10 @@ export default function Home() {
     fetch(`/api/overview?type=${type}`, { signal: controller.signal }).then((response) => response.json()).then((data) => { if (data.markets) { setMarkets(data.markets); setMarketMonth(data.month); } }).catch(() => undefined);
     return () => controller.abort();
   }, [type]);
+
+  useEffect(() => {
+    const controller = new AbortController(); fetch("/api/policies", { signal: controller.signal }).then((response) => response.json()).then((data) => { if (data.policies?.length) { setPolicyItems(data.policies); setPolicyUpdated(data.updatedAt); } }).catch(() => undefined); return () => controller.abort();
+  }, []);
 
   const propertyTrades = useMemo(() => selectedKey ? trades.filter((trade) => trade.propertyKey === selectedKey) : trades, [trades, selectedKey]);
   const areas = useMemo(() => [...new Set(propertyTrades.map((trade) => Math.round(trade.area * 10) / 10).filter(Boolean))].sort((a, b) => a - b), [propertyTrades]);
@@ -106,13 +119,16 @@ export default function Home() {
   }).sort((a, b) => b.monthCount - a.monthCount || b.count - a.count), [properties, trades, latestMonth, previousMonth]);
   const latestMonthTrades = trades.filter((trade) => trade.date.startsWith(latestMonth));
   const risingCount = propertyRows.filter((property) => property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change < 0).length;
+  const visibleProperties = useMemo(() => propertyRows.filter((property) => property.monthCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? b.change - a.change : buildingSort === "fall" ? a.change - b.change : b.monthCount - a.monthCount), [propertyRows, buildingSort, minVolume]);
+  const sortedMarkets = useMemo(() => [...markets].sort((a, b) => marketSort === "price" ? b.median - a.median : marketSort === "rise" ? b.change - a.change : marketSort === "fall" ? a.change - b.change : b.count - a.count), [markets, marketSort]);
+  const nationalDeals = markets.reduce((sum, market) => sum + market.count, 0); const activeMarkets = markets.filter((market) => market.median > 0); const nationalMedian = activeMarkets.length ? median(activeMarkets.map((market) => market.median)) : 0; const nationalChange = nationalDeals ? markets.reduce((sum, market) => sum + market.change * market.count, 0) / nationalDeals : 0;
   const regionSuggestions = useMemo(() => { const needle = regionInput.replaceAll(" ", "").toLowerCase(); return (regions as Region[]).filter((item) => `${item.sido}${item.sigungu}`.replaceAll(" ", "").toLowerCase().includes(needle)).slice(0, 8); }, [regionInput]);
 
   const chooseRegion = (region: Region) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSubmittedQuery(""); setQuery(""); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = (regions as Region[]).find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); setSubmittedQuery(query.trim()); };
 
   return <main className="terminal-shell">
-    <header className="topbar"><a href="#top" className="brand"><span>집값</span>의 정석 <em>PRO</em></a><nav><a className="active" href="#market">월간 시장</a><a href="#chart">상세 차트</a><a href="#map">전국 지도</a><a href="#transactions">거래 내역</a></nav><div className="live"><i /> 국토교통부 실거래가 연동</div></header>
+    <header className="topbar"><a href="#top" className="brand"><span>집값</span>의 정석 <em>PRO</em></a><nav><a className="active" href="#national">대한민국 시장</a><a href="#market">월간 시장</a><a href="#chart">상세 차트</a><a href="#map">전국 지도</a><a href="#policy">정책 레이더</a></nav><div className="live"><i /> 국토교통부 실거래가 연동</div></header>
     <section className="command" id="top">
       <div className="type-tabs">{PROPERTY_TYPES.map((item) => <button key={item.key} className={type === item.key ? "active" : ""} onClick={() => { setType(item.key); setSelectedKey(""); }}>{item.label}</button>)}</div>
       <form className="search-console" onSubmit={submitSearch}>
@@ -122,6 +138,8 @@ export default function Home() {
       </form>
       <div className="scope-note"><span>{activeRegion.sido}</span><b>{activeRegion.sigungu}</b><i /> 검색어 없이 지역 내 전체 건물을 조회할 수 있습니다.</div>
     </section>
+
+    <section className="national-overview" id="national"><div><p>KOREA REAL ESTATE MARKET</p><h1>대한민국 부동산 시장</h1><span>전국 253개 시군구 탐색 · 17개 시도 대표 시장 실거래 온도</span></div><article><span>전국 표본 거래량</span><strong>{nationalDeals.toLocaleString()}<em>건</em></strong><small>{marketMonth || "최근월"} 대표 권역 집계</small></article><article><span>전국 중위가격</span><strong>{formatPrice(nationalMedian)}</strong><small>17개 대표 권역 중위값</small></article><article><span>거래 강도</span><strong className={nationalChange >= 0 ? "up" : "down"}>{nationalChange >= 0 ? "+" : ""}{nationalChange.toFixed(2)}%</strong><small>거래량 가중 전월 대비</small></article><a href="#map">전국 순위 보기 ↓</a></section>
 
     <section className="monthly-board" id="market">
       <div className="month-intro"><p>MONTHLY MARKET BRIEF</p><h1>{latestMonth ? latestMonth.replace("-", "년 ") + "월" : "최근 한 달"} {activeRegion.sigungu} 시장</h1><span>{PROPERTY_TYPES.find((item) => item.key === type)?.label} 실거래 신고 기준</span></div>
@@ -133,9 +151,10 @@ export default function Home() {
 
     <section className="market-browser" id="chart">
       <aside className="watchlist">
-        <div className="watch-head"><div><p>BUILDING WATCHLIST</p><h2>{activeRegion.sigungu} 전체 목록</h2></div><span>{properties.length}</span></div>
+        <div className="watch-head"><div><p>BUILDING WATCHLIST</p><h2>{activeRegion.sigungu} 전체 목록</h2></div><span>{visibleProperties.length}/{properties.length}</span></div>
+        <div className="watch-filters"><select value={buildingSort} onChange={(event) => setBuildingSort(event.target.value as typeof buildingSort)} aria-label="건물 목록 정렬"><option value="volume">한 달 거래량순</option><option value="price">가격 높은순</option><option value="rise">상승률 높은순</option><option value="fall">하락률 높은순</option></select><select value={minVolume} onChange={(event) => setMinVolume(Number(event.target.value))} aria-label="최소 거래량"><option value="0">거래량 전체</option><option value="1">월 1건 이상</option><option value="3">월 3건 이상</option><option value="5">월 5건 이상</option></select></div>
         <div className="watch-columns"><span>건물 / 단지</span><span>최근가</span></div>
-        {loading ? <div className="watch-state">전체 실거래 목록을 불러오는 중…</div> : error ? <div className="watch-state error">{error}</div> : propertyRows.length ? <div className="watch-scroll">{propertyRows.map((property, index) => <button key={property.key} className={selectedKey === property.key ? "selected" : ""} onClick={() => { setSelectedKey(property.key); setArea("all"); }}>
+        {loading ? <div className="watch-state">전체 실거래 목록을 불러오는 중…</div> : error ? <div className="watch-state error">{error}</div> : visibleProperties.length ? <div className="watch-scroll">{visibleProperties.map((property, index) => <button key={property.key} className={selectedKey === property.key ? "selected" : ""} onClick={() => { setSelectedKey(property.key); setArea("all"); }}>
           <i className={`building-icon tone-${index % 5}`}>{property.name.slice(0, 1)}</i><div><b>{property.name}</b><small>{property.dong} {property.jibun || "주소 일부 비공개"} · {property.areas.slice(0, 2).join(" / ")}㎡</small></div><strong>{formatPrice(property.current)}<em className={property.change >= 0 ? "up" : "down"}>{property.change >= 0 ? "+" : ""}{property.change.toFixed(1)}% · {property.monthCount}건</em></strong>
         </button>)}</div> : <div className="watch-state">이 조건의 신고 거래가 없습니다.<button onClick={() => { setQuery(""); setSubmittedQuery(""); }}>전체 목록 보기</button></div>}
       </aside>
@@ -152,17 +171,18 @@ export default function Home() {
     </section>
 
     <section className="map-section" id="map">
-      <div className="section-title wide"><div><p>KOREA MARKET MAP</p><h2>전국 실거래 온도 지도</h2><span>{marketMonth ? `${marketMonth.slice(0, 4)}년 ${Number(marketMonth.slice(4))}월` : "최근 월"} · 시도별 대표 권역 중위가격 변화</span></div><div className="map-legend"><i className="cold"/>하락 <i className="flat"/>보합 <i className="hot"/>상승</div></div>
+      <div className="section-title wide"><div><p>KOREA MARKET MAP</p><h2>전국 실거래 온도 지도</h2><span>{marketMonth ? `${marketMonth.slice(0, 4)}년 ${Number(marketMonth.slice(4))}월` : "최근 월"} · 시도별 대표 권역 중위가격 변화</span></div><div className="map-controls"><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">거래량 많은순</option><option value="price">가격 높은순</option><option value="rise">상승률 높은순</option><option value="fall">하락률 높은순</option></select><div className="map-legend"><i className="cold"/>하락 <i className="flat"/>보합 <i className="hot"/>상승</div></div></div>
       <div className="map-layout"><div className="korea-map">{markets.map((market) => <button key={market.code} className={`map-tile map-${market.short} ${market.change > 1 ? "hot" : market.change < -1 ? "cold" : "flat"}`} onClick={() => { const region = (regions as Region[]).find((item) => item.code === market.code); if (region) chooseRegion(region); }}><b>{market.short}</b><span>{market.change >= 0 ? "+" : ""}{market.change.toFixed(1)}%</span><small>{market.count}건</small></button>)}</div>
-        <div className="map-ranking"><h3>전국 월간 흐름</h3>{[...markets].sort((a,b) => b.change - a.change).map((market, index) => <button key={market.code} onClick={() => { const region = (regions as Region[]).find((item) => item.code === market.code); if (region) chooseRegion(region); }}><em>{String(index + 1).padStart(2,"0")}</em><b>{market.sido}</b><span>{formatPrice(market.median)}</span><strong className={market.change >= 0 ? "up" : "down"}>{market.change >= 0 ? "+" : ""}{market.change.toFixed(2)}%</strong></button>)}</div>
+        <div className="map-ranking"><h3>전국 월간 흐름</h3><div className="ranking-labels"><span>순위</span><span>지역</span><span>중위가격</span><span>전월대비</span></div>{sortedMarkets.map((market, index) => <button key={market.code} onClick={() => { const region = (regions as Region[]).find((item) => item.code === market.code); if (region) chooseRegion(region); }}><em>{String(index + 1).padStart(2,"0")}</em><b>{market.sido}<small>{market.count}건</small></b><span>{formatPrice(market.median)}</span><strong className={market.change >= 0 ? "up" : "down"}>{market.change >= 0 ? "+" : ""}{market.change.toFixed(2)}%</strong></button>)}</div>
       </div>
       <p className="map-note">지도 수치는 시·도 전체 통계가 아니라 각 시·도의 대표 권역에서 신고된 실거래 중위가격 변화입니다. 전국 방향을 빠르게 탐색하기 위한 온도계로 사용하세요.</p>
     </section>
 
     <section className="trade-section" id="transactions"><div className="section-title wide"><div><p>RECENT CONTRACTS</p><h2>{displayName} 최근 실거래</h2></div><span>단위: 만원 · 최대 30건 표시</span></div><div className="trade-table"><div className="table-head"><span>계약일</span><span>건물명</span><span>전용면적</span><span>층</span><span>거래금액</span><span>평당가</span></div>{[...filteredTrades].reverse().slice(0, 30).map((trade) => <div className="table-row" key={trade.id}><span>{trade.date.replaceAll("-", ".")}</span><b>{trade.name}</b><span>{trade.area ? `${trade.area.toFixed(1)}㎡` : "-"}</span><span>{trade.floor === null ? "-" : `${trade.floor}층`}</span><strong>{formatPrice(trade.amount)}</strong><span>{trade.area ? `${Math.round(trade.amount / (trade.area / 3.3058)).toLocaleString()}만` : "-"}</span></div>)}</div></section>
 
-    <section className="insight"><div><p>DATA NOTE</p><h2>공공 API에서 제공되는 모든 건물 유형을 조회합니다.</h2></div><p>검색어를 비우면 선택한 시군구의 전체 건물 목록을 불러옵니다. 주소가 일부 가려지는 연립·다세대, 단독·다가구, 상가·업무, 공장·창고는 공공데이터 특성상 동일 건물 구분이 제한될 수 있으며, 건물 사진은 실거래 API에 포함되지 않습니다.</p></section>
+    <section className="policy-section" id="policy"><div className="section-title wide"><div><p>POLICY RADAR · 6시간마다 자동 확인</p><h2>부동산 정책 레이더</h2><span>언론 기사가 아닌 국토교통부·정책브리핑 공식 발표만 표시합니다.{policyUpdated ? ` · ${new Date(policyUpdated).toLocaleString("ko-KR")} 확인` : ""}</span></div><a href="https://www.molit.go.kr/portal.do" target="_blank" rel="noreferrer">국토교통부 최신 정책 ↗</a></div><div className="policy-grid">{policyItems.map((policy) => <a key={policy.title} href={policy.url} target="_blank" rel="noreferrer" className={`policy-card ${policy.tone}`}><div><span>{policy.date}</span><em>{policy.scope}</em></div><b><i>{policy.label}</i>{policy.title}</b><p>{policy.summary}</p><small>공식 원문 확인 ↗</small></a>)}</div><p className="policy-method">호재·악재·중립 평가는 실수요자의 선택지, 금융·세금 부담, 공급 확대 여부를 기준으로 한 서비스 자체 해석입니다. 정책 효과는 지역과 보유 상황에 따라 달라질 수 있습니다.</p></section>
+
+    <section className="insight"><div><p>DATA NOTE</p><h2>전국은 시장 요약, 시군구는 전체 건물 상세로 연결됩니다.</h2></div><p>첫 화면의 전국 수치는 17개 시·도 대표 권역을 빠르게 비교하는 시장 온도계입니다. 지도나 순위를 선택하면 전국 253개 시군구 검색으로 이어지고, 선택한 시군구에서는 공공 API가 제공하는 전체 건물·거래를 조회합니다.</p></section>
     <footer><a className="brand" href="#top"><span>집값</span>의 정석</a><p>대한민국 부동산 실거래를 차트로 읽다.</p><span>데이터: 국토교통부 실거래가 공개시스템</span></footer>
   </main>;
 }
-
