@@ -17,7 +17,7 @@ const PROPERTY_TYPES: { key: PropertyType; label: string }[] = [
   { key: "commercial", label: "상가·업무" }, { key: "factory", label: "공장·창고" },
 ];
 const PERIODS = [{ label: "3개월", value: 3 }, { label: "6개월", value: 6 }, { label: "1년", value: 12 }, { label: "3년", value: 36 }, { label: "5년", value: 60 }];
-const NAV_ITEMS = [{ id: "national", label: "대한민국 시장" }, { id: "market", label: "월간 시장" }, { id: "chart", label: "상세 차트" }, { id: "map", label: "전국 지도" }, { id: "transactions", label: "거래 내역" }, { id: "policy", label: "정책 레이더" }];
+const NAV_ITEMS = [{ id: "national", label: "살 집 찾기" }, { id: "market", label: "월간 시장" }, { id: "chart", label: "상세 차트" }, { id: "map", label: "전국 지도" }, { id: "transactions", label: "거래 내역" }, { id: "policy", label: "정책 레이더" }];
 const POLICIES = [
   { date: "2026.07.20", tone: "positive", label: "호재", scope: "비아파트·임대", title: "비아파트 공급 보완조치 전면 시행", summary: "토지 확보 지원금 상향과 PF 보증 강화로 오피스텔·도시형생활주택 공급 사업의 초기 자금 부담이 완화됩니다.", url: "https://www.korea.kr/news/policyNewsView.do?newsId=148968416" },
   { date: "2026.07.15", tone: "negative", label: "악재", scope: "분양·신축", title: "기본형건축비 0.77% 인상", summary: "공사비 상승분이 분양가에 반영될 가능성이 있어 신규 주택 구매자의 가격 부담에는 부정적으로 해석됩니다.", url: "https://www.molit.go.kr/portal.do" },
@@ -160,7 +160,7 @@ export default function Home() {
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = (regions as Region[]).find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); setSubmittedQuery(query.trim()); };
 
   return <main className="terminal-shell">
-    <header className="topbar"><a href="#top" className="brand"><span>집값</span>의 정석 <em>PRO</em></a><nav ref={navRef}>{NAV_ITEMS.map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}<i className="nav-indicator" style={{ left: navIndicator.left, width: navIndicator.width }} /></nav><div className="live"><i /> 국토교통부 실거래가 연동</div></header>
+    <header className="topbar"><a href="#top" className="brand"><span>집값</span>의 정석 <em>HOME</em></a><nav ref={navRef}>{NAV_ITEMS.map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}<i className="nav-indicator" style={{ left: navIndicator.left, width: navIndicator.width }} /></nav><div className="live"><i /> 국토교통부 실거래가 연동</div></header>
     <section className="command" id="top">
       <div className="type-tabs">{PROPERTY_TYPES.map((item) => <button key={item.key} className={type === item.key ? "active" : ""} onClick={() => { setType(item.key); setSelectedKey(""); }}>{item.label}</button>)}</div>
       <form className="search-console" onSubmit={submitSearch}>
@@ -173,7 +173,7 @@ export default function Home() {
       <div className="scope-note"><span>{activeRegion.sido}</span><b>{activeRegion.sigungu}</b>{selectedDong !== "all" && <><i /><b>{selectedDong}</b></>}<i /> 단계별 지역 선택 후 단지·건물을 고르면 평수 대비 가격까지 비교합니다.</div>
     </section>
 
-    <section className="national-overview" id="national"><div><p>KOREA REAL ESTATE MARKET</p><h1>대한민국 부동산 시장</h1><span>전국 253개 시군구 탐색 · 17개 시도 대표 시장 실거래 온도</span></div><article><span>전국 표본 거래량</span><strong>{nationalDeals.toLocaleString()}<em>건</em></strong><small>{marketMonth || "최근월"} 대표 권역 집계</small></article><article><span>전국 중위가격</span><strong>{formatPrice(nationalMedian)}</strong><small>17개 대표 권역 중위값</small></article><article><span>거래 강도</span><strong className={nationalChange >= 0 ? "up" : "down"}>{nationalChange >= 0 ? "+" : ""}{nationalChange.toFixed(2)}%</strong><small>거래량 가중 전월 대비</small></article><a href="#map">전국 순위 보기 ↓</a></section>
+    <section className="national-overview" id="national"><div><p>FIND YOUR HOME WITH DATA</p><h1>살 집을 고르는 부동산 지도</h1><span>전국에서 동네로, 동네에서 우리 집 후보로 좁혀보세요.</span></div><article><span>전국 표본 거래량</span><strong>{nationalDeals.toLocaleString()}<em>건</em></strong><small>{marketMonth || "최근월"} 대표 권역 집계</small></article><article><span>전국 중위가격</span><strong>{formatPrice(nationalMedian)}</strong><small>17개 대표 권역 중위값</small></article><article><span>거래 강도</span><strong className={nationalChange >= 0 ? "up" : "down"}>{nationalChange >= 0 ? "+" : ""}{nationalChange.toFixed(2)}%</strong><small>거래량 가중 전월 대비</small></article><a href="#map">살기 좋은 지역 찾기 ↓</a></section>
 
     <section className="monthly-board" id="market">
       <div className="month-intro"><p>MONTHLY MARKET BRIEF</p><h1>{latestMonth ? latestMonth.replace("-", "년 ") + "월" : "최근 한 달"} {activeRegion.sigungu} 시장</h1><span>{PROPERTY_TYPES.find((item) => item.key === type)?.label} 실거래 신고 기준</span></div>
@@ -209,7 +209,7 @@ export default function Home() {
               <div className="valuation-gauge"><div><span>저평가</span><span>적정</span><span>고평가</span></div><i style={{ left: `${Math.max(2, Math.min(98, 50 + valuationGap))}%` }} /></div>
               <p>같은 선택 지역에서 전용면적 ±15%인 실거래의 평당가 중위와 비교한 참고 지표입니다. 감정평가나 매수 권유가 아니며 층·향·수리 상태는 반영되지 않습니다.</p>
             </div>
-          </> : <div className="valuation-empty"><p>AREA-ADJUSTED VALUE</p><strong>평수 대비 가격 적정성</strong><span>왼쪽 목록에서 단지·건물을 선택하면 같은 지역의 유사 면적 거래와 비교해 저평가·적정·고평가 구간을 보여드립니다.</span></div>}
+          </> : <div className="valuation-empty"><p>AREA-ADJUSTED VALUE</p><strong>내가 살 집의 가격은 적정할까?</strong><span>왼쪽에서 집 후보를 선택하면 같은 지역의 유사 면적 거래와 비교해 저평가·적정·고평가 구간을 보여드립니다.</span></div>}
         </section>
       </div>
     </section>
@@ -226,7 +226,7 @@ export default function Home() {
 
     <section className="policy-section" id="policy"><div className="section-title wide"><div><p>POLICY RADAR · 6시간마다 자동 확인</p><h2>부동산 정책 레이더</h2><span>언론 기사가 아닌 국토교통부·정책브리핑 공식 발표만 표시합니다.{policyUpdated ? ` · ${new Date(policyUpdated).toLocaleString("ko-KR")} 확인` : ""}</span></div><a href="https://www.molit.go.kr/portal.do" target="_blank" rel="noreferrer">국토교통부 최신 정책 ↗</a></div><div className="policy-grid">{policyItems.map((policy) => <a key={policy.title} href={policy.url} target="_blank" rel="noreferrer" className={`policy-card ${policy.tone}`}><div><span>{policy.date}</span><em>{policy.scope}</em></div><b><i>{policy.label}</i>{policy.title}</b><p>{policy.summary}</p><small>공식 원문 확인 ↗</small></a>)}</div><p className="policy-method">호재·악재·중립 평가는 실수요자의 선택지, 금융·세금 부담, 공급 확대 여부를 기준으로 한 서비스 자체 해석입니다. 정책 효과는 지역과 보유 상황에 따라 달라질 수 있습니다.</p></section>
 
-    <section className="insight"><div><p>DATA NOTE</p><h2>전국은 시장 요약, 시군구는 전체 건물 상세로 연결됩니다.</h2></div><p>첫 화면의 전국 수치는 17개 시·도 대표 권역을 빠르게 비교하는 시장 온도계입니다. 지도나 순위를 선택하면 전국 253개 시군구 검색으로 이어지고, 선택한 시군구에서는 공공 API가 제공하는 전체 건물·거래를 조회합니다.</p></section>
-    <footer><a className="brand" href="#top"><span>집값</span>의 정석</a><p>대한민국 부동산 실거래를 차트로 읽다.</p><span>데이터: 국토교통부 실거래가 공개시스템</span></footer>
+    <section className="insight"><div><p>DATA NOTE</p><h2>전국에서 동네로, 동네에서 살 집 후보로 좁혀갑니다.</h2></div><p>첫 화면은 전국 흐름을 비교하는 출발점입니다. 관심 지역을 고른 뒤 실제 거래와 평수 대비 가격을 확인해 내 조건에 맞는 집을 찾아보세요.</p></section>
+    <footer><a className="brand" href="#top"><span>집값</span>의 정석</a><p>데이터로 보고, 실제로 살 집을 고르다.</p><span>데이터: 국토교통부 실거래가 공개시스템</span></footer>
   </main>;
 }
