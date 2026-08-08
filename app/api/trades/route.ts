@@ -82,7 +82,16 @@ async function fetchMonth(type: PropertyType, lawd: string, month: string) {
   if (/SERVICE_ACCESS_DENIED|PERMISSION_DENIED|SERVICE_KEY_IS_NOT_REGISTERED/.test(xml)) {
     throw new Error("실거래가 API 권한을 확인해주세요.");
   }
-  return parseItems(xml);
+  const firstPage = parseItems(xml);
+  const totalCount = numeric(xml.match(/<totalCount>(.*?)<\/totalCount>/)?.[1] || String(firstPage.length));
+  const pages = Math.min(5, Math.ceil(totalCount / 1000));
+  if (pages <= 1) return firstPage;
+  const remaining = await Promise.all(Array.from({ length: pages - 1 }, async (_, index) => {
+    const nextUrl = new URL(url); nextUrl.searchParams.set("pageNo", String(index + 2));
+    const nextResponse = await fetch(nextUrl, { headers: { Accept: "application/xml" } });
+    return nextResponse.ok ? parseItems(await nextResponse.text()) : [];
+  }));
+  return firstPage.concat(...remaining);
 }
 
 async function fetchInBatches(type: PropertyType, lawd: string, months: string[]) {
@@ -158,8 +167,7 @@ export async function GET(request: Request) {
     }
     const properties = [...propertyMap.values()]
       .map((property) => ({ ...property, areas: [...property.areas].sort((a, b) => a - b) }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 40);
+      .sort((a, b) => b.count - a.count);
 
     return Response.json({ trades, properties, months, lawd, type, source: "국토교통부 실거래가 공개시스템" }, {
       headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" },
