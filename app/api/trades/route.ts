@@ -52,7 +52,8 @@ function parseItems(xml: string): RawFields[] {
   const blocks = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
   return blocks.map((block) => {
     const fields: RawFields = {};
-    for (const match of block.matchAll(/<([A-Za-z0-9_]+)>([\s\S]*?)<\/\1>/g)) {
+    const inner = block.slice("<item>".length, -"</item>".length);
+    for (const match of inner.matchAll(/<([A-Za-z0-9_]+)>([\s\S]*?)<\/\1>/g)) {
       fields[match[1]] = decodeXml(match[2].trim());
     }
     return fields;
