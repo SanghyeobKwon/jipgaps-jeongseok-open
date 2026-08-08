@@ -17,6 +17,7 @@ const PROPERTY_TYPES: { key: PropertyType; label: string }[] = [
   { key: "commercial", label: "상가·업무" }, { key: "factory", label: "공장·창고" },
 ];
 const PERIODS = [{ label: "3개월", value: 3 }, { label: "6개월", value: 6 }, { label: "1년", value: 12 }, { label: "3년", value: 36 }, { label: "5년", value: 60 }];
+const NAV_ITEMS = [{ id: "national", label: "대한민국 시장" }, { id: "market", label: "월간 시장" }, { id: "chart", label: "상세 차트" }, { id: "map", label: "전국 지도" }, { id: "transactions", label: "거래 내역" }, { id: "policy", label: "정책 레이더" }];
 const POLICIES = [
   { date: "2026.07.20", tone: "positive", label: "호재", scope: "비아파트·임대", title: "비아파트 공급 보완조치 전면 시행", summary: "토지 확보 지원금 상향과 PF 보증 강화로 오피스텔·도시형생활주택 공급 사업의 초기 자금 부담이 완화됩니다.", url: "https://www.korea.kr/news/policyNewsView.do?newsId=148968416" },
   { date: "2026.07.15", tone: "negative", label: "악재", scope: "분양·신축", title: "기본형건축비 0.77% 인상", summary: "공사비 상승분이 분양가에 반영될 가능성이 있어 신규 주택 구매자의 가격 부담에는 부정적으로 해석됩니다.", url: "https://www.molit.go.kr/portal.do" },
@@ -73,6 +74,7 @@ function PriceChart({ points, unit }: { points: ChartPoint[]; unit: "price" | "p
 }
 
 export default function Home() {
+  const navRef = useRef<HTMLElement>(null);
   const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState("");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
@@ -81,7 +83,25 @@ export default function Home() {
   const [markets, setMarkets] = useState<OverviewMarket[]>([]); const [marketMonth, setMarketMonth] = useState("");
   const [buildingSort, setBuildingSort] = useState<"volume" | "price" | "rise" | "fall">("volume"); const [minVolume, setMinVolume] = useState(0); const [marketSort, setMarketSort] = useState<"volume" | "price" | "rise" | "fall">("volume");
   const [policyItems, setPolicyItems] = useState<readonly PolicyItem[]>(POLICIES); const [policyUpdated, setPolicyUpdated] = useState("");
+  const [activeSection, setActiveSection] = useState("national"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
   const activeRegion = (regions as Region[]).find((item) => item.code === regionCode) || regions[0] as Region;
+
+  useEffect(() => {
+    const updateSection = () => {
+      const marker = window.scrollY + 125; let current = NAV_ITEMS[0].id;
+      NAV_ITEMS.forEach((item) => { const section = document.getElementById(item.id); if (section && section.offsetTop <= marker) current = item.id; });
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 20) current = NAV_ITEMS.at(-1)?.id || current;
+      setActiveSection(current);
+    };
+    updateSection(); window.addEventListener("scroll", updateSection, { passive: true }); window.addEventListener("resize", updateSection);
+    return () => { window.removeEventListener("scroll", updateSection); window.removeEventListener("resize", updateSection); };
+  }, []);
+
+  useEffect(() => {
+    const nav = navRef.current; const link = nav?.querySelector<HTMLAnchorElement>(`a[href="#${activeSection}"]`); if (!nav || !link) return;
+    const updateIndicator = () => setNavIndicator({ left: link.offsetLeft, width: link.offsetWidth });
+    updateIndicator(); const observer = new ResizeObserver(updateIndicator); observer.observe(nav); return () => observer.disconnect();
+  }, [activeSection]);
 
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setError(""); setSelectedKey(""); setArea("all");
@@ -140,7 +160,7 @@ export default function Home() {
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = (regions as Region[]).find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); setSubmittedQuery(query.trim()); };
 
   return <main className="terminal-shell">
-    <header className="topbar"><a href="#top" className="brand"><span>집값</span>의 정석 <em>PRO</em></a><nav><a className="active" href="#national">대한민국 시장</a><a href="#market">월간 시장</a><a href="#chart">상세 차트</a><a href="#map">전국 지도</a><a href="#policy">정책 레이더</a></nav><div className="live"><i /> 국토교통부 실거래가 연동</div></header>
+    <header className="topbar"><a href="#top" className="brand"><span>집값</span>의 정석 <em>PRO</em></a><nav ref={navRef}>{NAV_ITEMS.map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}<i className="nav-indicator" style={{ left: navIndicator.left, width: navIndicator.width }} /></nav><div className="live"><i /> 국토교통부 실거래가 연동</div></header>
     <section className="command" id="top">
       <div className="type-tabs">{PROPERTY_TYPES.map((item) => <button key={item.key} className={type === item.key ? "active" : ""} onClick={() => { setType(item.key); setSelectedKey(""); }}>{item.label}</button>)}</div>
       <form className="search-console" onSubmit={submitSearch}>
