@@ -33,6 +33,7 @@ function formatPrice(value: number) {
 function compactPrice(value: number) { return value >= 10000 ? `${(value / 10000).toFixed(value >= 100000 ? 0 : 1)}억` : `${Math.round(value / 1000)}천`; }
 function median(values: number[]) { const sorted = [...values].sort((a, b) => a - b); const middle = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2; }
 function monthLabel(value: string) { const [year, month] = value.split("-"); return `${year.slice(2)}.${month}`; }
+function shiftMonth(value: string, offset: number) { if (!value) return ""; const [year, month] = value.split("-").map(Number); const date = new Date(year, month - 1 + offset, 1); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`; }
 
 function PriceChart({ points, unit }: { points: ChartPoint[]; unit: "price" | "py" }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -105,7 +106,7 @@ export default function Home() {
 
   useEffect(() => {
     const controller = new AbortController(); setLoading(true); setError(""); setSelectedKey(""); setArea("all");
-    const params = new URLSearchParams({ type, lawd: regionCode, months: String(period), query: submittedQuery });
+    const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 6)), query: submittedQuery });
     fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { setTrades(data.trades); setProperties(data.properties); if (data.properties.length === 1) setSelectedKey(data.properties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") setError(reason.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [type, regionCode, period, submittedQuery]);
@@ -127,21 +128,21 @@ export default function Home() {
   const chartPoints = useMemo(() => {
     const grouped = new Map<string, number[]>(); filteredTrades.forEach((trade) => { const month = trade.date.slice(0, 7); const value = unit === "py" && trade.area ? trade.amount / (trade.area / 3.3058) : trade.amount; grouped.set(month, [...(grouped.get(month) || []), value]); });
     const base = [...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([month, values]) => ({ month, price: median(values), volume: values.length }));
-    return base.map((point, index) => ({ ...point, average: median(base.slice(Math.max(0, index - 2), index + 1).map((item) => item.price)) }));
-  }, [filteredTrades, unit]);
+    return base.map((point, index) => ({ ...point, average: median(base.slice(Math.max(0, index - 2), index + 1).map((item) => item.price)) })).slice(-period);
+  }, [filteredTrades, unit, period]);
   const latest = chartPoints.at(-1)?.price || 0; const previous = chartPoints.at(-2)?.price || latest; const change = previous ? (latest / previous - 1) * 100 : 0;
   const high = chartPoints.length ? Math.max(...chartPoints.map((point) => point.price)) : 0; const low = chartPoints.length ? Math.min(...chartPoints.map((point) => point.price)) : 0;
   const selectedProperty = properties.find((property) => property.key === selectedKey); const displayName = selectedProperty?.name || (submittedQuery ? `${submittedQuery} 검색 결과` : `${activeRegion.sigungu} 전체`);
   const latestMonth = scopedTrades.at(-1)?.date.slice(0, 7) || "";
-  const previousMonth = chartPoints.at(-2)?.month || "";
+  const latestQuarterMonths = [0, -1, -2].map((offset) => shiftMonth(latestMonth, offset)); const previousQuarterMonths = [-3, -4, -5].map((offset) => shiftMonth(latestMonth, offset));
   const propertyRows = useMemo(() => properties.filter((property) => selectedDong === "all" || property.dong === selectedDong).map((property) => {
-    const rows = scopedTrades.filter((trade) => trade.propertyKey === property.key); const latestValues = rows.filter((trade) => trade.date.startsWith(latestMonth)).map((trade) => trade.amount); const previousValues = rows.filter((trade) => trade.date.startsWith(previousMonth)).map((trade) => trade.amount);
-    const current = latestValues.length ? median(latestValues) : property.lastAmount; const before = previousValues.length ? median(previousValues) : current;
-    return { ...property, current, change: before ? (current / before - 1) * 100 : 0, monthCount: latestValues.length };
-  }).sort((a, b) => b.monthCount - a.monthCount || b.count - a.count), [properties, scopedTrades, selectedDong, latestMonth, previousMonth]);
+    const rows = scopedTrades.filter((trade) => trade.propertyKey === property.key); const quarterValues = rows.filter((trade) => latestQuarterMonths.includes(trade.date.slice(0, 7))).map((trade) => trade.amount); const previousValues = rows.filter((trade) => previousQuarterMonths.includes(trade.date.slice(0, 7))).map((trade) => trade.amount);
+    const current = quarterValues.length ? median(quarterValues) : property.lastAmount; const before = previousValues.length ? median(previousValues) : current;
+    return { ...property, current, change: before ? (current / before - 1) * 100 : 0, quarterCount: quarterValues.length };
+  }).sort((a, b) => b.quarterCount - a.quarterCount || b.count - a.count), [properties, scopedTrades, selectedDong, latestQuarterMonths.join("|"), previousQuarterMonths.join("|")]);
   const latestMonthTrades = scopedTrades.filter((trade) => trade.date.startsWith(latestMonth));
   const risingCount = propertyRows.filter((property) => property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change < 0).length;
-  const visibleProperties = useMemo(() => propertyRows.filter((property) => property.monthCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? b.change - a.change : buildingSort === "fall" ? a.change - b.change : b.monthCount - a.monthCount), [propertyRows, buildingSort, minVolume]);
+  const visibleProperties = useMemo(() => propertyRows.filter((property) => property.quarterCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? b.change - a.change : buildingSort === "fall" ? a.change - b.change : b.quarterCount - a.quarterCount), [propertyRows, buildingSort, minVolume]);
   const sortedMarkets = useMemo(() => [...markets].sort((a, b) => marketSort === "price" ? b.median - a.median : marketSort === "rise" ? b.change - a.change : marketSort === "fall" ? a.change - b.change : b.count - a.count), [markets, marketSort]);
   const nationalDeals = markets.reduce((sum, market) => sum + market.count, 0); const activeMarkets = markets.filter((market) => market.median > 0); const nationalMedian = activeMarkets.length ? median(activeMarkets.map((market) => market.median)) : 0; const nationalChange = nationalDeals ? markets.reduce((sum, market) => sum + market.change * market.count, 0) / nationalDeals : 0;
   const sidoOptions = useMemo(() => [...new Set((regions as Region[]).map((region) => region.sido))].sort(), []);
@@ -178,18 +179,18 @@ export default function Home() {
     <section className="monthly-board" id="market">
       <div className="month-intro"><p>MONTHLY MARKET BRIEF</p><h1>{latestMonth ? latestMonth.replace("-", "년 ") + "월" : "최근 한 달"} {activeRegion.sigungu} 시장</h1><span>{PROPERTY_TYPES.find((item) => item.key === type)?.label} 실거래 신고 기준</span></div>
       <article><span>한 달 거래</span><strong>{latestMonthTrades.length.toLocaleString()}<em>건</em></strong><small>전체 {trades.length.toLocaleString()}건 조회</small></article>
-      <article><span>거래 건물</span><strong>{propertyRows.filter((property) => property.monthCount).length.toLocaleString()}<em>곳</em></strong><small>전체 {properties.length.toLocaleString()}개 목록</small></article>
-      <article><span>상승 / 하락</span><strong className="split"><b>{risingCount}</b><i>/</i><em>{fallingCount}</em></strong><small>직전 거래월 중위가 비교</small></article>
+      <article><span>거래 건물</span><strong>{new Set(latestMonthTrades.map((trade) => trade.propertyKey)).size.toLocaleString()}<em>곳</em></strong><small>이번 달 거래가 있는 건물</small></article>
+      <article><span>상승 / 하락</span><strong className="split"><b>{risingCount}</b><i>/</i><em>{fallingCount}</em></strong><small>최근 3개월과 직전 3개월 비교</small></article>
       <article><span>지역 중위가격</span><strong>{formatPrice(median(latestMonthTrades.map((trade) => trade.amount)))}</strong><small>고가·저가 왜곡을 줄인 값</small></article>
     </section>
 
     <section className="market-browser" id="chart">
       <aside className="watchlist">
-        <div className="watch-head"><div><p>BUILDING WATCHLIST</p><h2>{activeRegion.sigungu} 전체 목록</h2></div><span>{visibleProperties.length}/{properties.length}</span></div>
-        <div className="watch-filters"><select value={buildingSort} onChange={(event) => setBuildingSort(event.target.value as typeof buildingSort)} aria-label="건물 목록 정렬"><option value="volume">한 달 거래량순</option><option value="price">가격 높은순</option><option value="rise">상승률 높은순</option><option value="fall">하락률 높은순</option></select><select value={minVolume} onChange={(event) => setMinVolume(Number(event.target.value))} aria-label="최소 거래량"><option value="0">거래량 전체</option><option value="1">월 1건 이상</option><option value="3">월 3건 이상</option><option value="5">월 5건 이상</option></select></div>
+        <div className="watch-head"><div><p>QUARTERLY BUILDING WATCHLIST</p><h2>{activeRegion.sigungu} 최근 3개월 순위</h2></div><span>{visibleProperties.length}/{properties.length}</span></div>
+        <div className="watch-filters"><select value={buildingSort} onChange={(event) => setBuildingSort(event.target.value as typeof buildingSort)} aria-label="건물 목록 정렬"><option value="volume">3개월 거래량순</option><option value="price">3개월 중위가순</option><option value="rise">직전 분기 대비 상승순</option><option value="fall">직전 분기 대비 하락순</option></select><select value={minVolume} onChange={(event) => setMinVolume(Number(event.target.value))} aria-label="최소 거래량"><option value="0">거래량 전체</option><option value="1">3개월 1건 이상</option><option value="3">3개월 3건 이상</option><option value="5">3개월 5건 이상</option></select></div>
         <div className="watch-columns"><span>건물 / 단지</span><span>최근가</span></div>
         {loading ? <div className="watch-state">전체 실거래 목록을 불러오는 중…</div> : error ? <div className="watch-state error">{error}</div> : visibleProperties.length ? <div className="watch-scroll">{visibleProperties.map((property, index) => <button key={property.key} className={selectedKey === property.key ? "selected" : ""} onClick={() => { setSelectedKey(property.key); setArea("all"); }}>
-          <i className={`building-icon tone-${index % 5}`}>{property.name.slice(0, 1)}</i><div><b>{property.name}</b><small>{property.dong} {property.jibun || "주소 일부 비공개"} · {property.areas.slice(0, 2).join(" / ")}㎡</small></div><strong>{formatPrice(property.current)}<em className={property.change >= 0 ? "up" : "down"}>{property.change >= 0 ? "+" : ""}{property.change.toFixed(1)}% · {property.monthCount}건</em></strong>
+          <i className={`building-icon tone-${index % 5}`}>{property.name.slice(0, 1)}</i><div><b>{property.name}</b><small>{property.dong} {property.jibun || "주소 일부 비공개"} · {property.areas.slice(0, 2).join(" / ")}㎡</small></div><strong>{formatPrice(property.current)}<em className={property.change >= 0 ? "up" : "down"}>{property.change >= 0 ? "+" : ""}{property.change.toFixed(1)}% · 3개월 {property.quarterCount}건</em></strong>
         </button>)}</div> : <div className="watch-state">이 조건의 신고 거래가 없습니다.<button onClick={() => { setQuery(""); setSubmittedQuery(""); }}>전체 목록 보기</button></div>}
       </aside>
 
