@@ -1,205 +1,168 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-const chartSeries: Record<string, number[]> = {
-  "1년": [24.6, 24.7, 24.55, 24.8, 25.1, 25.4, 25.2, 25.9, 26.2, 26.65, 27.1, 27.3],
-  "3년": [21.1, 21.8, 22.4, 22.1, 23.2, 24.1, 23.6, 24.5, 24.9, 25.5, 26.2, 27.3],
-  "5년": [17.3, 18.8, 20.6, 22.7, 24.2, 23.4, 22.1, 23.8, 24.4, 25.2, 26.4, 27.3],
-  "전체": [8.2, 9.6, 11.4, 13.8, 16.7, 18.5, 21.2, 23.6, 22.4, 24.1, 25.6, 27.3],
-};
+type Region = { id: string; name: string; fullName: string; value: number; change: number };
+type Point = { period: string; date: string; value: number };
 
-const comments = [
-  { avatar: "J", color: "coral", name: "집보는 직장인", time: "2시간 전", body: "학군 수요는 여전히 탄탄해 보여요. 9호선 연장 기대감보다 지금의 생활권 완성도를 더 높게 봅니다.", likes: 24, tag: "실거주" },
-  { avatar: "M", color: "blue", name: "마포불주먹", time: "5시간 전", body: "최근 같은 평형 2건이 27억대에 거래됐네요. 전고점 돌파보다 거래량 회복 여부를 먼저 확인할 구간 같습니다.", likes: 18, tag: "투자" },
-  { avatar: "S", color: "green", name: "서울숲산책", time: "어제", body: "주말에 직접 가봤는데 단지 조경과 상권 접근성이 정말 좋았습니다. 다만 출근 시간 교통은 체크가 필요해요.", likes: 11, tag: "임장" },
-];
+const TOP_REGIONS = ["전국", "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
 
-function PriceChart({ period }: { period: string }) {
+function percent(value: number) {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function MarketChart({ points }: { points: Point[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const host = canvas.parentElement;
-    if (!host) return;
-
+    const host = canvas?.parentElement;
+    if (!canvas || !host || points.length < 2) return;
     const draw = () => {
       const ratio = window.devicePixelRatio || 1;
       const width = host.clientWidth;
       const height = host.clientHeight;
-      canvas.width = width * ratio;
-      canvas.height = height * ratio;
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      ctx.scale(ratio, ratio);
-      ctx.clearRect(0, 0, width, height);
-      const pad = { left: 18, right: 56, top: 18, bottom: 34 };
-      const plotW = width - pad.left - pad.right;
-      const plotH = height - pad.top - pad.bottom;
-      const data = chartSeries[period];
-      const min = Math.min(...data) - 1.4;
-      const max = Math.max(...data) + 1.2;
+      canvas.width = width * ratio; canvas.height = height * ratio;
+      canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
+      const ctx = canvas.getContext("2d"); if (!ctx) return;
+      ctx.scale(ratio, ratio); ctx.clearRect(0, 0, width, height);
+      const pad = { left: 14, right: 58, top: 18, bottom: 34 };
+      const plotW = width - pad.left - pad.right; const plotH = height - pad.top - pad.bottom;
+      const values = points.map((p) => p.value);
+      const rawMin = Math.min(...values); const rawMax = Math.max(...values);
+      const margin = Math.max((rawMax - rawMin) * .22, .12);
+      const min = rawMin - margin; const max = rawMax + margin;
 
-      ctx.lineWidth = 1;
-      ctx.font = "11px Arial";
-      ctx.textAlign = "left";
+      ctx.font = "10px Arial"; ctx.textAlign = "left";
       for (let i = 0; i < 5; i++) {
-        const y = pad.top + (plotH / 4) * i;
-        ctx.strokeStyle = "#e8e8e3";
+        const y = pad.top + plotH / 4 * i;
+        ctx.strokeStyle = "#e9e7df"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke();
-        const value = max - ((max - min) / 4) * i;
-        ctx.fillStyle = "#8b8b84";
-        ctx.fillText(`${value.toFixed(0)}억`, width - pad.right + 10, y + 4);
+        ctx.fillStyle = "#8f8d84"; ctx.fillText((max - (max - min) / 4 * i).toFixed(1), width - pad.right + 10, y + 3);
       }
-
-      const points = data.map((v, i) => ({
-        x: pad.left + (plotW / (data.length - 1)) * i,
-        y: pad.top + plotH - ((v - min) / (max - min)) * plotH,
-      }));
-
-      const area = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
-      area.addColorStop(0, "rgba(255, 92, 56, .24)");
-      area.addColorStop(1, "rgba(255, 92, 56, 0)");
-      ctx.beginPath(); ctx.moveTo(points[0].x, pad.top + plotH);
-      points.forEach((p) => ctx.lineTo(p.x, p.y));
-      ctx.lineTo(points[points.length - 1].x, pad.top + plotH); ctx.closePath();
-      ctx.fillStyle = area; ctx.fill();
-
-      ctx.beginPath();
-      points.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
-      ctx.strokeStyle = "#ff5c38"; ctx.lineWidth = 2.5; ctx.lineJoin = "round"; ctx.stroke();
-
-      const last = points[points.length - 1];
-      ctx.beginPath(); ctx.arc(last.x, last.y, 4, 0, Math.PI * 2); ctx.fillStyle = "#ff5c38"; ctx.fill();
-      ctx.fillStyle = "#ff5c38"; ctx.fillRect(width - pad.right + 4, last.y - 10, 45, 20);
-      ctx.fillStyle = "white"; ctx.font = "bold 11px Arial"; ctx.fillText("27.3억", width - pad.right + 9, last.y + 4);
-
-      ["2025.09", "2025.11", "2026.01", "2026.03", "2026.05", "2026.07"].forEach((label, i, arr) => {
-        ctx.fillStyle = "#9b9b93"; ctx.font = "10px Arial";
-        ctx.fillText(label, pad.left + (plotW / (arr.length - 1)) * i - 18, height - 9);
-      });
+      const coords = points.map((p, i) => ({ x: pad.left + plotW / (points.length - 1) * i, y: pad.top + plotH - (p.value - min) / (max - min) * plotH }));
+      const gradient = ctx.createLinearGradient(0, pad.top, 0, pad.top + plotH);
+      gradient.addColorStop(0, "rgba(255,92,56,.24)"); gradient.addColorStop(1, "rgba(255,92,56,0)");
+      ctx.beginPath(); ctx.moveTo(coords[0].x, pad.top + plotH); coords.forEach((p) => ctx.lineTo(p.x, p.y)); ctx.lineTo(coords.at(-1)!.x, pad.top + plotH); ctx.closePath(); ctx.fillStyle = gradient; ctx.fill();
+      ctx.beginPath(); coords.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.strokeStyle = "#ff5c38"; ctx.lineWidth = 2.5; ctx.lineJoin = "round"; ctx.stroke();
+      const last = coords.at(-1)!; ctx.beginPath(); ctx.arc(last.x, last.y, 4, 0, Math.PI * 2); ctx.fillStyle = "#ff5c38"; ctx.fill();
+      ctx.fillStyle = "#ff5c38"; ctx.fillRect(width - pad.right + 4, last.y - 10, 49, 20); ctx.fillStyle = "#fff"; ctx.font = "bold 10px Arial"; ctx.fillText(points.at(-1)!.value.toFixed(2), width - pad.right + 8, last.y + 4);
+      const labelCount = Math.min(6, points.length);
+      for (let i = 0; i < labelCount; i++) {
+        const index = Math.round(i * (points.length - 1) / (labelCount - 1));
+        ctx.fillStyle = "#99978f"; ctx.font = "9px Arial"; ctx.fillText(points[index].date.slice(2, 7).replace("-", "."), pad.left + plotW / (labelCount - 1) * i - 12, height - 10);
+      }
     };
-    draw();
-    const observer = new ResizeObserver(draw);
-    observer.observe(host);
-    return () => observer.disconnect();
-  }, [period]);
+    draw(); const observer = new ResizeObserver(draw); observer.observe(host); return () => observer.disconnect();
+  }, [points]);
 
-  return <canvas ref={canvasRef} aria-label={`${period} 실거래가 추이 차트`} />;
+  return <canvas ref={canvasRef} aria-label="선택 지역 주간 아파트 매매가격지수 차트" />;
 }
 
 export default function Home() {
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [selected, setSelected] = useState("50001");
+  const [series, setSeries] = useState<Point[]>([]);
+  const [regionName, setRegionName] = useState("전국");
+  const [regionPath, setRegionPath] = useState("전국");
   const [period, setPeriod] = useState("1년");
-  const [favorite, setFavorite] = useState(false);
-  const [liked, setLiked] = useState<number[]>([]);
-  const [tab, setTab] = useState("단지 분석");
+  const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [asOf, setAsOf] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
 
-  const flash = (message: string) => {
-    setNotice(message);
-    window.setTimeout(() => setNotice(""), 2200);
-  };
+  useEffect(() => {
+    fetch("/api/market?mode=regions").then((r) => r.json()).then((data) => {
+      if (data.error) throw new Error(data.error);
+      setRegions(data.regions); setAsOf(data.asOf);
+    }).catch(() => setError("전국 지역 목록을 불러오지 못했습니다."));
+  }, []);
 
-  return (
-    <main>
-      <header className="topbar">
-        <a className="brand" href="#top" aria-label="집값의 정석 홈"><span>집</span>값의 정석</a>
-        <nav aria-label="주요 메뉴">
-          <a className="active" href="#chart">차트</a><a href="#analysis">지역 분석</a><a href="#community">커뮤니티</a>
-        </nav>
-        <div className="header-actions">
-          <button className="icon-button" aria-label="검색" onClick={() => flash("단지 검색을 준비 중입니다")}>⌕</button>
-          <button className="login" onClick={() => flash("로그인 기능을 준비 중입니다")}>로그인</button>
-        </div>
-      </header>
+  useEffect(() => {
+    setLoading(true); setError("");
+    fetch(`/api/market?region=${selected}`).then((r) => r.json()).then((data) => {
+      if (data.error) throw new Error(data.error);
+      setSeries(data.series); setRegionName(data.region.name); setRegionPath(data.region.fullName); setSearch("");
+    }).catch(() => setError("한국부동산원 데이터를 불러오지 못했습니다.")).finally(() => setLoading(false));
+  }, [selected]);
 
-      <section className="market-strip" id="top">
-        <div><span>서울 아파트</span><strong>102.4</strong><em className="up">▲ 0.18%</em></div>
-        <div><span>전국 아파트</span><strong>98.7</strong><em className="down">▼ 0.03%</em></div>
-        <div><span>오늘의 거래</span><strong>1,284건</strong><em>서울 246건</em></div>
-        <div><span>관심 지역</span><strong>서울 송파구</strong><em className="up">+0.32%</em></div>
-        <p>2026. 08. 09 기준 · 국토교통부 실거래가</p>
-      </section>
+  const pointCount = period === "6개월" ? 26 : period === "1년" ? 52 : period === "3년" ? 156 : series.length;
+  const visible = series.slice(-pointCount);
+  const current = series.at(-1)?.value || 0;
+  const previous = series.at(-2)?.value || current;
+  const quarterAgo = series.at(-14)?.value || previous;
+  const weeklyChange = previous ? (current / previous - 1) * 100 : 0;
+  const quarterChange = quarterAgo ? (current / quarterAgo - 1) * 100 : 0;
+  const signal = weeklyChange > .05 && quarterChange > .2 ? "상승 우위" : weeklyChange < -.05 && quarterChange < -.2 ? "하락 우위" : "보합 흐름";
 
-      <section className="search-row">
-        <button className="crumb-search" onClick={() => flash("지역·단지 검색을 준비 중입니다")}><span>⌕</span> 지역, 단지명을 검색해보세요 <kbd>⌘ K</kbd></button>
-        <div className="breadcrumbs">서울특별시 <b>›</b> 송파구 <b>›</b> 잠실동</div>
-      </section>
+  const searchResults = useMemo(() => {
+    const query = search.trim().toLowerCase(); if (!query) return [];
+    return regions.filter((r) => `${r.name} ${r.fullName}`.toLowerCase().includes(query)).slice(0, 9);
+  }, [regions, search]);
+  const provinceCards = TOP_REGIONS.map((name) => regions.find((r) => r.name === name && (r.fullName === name || name === "전국"))).filter(Boolean) as Region[];
+  const ranking = [...provinceCards].filter((r) => r.name !== "전국").sort((a, b) => b.change - a.change);
 
-      <section className="property-head">
-        <div>
-          <p className="eyebrow">서울 송파구 잠실동 19</p>
-          <h1>잠실 엘스 <span>5,678세대 · 2008.09</span></h1>
-          <div className="chips"><span>재건축 기대</span><span>대단지</span><span>초품아</span><span>역세권</span></div>
-        </div>
-        <button className={`favorite ${favorite ? "saved" : ""}`} onClick={() => setFavorite(!favorite)} aria-pressed={favorite}>☆ {favorite ? "관심단지 저장됨" : "관심단지"}</button>
-      </section>
+  const flash = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 2200); };
+  const choose = (region: Region) => { setSelected(region.id); setSearchOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
 
-      <section className="stats-grid">
-        <article className="price-card"><p>최근 실거래가 <span>84㎡ · 12층</span></p><h2>27억 3,000<small>만원</small></h2><div><b className="up">▲ 8,000</b><span>전 거래 대비</span></div></article>
-        <article><p>3.3㎡당 가격</p><h3>8,027만원</h3><div><b>송파구 상위 8%</b></div></article>
-        <article><p>전세가율</p><h3>47.6%</h3><div><b>13억 0,000만원</b></div></article>
-        <article><p>최근 거래일</p><h3>2026. 08. 02</h3><div><b>7일 전</b></div></article>
-        <article className="valuation"><p>AI 적정가 분석 <span className="info">i</span></p><h3>다소 저평가 <mark>-4.2%</mark></h3><div className="meter"><i /></div><small>예상 적정가 28.5억</small></article>
-      </section>
+  return <main>
+    <header className="topbar" id="top">
+      <a className="brand" href="#top"><span>집</span>값의 정석</a>
+      <nav><a className="active" href="#market">전국 차트</a><a href="#regions">지역 비교</a><a href="#community">커뮤니티</a></nav>
+      <div className="official"><i /> REB 공식 데이터 연결</div>
+    </header>
 
-      <section className="main-grid" id="chart">
-        <div className="chart-panel panel">
-          <div className="panel-head">
-            <div><p>실거래가 추이</p><strong>27억 3,000만원</strong> <em className="up">+3.02%</em></div>
-            <div className="periods">{Object.keys(chartSeries).map((p) => <button key={p} className={period === p ? "active" : ""} onClick={() => setPeriod(p)}>{p}</button>)}</div>
-          </div>
-          <div className="chart-area"><PriceChart period={period} /></div>
-          <div className="chart-footer"><span className="legend-dot" /> 실거래가 <span className="dash" /> 송파구 평균 <span className="source">단위: 억원 · 84㎡ 기준</span></div>
-        </div>
+    <section className="nation-hero">
+      <div className="hero-copy"><p>대한민국 부동산 시장 한눈에</p><h1>전국 236개 권역의 흐름을<br />하나의 차트로 비교하세요.</h1><span>한국부동산원 주간 아파트 매매가격지수 · {asOf || "최신 공표"} 기준</span></div>
+      <div className="region-search">
+        <label htmlFor="region-search">지역 찾기</label>
+        <div className="search-box"><span>⌕</span><input id="region-search" value={search} onFocus={() => setSearchOpen(true)} onChange={(e) => { setSearch(e.target.value); setSearchOpen(true); }} placeholder="시·도, 시·군·구를 검색하세요" autoComplete="off" /><kbd>전국</kbd></div>
+        {searchOpen && search && <div className="search-popover">{searchResults.length ? searchResults.map((r) => <button key={r.id} onClick={() => choose(r)}><b>{r.name}</b><span>{r.fullName.replaceAll(">", " › ")}</span></button>) : <p>검색 결과가 없습니다.</p>}</div>}
+        <div className="quick-regions">{provinceCards.slice(0, 8).map((r) => <button key={r.id} onClick={() => choose(r)} className={selected === r.id ? "active" : ""}>{r.name}</button>)}</div>
+      </div>
+    </section>
 
-        <aside className="right-column">
-          <article className="score-card panel" id="analysis">
-            <div className="panel-head"><div><p>입지 가치 점수</p><strong>87<small>/100</small></strong></div><span className="grade">A</span></div>
-            <div className="score-list">
-              <div><span>교통</span><i><b style={{width:"92%"}} /></i><strong>92</strong></div>
-              <div><span>학군</span><i><b style={{width:"95%"}} /></i><strong>95</strong></div>
-              <div><span>생활</span><i><b style={{width:"88%"}} /></i><strong>88</strong></div>
-              <div><span>환경</span><i><b style={{width:"82%"}} /></i><strong>82</strong></div>
-              <div><span>미래</span><i><b style={{width:"76%"}} /></i><strong>76</strong></div>
-            </div>
-            <p className="analysis-note"><b>한줄 분석</b> 강남 접근성과 학군은 탁월하며, 대단지 희소성이 가격을 지지해요.</p>
-          </article>
-          <article className="map-card panel">
-            <div className="mini-map" aria-label="잠실 엘스 주변 시설 지도">
-              <span className="river">한강</span><span className="road r1" /><span className="road r2" /><span className="road r3" />
-              <span className="place school">학</span><span className="place station">2</span><span className="place shop">몰</span><span className="place park">숲</span><span className="pin">집</span>
-            </div>
-            <div className="nearby"><div><b>도보 6분</b><span>잠실새내역</span></div><div><b>도보 3분</b><span>잠일초등학교</span></div><div><b>차량 7분</b><span>롯데월드몰</span></div></div>
-          </article>
+    <section className="data-ribbon"><div><span>선택 지역</span><strong>{regionPath.replaceAll(">", " › ")}</strong></div><div><span>현재 지수</span><strong>{current ? current.toFixed(2) : "—"}</strong></div><div><span>주간 변동</span><strong className={weeklyChange >= 0 ? "rise" : "fall"}>{current ? percent(weeklyChange) : "—"}</strong></div><p>기준시점 2026.07.06 = 100.0</p></section>
+
+    <section className="dashboard" id="market">
+      <div className="market-heading"><div><p>주간 아파트 매매가격지수</p><h2>{regionName} 시장 흐름</h2></div><button className={saved.includes(selected) ? "saved" : ""} onClick={() => setSaved(saved.includes(selected) ? saved.filter((id) => id !== selected) : [...saved, selected])}>☆ {saved.includes(selected) ? "관심지역 저장됨" : "관심지역"}</button></div>
+      <div className="metric-grid">
+        <article><span>현재 가격지수</span><h3>{loading ? "···" : current.toFixed(2)}</h3><p>공식 주간 지수</p></article>
+        <article><span>전주 대비</span><h3 className={weeklyChange >= 0 ? "rise" : "fall"}>{loading ? "···" : percent(weeklyChange)}</h3><p>{series.at(-1)?.date || "—"}</p></article>
+        <article><span>13주 모멘텀</span><h3 className={quarterChange >= 0 ? "rise" : "fall"}>{loading ? "···" : percent(quarterChange)}</h3><p>약 3개월 누적</p></article>
+        <article className="signal-card"><span>시장 신호</span><h3>{loading ? "분석 중" : signal}</h3><div className={`signal-line ${signal === "상승 우위" ? "hot" : signal === "하락 우위" ? "cold" : ""}`}><i /></div></article>
+      </div>
+
+      <div className="content-grid">
+        <article className="chart-panel panel">
+          <div className="panel-top"><div><span>{regionPath.replaceAll(">", " · ")}</span><h3>{current.toFixed(2)} <em className={weeklyChange >= 0 ? "rise" : "fall"}>{percent(weeklyChange)}</em></h3></div><div className="periods">{["6개월", "1년", "3년", "전체"].map((p) => <button key={p} className={period === p ? "active" : ""} onClick={() => setPeriod(p)}>{p}</button>)}</div></div>
+          <div className="chart-wrap">{error ? <div className="chart-state">{error}</div> : loading ? <div className="chart-state">공식 데이터를 불러오는 중입니다…</div> : <MarketChart points={visible} />}</div>
+          <div className="chart-caption"><span><i /> 아파트 매매가격지수</span><b>출처: 한국부동산원 전국주택가격동향조사</b></div>
+        </article>
+
+        <aside className="ranking panel">
+          <div className="ranking-head"><div><span>이번 주 시·도 순위</span><h3>상승률 TOP 5</h3></div><small>{asOf}</small></div>
+          <div className="ranking-list">{ranking.slice(0, 5).map((r, i) => <button key={r.id} onClick={() => choose(r)}><em>{String(i + 1).padStart(2, "0")}</em><b>{r.name}</b><span className={r.change >= 0 ? "rise" : "fall"}>{percent(r.change)}</span></button>)}</div>
+          <div className="ranking-bottom"><span>전국 평균</span><b className={(provinceCards[0]?.change || 0) >= 0 ? "rise" : "fall"}>{percent(provinceCards[0]?.change || 0)}</b></div>
         </aside>
-      </section>
+      </div>
+    </section>
 
-      <section className="detail-panel panel">
-        <div className="tabs">{["단지 분석", "거래 내역", "평형 정보", "보유 비용"].map((t) => <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>)}</div>
-        {tab === "단지 분석" ? <div className="insights">
-          <article><span className="insight-icon green">↗</span><div><b>가격 경쟁력</b><h3>인근 신축 대비 <em>-12.8%</em></h3><p>비슷한 입지의 신축 단지보다 평당가가 낮아요.</p></div></article>
-          <article><span className="insight-icon orange">●</span><div><b>거래 활력</b><h3>최근 3개월 <em>42건</em></h3><p>송파구 동일 규모 단지 대비 거래가 활발해요.</p></div></article>
-          <article><span className="insight-icon blue">⌁</span><div><b>전세 안정성</b><h3>전세 매물 <em>보통</em></h3><p>전세가율이 안정적이며 갭 변동이 크지 않아요.</p></div></article>
-        </div> : <div className="placeholder"><b>{tab}</b><span>선택한 정보의 상세 데이터가 이 영역에 표시됩니다.</span></div>}
-      </section>
+    <section className="region-section" id="regions">
+      <div className="section-heading"><div><p>전국 시장 온도</p><h2>17개 시·도 주간 변동률</h2></div><span>지역을 누르면 상세 차트가 바뀝니다</span></div>
+      <div className="region-board">{provinceCards.filter((r) => r.name !== "전국").map((r) => <button key={r.id} onClick={() => choose(r)} className={selected === r.id ? "active" : ""}><span>{r.name}</span><strong className={r.change >= 0 ? "rise" : "fall"}>{percent(r.change)}</strong><i style={{ width: `${Math.min(100, Math.abs(r.change) * 240 + 10)}%` }} /></button>)}</div>
+      <p className="method-note"><b>읽는 법</b> 가격지수는 개별 아파트의 거래가격이 아니라 표본주택의 가격 변화를 지수화한 공식 시장지표입니다. 지역 간 흐름과 방향성을 비교할 때 활용하세요.</p>
+    </section>
 
-      <section className="community" id="community">
-        <div className="section-title"><div><p>함께 보는 관점</p><h2>이 단지, 어떻게 보고 계세요?</h2></div><button onClick={() => flash("의견 작성창을 준비 중입니다")}>+ 관점 공유하기</button></div>
-        <div className="community-grid">
-          <div className="posts">{comments.map((comment, idx) => <article className="post" key={comment.name}>
-            <div className={`avatar ${comment.color}`}>{comment.avatar}</div>
-            <div className="post-body"><div className="post-meta"><b>{comment.name}</b><span>{comment.time}</span><em>{comment.tag}</em></div><p>{comment.body}</p><div className="post-actions"><button onClick={() => setLiked(liked.includes(idx) ? liked.filter((x) => x !== idx) : [...liked, idx])}>♡ {comment.likes + (liked.includes(idx) ? 1 : 0)}</button><button>답글</button></div></div>
-          </article>)}</div>
-          <aside className="sentiment panel"><p>커뮤니티 온도</p><div className="gauge"><div><strong>68°</strong><span>관심이 뜨거워요</span></div></div><div className="vote"><span><i className="buy" />매수 관점 <b>64%</b></span><span><i className="wait" />관망 관점 <b>36%</b></span></div><small>최근 30일 · 참여 284명</small></aside>
-        </div>
-      </section>
+    <section className="community-section" id="community">
+      <div className="section-heading"><div><p>지역의 목소리</p><h2>{regionName}, 지금 현장 분위기는 어떤가요?</h2></div><button onClick={() => flash("관점 공유 기능을 준비 중입니다")}>+ 관점 공유하기</button></div>
+      <div className="opinion-grid"><article><div className="avatar orange">J</div><div><span>집보는 직장인 · 2시간 전</span><b>지수 흐름과 현장 매물 분위기가 비슷하게 움직이고 있어요.</b><p>급매가 줄었지만 매수자는 여전히 신중합니다. 한두 건의 거래보다 몇 주간의 방향을 함께 보는 게 좋겠어요.</p><small>♡ 24　답글</small></div></article><article><div className="avatar blue">M</div><div><span>주말 임장러 · 5시간 전</span><b>생활권별 온도 차이는 꽤 큽니다.</b><p>같은 시 안에서도 역세권과 외곽의 분위기가 달라요. 시군구 지수까지 내려가서 비교해보세요.</p><small>♡ 18　답글</small></div></article></div>
+    </section>
 
-      <footer><a className="brand" href="#top"><span>집</span>값의 정석</a><p>흩어진 부동산 데이터를 한눈에, 더 나은 판단을 위한 시작.</p><div><a href="#analysis">서비스 소개</a><a href="#community">커뮤니티 가이드</a><a href="#top">데이터 기준</a></div><small>※ 본 서비스의 분석 결과는 참고용이며, 투자 판단의 책임은 사용자에게 있습니다.</small></footer>
-      {notice && <div className="toast" role="status">{notice}</div>}
-    </main>
-  );
+    <footer><a className="brand" href="#top"><span>집</span>값의 정석</a><p>전국 부동산 시장의 흐름을 더 선명하게.</p><div>공식 데이터: 한국부동산원 R-ONE</div><small>본 서비스의 지수와 분석은 참고용이며, 개별 부동산의 실제 거래가격 또는 투자수익을 보장하지 않습니다.</small></footer>
+    {notice && <div className="toast" role="status">{notice}</div>}
+  </main>;
 }
