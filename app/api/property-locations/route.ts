@@ -9,7 +9,10 @@ type PropertyRequest = {
   jibun?: string;
   count?: number;
   lastAmount?: number;
+  propertyType?: string;
 };
+
+const PROPERTY_TYPES = new Set(["apt", "rowhouse", "house", "officetel", "commercial", "factory"]);
 
 function clean(value: unknown, maxLength: number) {
   return String(value || "").replace(/[<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLength);
@@ -50,6 +53,7 @@ export async function POST(request: Request) {
           jibun,
           count: Math.max(0, Number(property.count) || 0),
           lastAmount: Math.max(0, Number(property.lastAmount) || 0),
+          propertyType: PROPERTY_TYPES.has(String(property.propertyType)) ? String(property.propertyType) : "apt",
           lng: Number(address.x),
           lat: Number(address.y),
           roadAddress: address.roadAddress || "",
