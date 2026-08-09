@@ -375,6 +375,19 @@ function projectAdministrativeBoundaries(data: GeoJsonFeatureCollection, width =
   }).filter((feature) => feature.path && feature.name);
 }
 
+function KoreaFocusLocator({ active, selectedSido, onSelectSido }: { active: boolean; selectedSido: string; onSelectSido: (sido: string) => void }) {
+  const [data, setData] = useState<GeoJsonFeatureCollection | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const controller = new AbortController();
+    fetch("/data/boundaries/sido.json", { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject(new Error("대한민국 경계를 불러오지 못했습니다."))).then(setData).catch(() => { /* The primary administrative map remains available if this context view fails. */ });
+    return () => controller.abort();
+  }, [active]);
+  const boundaries = useMemo(() => data ? projectAdministrativeBoundaries(data, 240, 190) : [], [data]);
+  if (!boundaries.length) return null;
+  return <aside className="country-focus-locator" aria-label={`대한민국 안에서 ${selectedSido}의 위치`}><div><span>대한민국 안의 위치</span><b>{selectedSido}</b></div><svg viewBox="0 0 240 190" role="img" aria-label={`${selectedSido}가 강조된 대한민국 지도`}><g className="country-focus-shadow" transform="translate(0 8)">{boundaries.map((boundary) => <path key={`shadow-${boundary.code}`} d={boundary.path} />)}</g>{boundaries.map((boundary) => { const selected = boundary.name === selectedSido; return <g key={boundary.code} className={`country-focus-region${selected ? " selected" : ""}`} role="button" tabIndex={0} aria-label={`${boundary.name}${selected ? ", 현재 선택" : " 선택"}`} onClick={() => onSelectSido(boundary.name)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectSido(boundary.name); } }}><path className="country-focus-depth" d={boundary.path} transform={`translate(0 ${selected ? 9 : 5})`} /><path className="country-focus-surface" d={boundary.path} fillRule="evenodd" /></g>; })}</svg><small>선택 지역이 위로 떠오릅니다.</small></aside>;
+}
+
 function AdministrativeMarketMap({ focus, active, markets, propertyType, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, dongStats, dongMetric, onDongMetricChange, onSelectSido, onSelectRegion, onSelectDong }: {
   focus: AdministrativeFocus; active: boolean; markets: OverviewMarket[]; propertyType: PropertyType; selectedSido: string; activeRegion: Region; selectedDong: string; selectedBoundaryDong: string; dongStats: Record<string, DongMarketStat>; dongMetric: DongMetric;
   onDongMetricChange: (metric: DongMetric) => void; onSelectSido: (sido: string) => void; onSelectRegion: (region: Region) => void; onSelectDong: (dong: string) => void;
@@ -420,6 +433,7 @@ function AdministrativeMarketMap({ focus, active, markets, propertyType, selecte
   };
   return <div className={`administrative-market-map level-${focus}`}>
     <div className="administrative-map-head"><div><span>{stageLabel}</span><b>{stageTitle}</b><small>{stageHint}</small></div><div className="administrative-map-actions">{focus === "district" && <div className="dong-metric-tabs" aria-label="동네 가격 지도 지표">{([['price', '중위가격'], ['py', '평당가'], ['volume', '거래량']] as const).map(([metric, label]) => <button type="button" key={metric} className={dongMetric === metric ? "active" : ""} aria-pressed={dongMetric === metric} onClick={() => onDongMetricChange(metric)}>{label}</button>)}</div>}<div className="administrative-map-mode"><i />3D 행정경계</div></div></div>
+    {focus !== "national" && <KoreaFocusLocator active={active} selectedSido={selectedSido} onSelectSido={onSelectSido} />}
     {data ? <svg className="administrative-map-svg" viewBox="0 0 760 560" role="img" aria-label={`${stageTitle} 3D 행정구역 선택 지도`}>
       <defs><linearGradient id={`admin-surface-${focus}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f7fbff"/><stop offset="1" stopColor="#d9e9f8"/></linearGradient></defs>
       <g className="administrative-map-shadow" transform="translate(0 13)">{boundaries.map((boundary) => <path key={`depth-${boundary.code}`} d={boundary.path} />)}</g>
@@ -549,6 +563,7 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
 
   return <div className="naver-market-map">
     <div ref={hostRef} className="naver-market-canvas" aria-label={`${stageTitle} 네이버 지도`} />
+    <KoreaFocusLocator active={active} selectedSido={selectedSido} onSelectSido={onSelectSido} />
     <div className="map-stage-card"><span>{focus === "buildings" ? "BUILDINGS" : "PROPERTY"}</span><b>{stageTitle}</b><small>{stageHint}</small></div>
     {focus === "buildings" && <div className={`building-map-legend kind-${propertyType}`}><i /><span>현재 표시</span><b>{PROPERTY_MAP_META[propertyType].label}</b><small>가격을 누르면 단지 선택</small></div>}
     {mapError && <div className="naver-market-error" role="status"><b>지도를 불러오지 못했습니다.</b><span>{mapError}</span><button type="button" onClick={() => { setMapError(""); setRetry((value) => value + 1); }}>다시 불러오기</button></div>}
