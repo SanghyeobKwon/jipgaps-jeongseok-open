@@ -280,6 +280,22 @@ function safeMapMessage(error: unknown) {
     : error instanceof Error ? error.message : "지도를 표시하지 못했습니다.";
 }
 
+function shouldUseSafeMapOnVercel() {
+  return window.location.hostname === "jipgaps-jeongseok.vercel.app";
+}
+
+function safelyDestroyNaverMap(map: NaverMapInstance | null) {
+  try { map?.destroy?.(); } catch { /* An unauthorized SDK instance can throw while detaching its internal listeners. */ }
+}
+
+function safelyRemoveNaverOverlay(overlay: NaverOverlayInstance) {
+  try { overlay.setMap(null); } catch { /* Ignore cleanup errors from an incomplete map instance. */ }
+}
+
+function safelyRemoveNaverListener(listener: NaverEventListener) {
+  try { window.naver?.maps.Event.removeListener(listener); } catch { /* Ignore cleanup errors from an incomplete SDK. */ }
+}
+
 function MapFallback({ lat, lng, title, message }: { lat: number; lng: number; title: string; message: string }) {
   const delta = .035;
   const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
@@ -335,9 +351,13 @@ function NaverPlaceMap({ location, title, places, active }: { location: Property
   useEffect(() => {
     const host = hostRef.current; const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID; let disposed = false; let map: NaverMapInstance | null = null; const overlays: NaverOverlayInstance[] = [];
     if (!host || !active) return;
+    if (shouldUseSafeMapOnVercel()) {
+      const timer = window.setTimeout(() => setMapError("Vercel 도메인의 네이버 지도 인증을 확인하는 동안 안전 지도를 표시합니다."), 0);
+      return () => window.clearTimeout(timer);
+    }
     const handleAuthFailure = () => {
       if (disposed) return;
-      map?.destroy?.();
+      safelyDestroyNaverMap(map);
       host.replaceChildren();
       setMapError(safeMapMessage(new Error("NAVER_MAP_AUTH_FAILED")));
     };
@@ -354,7 +374,7 @@ function NaverPlaceMap({ location, title, places, active }: { location: Property
       places.slice(0, 28).forEach((place) => { const position = new maps.LatLng(place.lat, place.lng); overlays.push(new maps.Marker({ position, map, title: `${place.subCategory} · ${place.name} · ${place.distance}m`, icon: { content: `<div class="nearby-place-pin" style="--pin:${colors[place.category] || "#526173"}"><i></i><b>${escapeMapHtml(place.subCategory || place.category)} · ${escapeMapHtml(place.name)}</b><span>${place.distance}m</span></div>`, anchor: new maps.Point(12, 12) }, zIndex: Math.max(10, 70 - Math.round(place.distance / 30)) })); });
       setMapError("");
     }).catch((error) => { if (!disposed) setMapError(safeMapMessage(error)); });
-    return () => { disposed = true; window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); overlays.forEach((overlay) => overlay.setMap(null)); map?.destroy?.(); };
+    return () => { disposed = true; window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); overlays.forEach(safelyRemoveNaverOverlay); safelyDestroyNaverMap(map); };
   }, [active, location.lat, location.lng, places, title]);
   return <div className="naver-map-frame">{mapError ? <MapFallback lat={location.lat} lng={location.lng} title={title} message={mapError} /> : <div ref={hostRef} className="naver-map-canvas" role="img" aria-label={`${title}와 주변 생활시설 네이버 지도`} />}</div>;
 }
@@ -605,9 +625,13 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     const markers: NaverMarkerInstance[] = [];
     const listeners: NaverEventListener[] = [];
     if (!host || !active || (focus !== "buildings" && focus !== "detail")) return;
+    if (shouldUseSafeMapOnVercel()) {
+      const timer = window.setTimeout(() => setMapError("Vercel 도메인의 네이버 지도 인증을 확인하는 동안 안전 지도를 표시합니다."), 0);
+      return () => window.clearTimeout(timer);
+    }
     const handleAuthFailure = () => {
       if (disposed) return;
-      map?.destroy?.();
+      safelyDestroyNaverMap(map);
       host.replaceChildren();
       setMapError(safeMapMessage(new Error("NAVER_MAP_AUTH_FAILED")));
     };
@@ -679,7 +703,7 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     }).catch((error) => { if (!disposed && (!(error instanceof Error) || error.name !== "AbortError")) setMapError(safeMapMessage(error)); });
 
     return () => {
-      disposed = true; controller.abort(); window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); listeners.forEach((listener) => window.naver?.maps.Event.removeListener(listener)); markers.forEach((marker) => marker.setMap(null)); map?.destroy?.();
+      disposed = true; controller.abort(); window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); listeners.forEach(safelyRemoveNaverListener); markers.forEach(safelyRemoveNaverOverlay); safelyDestroyNaverMap(map);
     };
   }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, focus, markets, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyLocation, propertyName, propertyType, selectedBoundaryDong, selectedDong, selectedSido]);
 
