@@ -369,8 +369,8 @@ function visibleAdministrativeLabels(boundaries: ProjectedBoundary[], focus: Adm
   const candidates = [...boundaries].sort((a, b) => Number(b.code === selectedCode) - Number(a.code === selectedCode) || b.width * b.height - a.width * a.height);
   candidates.forEach((boundary) => {
     const label = compactAdministrativeLabel(boundary.name, focus);
-    const boxWidth = Math.max(38, label.length * (focus === "district" ? 18 : 15));
-    const boxHeight = focus === "district" ? 30 : 21;
+    const boxWidth = Math.max(38, label.length * (focus === "district" || focus === "sido" ? 18 : 15));
+    const boxHeight = focus === "district" ? 30 : focus === "sido" ? 26 : 21;
     const box = { left: boundary.centerX - boxWidth / 2, right: boundary.centerX + boxWidth / 2, top: boundary.centerY - boxHeight / 2, bottom: boundary.centerY + boxHeight / 2 };
     const selected = boundary.code === selectedCode;
     const overlaps = occupied.some((other) => box.left < other.right && box.right > other.left && box.top < other.bottom && box.bottom > other.top);
@@ -390,8 +390,14 @@ function coordinateRings(value: unknown) {
   return rings;
 }
 
-function projectAdministrativeBoundaries(data: GeoJsonFeatureCollection, width = 760, height = 560) {
-  const extent = geoJsonExtent(data);
+function expandGeoExtent(extent: NonNullable<ReturnType<typeof geoJsonExtent>>, lngRatio: number, latRatio: number) {
+  const lngPad = (extent.maxLng - extent.minLng) * lngRatio;
+  const latPad = (extent.maxLat - extent.minLat) * latRatio;
+  return { minLng: extent.minLng - lngPad, minLat: extent.minLat - latPad, maxLng: extent.maxLng + lngPad, maxLat: extent.maxLat + latPad };
+}
+
+function projectAdministrativeBoundaries(data: GeoJsonFeatureCollection, width = 760, height = 560, viewportExtent?: NonNullable<ReturnType<typeof geoJsonExtent>>) {
+  const extent = viewportExtent || geoJsonExtent(data);
   if (!extent) return [];
   const pad = 34;
   const lngSpan = Math.max(.001, extent.maxLng - extent.minLng); const latSpan = Math.max(.001, extent.maxLat - extent.minLat);
@@ -426,6 +432,7 @@ function AdministrativeMarketMap({ focus, active, markets, propertyType, selecte
   onDongMetricChange: (metric: DongMetric) => void; onSelectSido: (sido: string) => void; onSelectRegion: (region: Region) => void; onSelectDong: (dong: string) => void;
 }) {
   const [data, setData] = useState<GeoJsonFeatureCollection | null>(null); const [boundaryError, setBoundaryError] = useState(""); const [boundaryRetry, setBoundaryRetry] = useState(0);
+  const [capitalContext, setCapitalContext] = useState<GeoJsonFeatureCollection | null>(null);
   const boundaryUrl = focus === "national" ? "/data/boundaries/sido.json" : focus === "sido" ? `/data/boundaries/sgg/${SIDO_CODES[selectedSido]}.json` : `/data/boundaries/emd/${activeRegion.code}.json`;
   useEffect(() => {
     if (!active) return;
@@ -435,7 +442,26 @@ function AdministrativeMarketMap({ focus, active, markets, propertyType, selecte
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [active, boundaryRetry, boundaryUrl]);
-  const boundaries = useMemo(() => data ? projectAdministrativeBoundaries(data) : [], [data]);
+  useEffect(() => {
+    if (!active || focus !== "sido" || selectedSido !== "서울특별시") return;
+    const controller = new AbortController();
+    fetch("/data/boundaries/sido.json", { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("수도권 경계를 불러오지 못했습니다.")))
+      .then(setCapitalContext)
+      .catch(() => setCapitalContext(null));
+    return () => controller.abort();
+  }, [active, focus, selectedSido]);
+  const mapExtent = useMemo(() => {
+    if (!data) return undefined;
+    const extent = geoJsonExtent(data);
+    return focus === "sido" && selectedSido === "서울특별시" && extent ? expandGeoExtent(extent, .3, .24) : undefined;
+  }, [data, focus, selectedSido]);
+  const boundaries = useMemo(() => data ? projectAdministrativeBoundaries(data, 760, 560, mapExtent) : [], [data, mapExtent]);
+  const capitalBoundaries = useMemo(() => {
+    if (!capitalContext || !mapExtent) return [];
+    const nearby = { ...capitalContext, features: capitalContext.features.filter((feature) => ["서울특별시", "경기도", "인천광역시"].includes(String(feature.properties.name || ""))) };
+    return projectAdministrativeBoundaries(nearby, 760, 560, mapExtent);
+  }, [capitalContext, mapExtent]);
   const stageTitle = focus === "national" ? "대한민국 전체" : focus === "sido" ? selectedSido : `${activeRegion.sido} ${activeRegion.sigungu}`;
   const stageHint = focus === "national" ? "대한민국 행정경계를 기준으로 16개 시·도를 비교합니다." : focus === "sido" ? `${selectedSido} 안의 시·군·구 경계를 선택하세요.` : `최근 3개월 ${PROPERTY_MAP_META[propertyType].short} 실거래를 동별로 비교하고, 동을 누르면 건물 가격 지도로 이동합니다.`;
   const districtValues = Object.values(dongStats).map((stat) => dongMetric === "price" ? stat.median : dongMetric === "py" ? stat.perPy : stat.count).filter((value) => value > 0);
@@ -468,15 +494,26 @@ function AdministrativeMarketMap({ focus, active, markets, propertyType, selecte
     <div className="administrative-map-head"><div><b>{stageTitle}</b><small>{stageHint}</small></div><div className="administrative-map-actions">{focus === "district" && <div className="dong-metric-tabs" aria-label="동네 가격 지도 지표">{([['price', '중위가격'], ['py', '평당가'], ['volume', '거래량']] as const).map(([metric, label]) => <button type="button" key={metric} className={dongMetric === metric ? "active" : ""} aria-pressed={dongMetric === metric} onClick={() => onDongMetricChange(metric)}>{label}</button>)}</div>}<div className={`administrative-map-key key-${focus}`} aria-label="지도 색상 범례">{focus === "national" ? <><span><i className="cold" />하락</span><span><i className="flat" />보합</span><span><i className="hot" />상승</span></> : focus === "district" ? <><span><i className="price-low" />낮음</span><span><i className="price-mid" />중간</span><span><i className="price-high" />높음</span></> : <span><i className="selected" />선택 경계</span>}</div><div className="administrative-map-mode"><i />행정경계 데이터</div></div></div>
     {focus !== "national" && <KoreaFocusLocator active={active} selectedSido={selectedSido} />}
     {data ? <svg className="administrative-map-svg" viewBox={focus === "national" ? "100 0 560 560" : "0 0 760 560"} role="img" aria-label={`${stageTitle} 행정구역 선택 지도`}>
+      {capitalBoundaries.length > 0 && <g className="capital-context" aria-hidden="true">
+        {capitalBoundaries.map((boundary) => <path key={boundary.code} className={`capital-context-region context-${boundary.code}`} d={boundary.path} fillRule="evenodd" />)}
+        <g className="capital-context-labels"><text x="690" y="78" textAnchor="middle">경기도</text><text x="72" y="322" textAnchor="middle">인천광역시</text></g>
+      </g>}
       {boundaries.map((boundary) => {
-        const selected = isSelected(boundary); const offset = focus === "national" ? NATIONAL_LABEL_OFFSETS[boundary.name] || [0, 0] : [0, 0]; const labelX = boundary.centerX + offset[0]; const labelY = boundary.centerY + offset[1];
+        const selected = isSelected(boundary);
         return <g key={boundary.code} className={`administrative-region tone-${boundaryTone(boundary)}${selected ? " selected" : ""}`} role="button" tabIndex={0} aria-label={`${boundary.name} ${boundaryMetric(boundary)}`} onClick={() => selectBoundary(boundary)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectBoundary(boundary); } }}>
           <title>{boundary.name} · {boundaryMetric(boundary)}</title>
           <path className="administrative-region-hit" d={boundary.path} fillRule="evenodd" />
           <path className="administrative-region-surface" d={boundary.path} fillRule="evenodd" />
-          {visibleLabels.has(boundary.code) && <>{(offset[0] !== 0 || offset[1] !== 0) && <line className="administrative-label-line" x1={boundary.centerX} y1={boundary.centerY} x2={labelX} y2={labelY} />}<g className="administrative-label" transform={`translate(${labelX} ${labelY})`}><text className="administrative-label-name" textAnchor="middle" dominantBaseline="middle">{compactAdministrativeLabel(boundary.name, focus)}</text></g></>}
         </g>;
       })}
+      <g className="administrative-label-layer" aria-hidden="true">{boundaries.map((boundary) => {
+        if (!visibleLabels.has(boundary.code)) return null;
+        const selected = isSelected(boundary); const offset = focus === "national" ? NATIONAL_LABEL_OFFSETS[boundary.name] || [0, 0] : [0, 0]; const labelX = boundary.centerX + offset[0]; const labelY = boundary.centerY + offset[1];
+        return <g key={boundary.code} className={`administrative-label${selected ? " selected" : ""}`} transform={`translate(${labelX} ${labelY})`}>
+          {(offset[0] !== 0 || offset[1] !== 0) && <line className="administrative-label-line" x1={-offset[0]} y1={-offset[1]} x2="0" y2="0" />}
+          <text className="administrative-label-name" textAnchor="middle" dominantBaseline="middle">{compactAdministrativeLabel(boundary.name, focus)}</text>
+        </g>;
+      })}</g>
     </svg> : <div className="administrative-map-loading"><i />행정경계를 조립하고 있습니다.</div>}
     <div className="administrative-map-foot"><span><i />선택 지역</span><b>{focus === "national" ? selectedSido : focus === "sido" ? activeRegion.sigungu : selectedBoundaryDong || "동을 선택하세요"}</b><small>{focus === "district" ? `최근 3개월 ${PROPERTY_MAP_META[propertyType].short} · ${dongMetric === "price" ? "중위가격" : dongMetric === "py" ? "평당가" : "거래량"} · 동을 누르면 실제 건물 지도` : "동을 선택하면 실제 도로·건물 지도로 전환됩니다."}</small></div>
     {boundaryError && <div className="administrative-map-error" role="status"><b>행정경계를 불러오지 못했습니다.</b><span>{boundaryError}</span><button type="button" onClick={() => setBoundaryRetry((value) => value + 1)}>다시 불러오기</button></div>}
