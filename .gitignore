@@ -40,4 +40,5 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+/.site-package-*.tar.gz
 *.tsbuildinfo

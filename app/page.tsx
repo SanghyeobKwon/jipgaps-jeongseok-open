@@ -314,7 +314,7 @@ function NaverMarketMap({ markets, focus, selectedSido, activeRegion, selectedDo
       };
 
       if (focus === "national") {
-        const boundaries = await readGeoJson("/api/boundaries?level=sido");
+        const boundaries = await readGeoJson("/data/boundaries/sido.json");
         if (disposed || !map) return;
         map.data.addGeoJson(boundaries);
         map.data.setStyle((feature) => { const selected = String(feature.getProperty("name") || "") === selectedSido; return { fillColor: selected ? "#ff6f4f" : "#203a55", fillOpacity: selected ? 0.3 : 0.11, strokeColor: selected ? "#ff8d72" : "#6382a3", strokeWeight: selected ? 3 : 1.4, strokeOpacity: 0.95, clickable: true }; });
@@ -335,7 +335,7 @@ function NaverMarketMap({ markets, focus, selectedSido, activeRegion, selectedDo
       if (focus === "sido" && map) {
         const sidoCode = SIDO_CODES[selectedSido];
         if (!sidoCode) throw new Error("선택한 시·도의 경계 코드를 찾지 못했습니다.");
-        const districts = await readGeoJson(`/api/boundaries?level=sgg&code=${sidoCode}`);
+        const districts = await readGeoJson(`/data/boundaries/sgg/${sidoCode}.json`);
         if (disposed || !map) return;
         const features = map.data.addGeoJson(districts);
         map.data.setStyle((feature) => {
@@ -352,7 +352,7 @@ function NaverMarketMap({ markets, focus, selectedSido, activeRegion, selectedDo
       }
 
       if (focus === "district" && map) {
-        const dongs = await readGeoJson(`/api/boundaries?level=emd&code=${activeRegion.code}`);
+        const dongs = await readGeoJson(`/data/boundaries/emd/${activeRegion.code}.json`);
         if (disposed || !map) return;
         const dongFeatures = map.data.addGeoJson(dongs);
         map.data.setStyle((feature) => {

@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      admdongkor:
-        specifier: 0.5.1
-        version: 0.5.1
       drizzle-orm:
         specifier: 0.45.2
         version: 0.45.2
@@ -1499,10 +1496,6 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
-  admdongkor@0.5.1:
-    resolution: {integrity: sha512-NIFDfwKzsGjKhS+APKU+fWBmr6/mqAZASqIvN0Q91Hmq4FJ4l1SInuA9rO+16U4a1VUANq8Kd4CwZPlwjghfWA==}
-    engines: {node: '>=18'}
-
   ajv-formats@2.1.1:
     resolution: {integrity: sha512-Wx0Kx52hxE7C18hkMEggYlEifqWZtYaRgouJor+WMdPnQyEK13vgEWyVNup7SoeeoLMsr4kf5h6dOW11I15MUA==}
     peerDependencies:
@@ -2077,9 +2070,6 @@ packages:
   functions-have-names@1.2.3:
     resolution: {integrity: sha512-xckBUXyTIqT97tq2x2AMb+g163b5JFysYk0x4qxNFwbfQkmNZoiRHb6sPzI9/QV33WeuvVYBUIiD4NzNIyqaRQ==}
 
-  fzstd@0.1.1:
-    resolution: {integrity: sha512-dkuVSOKKwh3eas5VkJy1AW1vFpet8TA/fGmVA5krThl8YcOVE/8ZIoEA1+U1vEn5ckxxhLirSdY837azmbaNHA==}
-
   generator-function@2.0.1:
     resolution: {integrity: sha512-SFdFmIJi+ybC0vjlHN0ZGVGHc3lgE0DxPAT0djjVg+kjOnSqclqmj0KQ7ykTOLP6YxoqOvuAODGdcHJn+43q3g==}
     engines: {node: '>= 0.4'}
@@ -2166,15 +2156,6 @@ packages:
   hex-rgb@4.3.0:
     resolution: {integrity: sha512-Ox1pJVrDCyGHMG9CFg1tmrRUMRPRsAWYc/PinY0XzJU4K7y7vjNoLKIQ7BR5UJMCxNN8EM1MNDmHWA/B3aZUuw==}
     engines: {node: '>=6'}
-
-  hyparquet-compressors@1.1.1:
-    resolution: {integrity: sha512-yx7aA3Rhj0YycbdV71+XznQSLAefa4cT0urpgNXy4aM6eSeCknaVDNne8y45Uz74Fb15yyXUzOStlceOJBan7A==}
-
-  hyparquet@1.28.1:
-    resolution: {integrity: sha512-04PlyhYZpNDVaOjJNX4SP00beWf9Y9vXEOEQXSMFqVQNzxGxTmsJOQgBjar8VzLpT6E2kxNiWKL539e1dHcOVA==}
-
-  hysnappy@1.0.0:
-    resolution: {integrity: sha512-MNrC4NfwDGPb889O6gIfEtbvEZCSWUsSEhsz4Oq2FRcpGtXHfeVz3KciSPp5Pnnz1NjFMgDQNfxdJozymJEDDA==}
 
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
@@ -4297,11 +4278,6 @@ snapshots:
 
   acorn@8.18.0: {}
 
-  admdongkor@0.5.1:
-    dependencies:
-      hyparquet: 1.28.1
-      hyparquet-compressors: 1.1.1
-
   ajv-formats@2.1.1(ajv@8.20.0):
     optionalDependencies:
       ajv: 8.20.0
@@ -5020,8 +4996,6 @@ snapshots:
 
   functions-have-names@1.2.3: {}
 
-  fzstd@0.1.1: {}
-
   generator-function@2.0.1: {}
 
   gensync@1.0.0-beta.2: {}
@@ -5104,15 +5078,6 @@ snapshots:
       hermes-estree: 0.25.1
 
   hex-rgb@4.3.0: {}
-
-  hyparquet-compressors@1.1.1:
-    dependencies:
-      fzstd: 0.1.1
-      hysnappy: 1.0.0
-
-  hyparquet@1.28.1: {}
-
-  hysnappy@1.0.0: {}
 
   ignore@5.3.2: {}
 
