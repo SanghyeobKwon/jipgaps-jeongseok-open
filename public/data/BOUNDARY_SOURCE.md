@@ -1,8 +1,8 @@
 # Boundary data notice
 
-- Source: [southkorea/seoul-maps](https://github.com/southkorea/seoul-maps)
-- Original statistical boundary source: Statistics Korea (KOSTAT), 2013
-- License stated by the source repository: Apache License 2.0
-- Files used here: simplified Seoul municipality boundaries and the Gangnam-gu subset of simplified submunicipality boundaries
+- Original source: Statistics Korea SGIS administrative-dong boundaries (Korea Open Government License Type 1)
+- Processed source: [vuski/admdongkor](https://github.com/vuski/admdongkor), CC BY 4.0
+- Boundary version: 2026-07-01
+- Levels used: province/special city, city/county/district, and administrative eup/myeon/dong
 
-These geometries are bundled only as a visual navigation aid over the live Naver base map. They must not be used as an authoritative statement of current legal or administrative boundaries.
+The service lazily requests simplified WGS84 boundaries and renders them over the live Naver base map. The shapes are a navigation aid; users should confirm legally authoritative boundaries with the responsible public authority when a contract or official filing depends on them.
