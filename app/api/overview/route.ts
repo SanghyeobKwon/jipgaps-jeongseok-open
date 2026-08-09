@@ -26,7 +26,7 @@ function key() {
   try { return decodeURIComponent(value); } catch { return value; }
 }
 function monthKey(back: number) { const now = new Date(); const date = new Date(now.getFullYear(), now.getMonth() - back, 1); return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}`; }
-function comparisonMonths() { return { current: [1, 2, 3].map(monthKey), previous: [4, 5, 6].map(monthKey) }; }
+function shiftMonthKey(base: string, offset: number) { const date = new Date(Number(base.slice(0, 4)), Number(base.slice(4)) - 1 + offset, 1); return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}`; }
 function median(values: number[]) { const sorted = [...values].sort((a, b) => a - b); const middle = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2; }
 async function fetchMarket(type: PropertyType, code: string, month: string) {
   const [service, operation] = SERVICES[type]; const url = new URL(`${API_ROOT}/${service}/${operation}`);
@@ -37,12 +37,20 @@ async function fetchMarket(type: PropertyType, code: string, month: string) {
   return amounts;
 }
 async function fetchQuarter(type: PropertyType, code: string, months: string[]) { const rows = await Promise.all(months.map((month) => fetchMarket(type, code, month))); return rows.flat(); }
+async function latestAvailableMonth(type: PropertyType) {
+  const candidates = Array.from({ length: 36 }, (_, index) => monthKey(index + 1));
+  for (let index = 0; index < candidates.length; index += 6) {
+    const batch = candidates.slice(index, index + 6); const rows = await Promise.all(batch.map((month) => fetchMarket(type, MARKETS[0][2], month)));
+    const found = rows.findIndex((values) => values.length > 0); if (found >= 0) return batch[found];
+  }
+  return candidates[0];
+}
 
 export async function GET(request: Request) {
   try {
     const requested = new URL(request.url).searchParams.get("type") || "apt";
     if (!(requested in SERVICES)) return Response.json({ error: "지원하지 않는 부동산 유형입니다." }, { status: 400 });
-    const type = requested as PropertyType; const periods = comparisonMonths(); const results = [];
+    const type = requested as PropertyType; const latestMonth = await latestAvailableMonth(type); const periods = { current: [0, -1, -2].map((offset) => shiftMonthKey(latestMonth, offset)), previous: [-3, -4, -5].map((offset) => shiftMonthKey(latestMonth, offset)) }; const results = [];
     for (let index = 0; index < MARKETS.length; index += 4) {
       const batch = await Promise.all(MARKETS.slice(index, index + 4).map(async ([short, sido, code]) => {
         const [previous, current] = await Promise.all([fetchQuarter(type, code, periods.previous), fetchQuarter(type, code, periods.current)]); const before = previous.length ? median(previous) : 0; const latest = current.length ? median(current) : 0;
