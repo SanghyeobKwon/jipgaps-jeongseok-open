@@ -19,12 +19,13 @@ type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAd
 type MapFocus = "national" | "sido" | "district" | "detail";
 type GeoJsonFeature = { type: "Feature"; properties: Record<string, unknown>; geometry: Record<string, unknown> };
 type GeoJsonFeatureCollection = { type: "FeatureCollection"; features: GeoJsonFeature[] };
-type NaverDataFeature = { getProperty: (key: string) => unknown; getBounds?: () => unknown };
+type NaverBounds = { getCenter: () => unknown };
+type NaverDataFeature = { getProperty: (key: string) => unknown; getBounds?: () => NaverBounds };
 type NaverDataLayer = { addGeoJson: (data: GeoJsonFeatureCollection) => NaverDataFeature[]; setStyle: (style: (feature: NaverDataFeature) => Record<string, unknown>) => void };
 type NaverMapInstance = { data: NaverDataLayer; destroy?: () => void; fitBounds?: (bounds: unknown, margin?: number | { top: number; right: number; bottom: number; left: number }) => void; setCenter?: (center: unknown) => void; setZoom?: (zoom: number) => void };
 type NaverMarkerInstance = { setMap: (map: NaverMapInstance | null) => void };
 type NaverEventListener = unknown;
-type NaverMapsApi = { maps: { Map: new (element: HTMLElement, options: Record<string, unknown>) => NaverMapInstance; LatLng: new (lat: number, lng: number) => unknown; Point: new (x: number, y: number) => unknown; Marker: new (options: Record<string, unknown>) => NaverMarkerInstance; Position: { TOP_RIGHT: unknown; BOTTOM_LEFT: unknown }; Event: { addListener: (target: unknown, eventName: string, listener: (event: { feature?: NaverDataFeature }) => void) => NaverEventListener; removeListener: (listener: NaverEventListener) => void } };
+type NaverMapsApi = { maps: { Map: new (element: HTMLElement, options: Record<string, unknown>) => NaverMapInstance; LatLng: new (lat: number, lng: number) => unknown; Point: new (x: number, y: number) => unknown; Marker: new (options: Record<string, unknown>) => NaverMarkerInstance; Position: { TOP_RIGHT: unknown; BOTTOM_LEFT: unknown }; Event: { addListener: (target: unknown, eventName: string, listener: (event: { feature?: NaverDataFeature }) => void) => NaverEventListener; removeListener: (listener: NaverEventListener) => void } } };
 
 declare global {
   interface Window { naver?: NaverMapsApi; __jipgapsNaverMap?: Promise<void> }
@@ -235,13 +236,14 @@ function tagGeoJson(data: GeoJsonFeatureCollection, layer: "municipality" | "dis
   return { ...data, features: data.features.map((feature) => ({ ...feature, properties: { ...feature.properties, __layer: layer } })) };
 }
 
-function NaverMarketMap({ markets, focus, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, propertyLocation, propertyName, onSelectSido, onSelectRegion, onSelectDong }: {
+function NaverMarketMap({ markets, focus, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, dongVolumes, propertyLocation, propertyName, onSelectSido, onSelectRegion, onSelectDong }: {
   markets: OverviewMarket[];
   focus: MapFocus;
   selectedSido: string;
   activeRegion: Region;
   selectedDong: string;
   selectedBoundaryDong: string;
+  dongVolumes: Record<string, number>;
   propertyLocation: PropertyLocation | null;
   propertyName: string;
   onSelectSido: (sido: string) => void;
@@ -329,13 +331,19 @@ function NaverMarketMap({ markets, focus, selectedSido, activeRegion, selectedDo
         if (disposed || !map) return;
         const selectedShape: GeoJsonFeatureCollection = { type: "FeatureCollection", features: seoul.features.filter((feature) => feature.properties.name === activeRegion.sigungu) };
         const districtFeatures = map.data.addGeoJson(tagGeoJson(selectedShape, "district"));
-        if (activeRegion.code === "11680") map.data.addGeoJson(tagGeoJson(await readGeoJson("/data/gangnam-dongs.json"), "dong"));
+        const dongFeatures = activeRegion.code === "11680" ? map.data.addGeoJson(tagGeoJson(await readGeoJson("/data/gangnam-dongs.json"), "dong")) : [];
         if (disposed || !map) return;
         map.data.setStyle((feature) => {
           const layer = String(feature.getProperty("__layer") || ""); const name = String(feature.getProperty("name") || "");
           if (layer === "district") return { fillColor: "#ff6f4f", fillOpacity: activeRegion.code === "11680" ? 0.06 : 0.22, strokeColor: "#ff6f4f", strokeWeight: 3.5, strokeOpacity: 0.95, clickable: false };
           const selected = selectedBoundaryDong ? name === selectedBoundaryDong : selectedDong !== "all" && legalDongName(name) === selectedDong;
           return { fillColor: selected ? "#ff6f4f" : "#24415f", fillOpacity: selected ? 0.42 : 0.12, strokeColor: selected ? "#ff8d72" : "#6281a2", strokeWeight: selected ? 2.5 : 1.1, strokeOpacity: 0.88, clickable: true };
+        });
+        dongFeatures.forEach((feature) => {
+          const name = String(feature.getProperty("name") || ""); const center = feature.getBounds?.().getCenter(); if (!name || !center || !map) return;
+          const legalDong = legalDongName(name); const volume = dongVolumes[legalDong] || 0; const selected = selectedBoundaryDong ? name === selectedBoundaryDong : selectedDong !== "all" && legalDong === selectedDong;
+          const marker = new maps.Marker({ position: center, map, title: `${name} · 최근 3개월 ${volume}건`, icon: { content: `<div class="naver-dong-label${selected ? " selected" : ""}"><b>${escapeMapHtml(name)}</b><span>${volume}건</span></div>`, anchor: new maps.Point(28, 15) }, zIndex: selected ? 80 : 20 });
+          markers.push(marker); addMarkerListener(marker, () => onSelectDong(name));
         });
         if (districtFeatures[0]?.getBounds) map.fitBounds?.(districtFeatures[0].getBounds(), { top: 74, right: 34, bottom: 34, left: 34 });
         if (activeRegion.code === "11680") listeners.push(maps.Event.addListener(map.data, "click", (event) => { if (event.feature?.getProperty("__layer") === "dong") onSelectDong(String(event.feature.getProperty("name") || "")); }));
@@ -362,7 +370,7 @@ function NaverMarketMap({ markets, focus, selectedSido, activeRegion, selectedDo
     return () => {
       disposed = true; controller.abort(); listeners.forEach((listener) => window.naver?.maps.Event.removeListener(listener)); markers.forEach((marker) => marker.setMap(null)); map?.destroy?.();
     };
-  }, [activeRegion.code, activeRegion.sigungu, activeRegion.sido, focus, markets, onSelectDong, onSelectRegion, onSelectSido, propertyLocation, propertyName, selectedBoundaryDong, selectedDong, selectedSido]);
+  }, [activeRegion.code, activeRegion.sigungu, activeRegion.sido, dongVolumes, focus, markets, onSelectDong, onSelectRegion, onSelectSido, propertyLocation, propertyName, selectedBoundaryDong, selectedDong, selectedSido]);
 
   return <div className="naver-market-map">
     <div ref={hostRef} className="naver-market-canvas" aria-label={`${stageTitle} 네이버 지도`} />
@@ -383,7 +391,7 @@ export default function Home() {
   const [buildingSort, setBuildingSort] = useState<"volume" | "price" | "rise" | "fall">("volume"); const [minVolume, setMinVolume] = useState(0); const [marketSort, setMarketSort] = useState<"volume" | "price" | "rise" | "fall">("volume");
   const [policyItems, setPolicyItems] = useState<readonly PolicyItem[]>(POLICIES); const [policyUpdated, setPolicyUpdated] = useState("");
   const [activeSection, setActiveSection] = useState("national"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
-  const [selectedMapSido, setSelectedMapSido] = useState("서울특별시"); const [mapFocus, setMapFocus] = useState<MapFocus>("national"); const [selectedBoundaryDong, setSelectedBoundaryDong] = useState("");
+  const [selectedMapSido, setSelectedMapSido] = useState("서울특별시"); const [mapFocus, setMapFocus] = useState<MapFocus>("district"); const [selectedBoundaryDong, setSelectedBoundaryDong] = useState("");
   const [savedHomes, setSavedHomes] = useState<SavedHome[]>([]);
   const [researchCategory, setResearchCategory] = useState("price"); const [researchTool, setResearchTool] = useState("recent-fall");
   const [communityCategory, setCommunityCategory] = useState("living"); const [communityBoard, setCommunityBoard] = useState("전체");
@@ -500,6 +508,7 @@ export default function Home() {
   const sigunguOptions = useMemo(() => REGIONS.filter((region) => region.sido === activeRegion.sido).sort(sortRegions), [activeRegion.sido]);
   const mapDistricts = useMemo(() => REGIONS.filter((region) => region.sido === selectedMapSido).sort(sortRegions), [selectedMapSido]);
   const dongOptions = useMemo(() => [...new Set(trades.map((trade) => trade.dong).filter(Boolean))].sort(), [trades]);
+  const mapDongVolumes = useMemo(() => { const counts: Record<string, number> = {}; trades.forEach((trade) => { if (trade.dong && latestQuarterMonths.includes(trade.date.slice(0, 7))) counts[trade.dong] = (counts[trade.dong] || 0) + 1; }); return counts; }, [trades, latestQuarterMonths]);
   const targetTrade = filteredTrades.at(-1); const targetArea = area === "all" ? targetTrade?.area || 0 : Number(area);
   const subjectPerPy = filteredTrades.filter((trade) => trade.area > 0 && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15)).slice(-20).map((trade) => trade.amount / (trade.area / 3.3058));
   const latestPeers = scopedTrades.filter((trade) => trade.propertyKey !== selectedKey && trade.area > 0 && trade.date.startsWith(latestMonth) && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15));
@@ -512,6 +521,7 @@ export default function Home() {
   const chooseMapSido = useCallback((sido: string) => { setSelectedMapSido(sido); setMapFocus("sido"); setSelectedBoundaryDong(""); }, []);
   const chooseMapRegion = useCallback((region: Region) => chooseRegion(region, false), [chooseRegion]);
   const chooseMapDong = useCallback((dong: string) => { const legalDong = legalDongName(dong); setSelectedBoundaryDong(dong); if (dongOptions.includes(legalDong)) { setSelectedDong(legalDong); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); } }, [dongOptions]);
+  const openGangnamMap = useCallback(() => { const gangnam = REGIONS.find((region) => region.code === "11680"); if (gangnam) chooseRegion(gangnam, false); }, [chooseRegion]);
   const selectSido = (sido: string) => { const next = REGIONS.filter((region) => region.sido === sido).sort(sortRegions)[0]; if (next) chooseRegion(next); };
   const selectSigungu = (code: string) => { const next = REGIONS.find((region) => region.code === code); if (next) chooseRegion(next); };
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = REGIONS.find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); setSubmittedQuery(query.trim()); };
@@ -612,14 +622,14 @@ export default function Home() {
     </section>
 
     <section className="map-section" id="map">
-      <div className="section-title wide"><div><p>KOREA MARKET MAP</p><h2>전국에서 강남구 동·단지까지</h2><span>{marketMonth ? `${marketMonth.slice(0, 4)}년 ${Number(marketMonth.slice(4))}월 완료 거래` : "전국 집계 중"} · 네이버 지도에서 전국 → 시·도 → 시·군·구 → 단지 순으로 확대</span></div><div className="map-controls"><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">최근 월 거래량순</option><option value="price">최근 월 중위가순</option><option value="rise">3개월 상승순</option><option value="fall">3개월 하락순</option></select><div className="map-legend"><i className="cold"/>하락 <i className="flat"/>보합 <i className="hot"/>상승</div></div></div>
+      <div className="section-title wide"><div><p>KOREA MARKET MAP</p><h2>서울은 구까지, 강남은 동·단지까지</h2><span>{marketMonth ? `${marketMonth.slice(0, 4)}년 ${Number(marketMonth.slice(4))}월 완료 거래` : "전국 집계 중"} · 네이버 지도에서 전국 → 서울 25개 구 → 강남 22개 행정동 → 단지 순으로 확대</span></div><div className="map-controls"><button type="button" className="gangnam-map-shortcut" onClick={openGangnamMap}>강남 상세 바로보기 ↗</button><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">최근 월 거래량순</option><option value="price">최근 월 중위가순</option><option value="rise">3개월 상승순</option><option value="fall">3개월 하락순</option></select><div className="map-legend"><i className="cold"/>하락 <i className="flat"/>보합 <i className="hot"/>상승</div></div></div>
       <div className="map-level-tabs" aria-label="지도 확대 단계">
         <button className={mapFocus === "national" ? "active" : ""} aria-pressed={mapFocus === "national"} onClick={() => setMapFocus("national")}><em>01</em><span>전국</span><small>17개 시·도</small></button>
         <button className={mapFocus === "sido" ? "active" : ""} aria-pressed={mapFocus === "sido"} onClick={() => setMapFocus("sido")}><em>02</em><span>{selectedMapSido}</span><small>시·도 전체</small></button>
-        <button className={mapFocus === "district" ? "active" : ""} aria-pressed={mapFocus === "district"} disabled={selectedMapSido !== activeRegion.sido} onClick={() => setMapFocus("district")}><em>03</em><span>{selectedMapSido === activeRegion.sido ? `${activeRegion.sigungu} 전체` : "시·군·구 선택"}</span><small>{activeRegion.code === "11680" && selectedMapSido === activeRegion.sido ? "행정동 경계" : "지역 중심"}</small></button>
+        <button className={mapFocus === "district" ? "active" : ""} aria-pressed={mapFocus === "district"} disabled={selectedMapSido !== activeRegion.sido} onClick={() => setMapFocus("district")}><em>03</em><span>{selectedMapSido === activeRegion.sido ? `${activeRegion.sigungu} 전체` : "시·군·구 선택"}</span><small>{activeRegion.code === "11680" && selectedMapSido === activeRegion.sido ? "22개 동 · 거래량" : "지역 중심"}</small></button>
         <button className={mapFocus === "detail" ? "active" : ""} aria-pressed={mapFocus === "detail"} disabled={!propertyLocation || selectedMapSido !== activeRegion.sido} onClick={() => setMapFocus("detail")}><em>04</em><span>{propertyLocation && selectedProperty ? selectedProperty.name : "단지 상세"}</span><small>{propertyLocation ? "실제 주소 좌표" : "차트에서 단지 선택"}</small></button>
       </div>
-      <div className="map-layout"><NaverMarketMap markets={markets} focus={mapFocus} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} propertyLocation={propertyLocation} propertyName={selectedProperty?.name || ""} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} />
+      <div className="map-layout"><NaverMarketMap markets={markets} focus={mapFocus} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongVolumes={mapDongVolumes} propertyLocation={propertyLocation} propertyName={selectedProperty?.name || ""} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} />
         <div className="map-ranking"><h3>전국 3개월 흐름</h3><div className="ranking-labels"><span>순위</span><span>지역</span><span>중위가격</span><span>3개월</span></div>{sortedMarkets.length ? sortedMarkets.map((market, index) => <button key={market.code} className={market.sido === selectedMapSido ? "selected" : ""} aria-pressed={market.sido === selectedMapSido} onClick={() => chooseMapSido(market.sido)}><em>{String(index + 1).padStart(2,"0")}</em><b>{market.sido}<small>{market.count}건</small></b><span>{formatPrice(market.median)}</span><strong className={market.change >= 0 ? "up" : "down"}>{market.change >= 0 ? "+" : ""}{market.change.toFixed(2)}%</strong></button>) : <div className="ranking-loading">17개 대표 권역의 공공데이터를 확인하고 있습니다.</div>}</div>
       </div>
       <div className="region-drilldown"><div><p>SELECT DISTRICT</p><h3>{selectedMapSido} 세부 지역</h3><span>지역을 누르면 지도는 해당 시·군·구 전체로 확대되고, 실거래 차트 조건도 함께 바뀝니다.</span></div><div>{mapDistricts.map((region, index) => <button key={region.code} className={region.code === regionCode ? "selected" : ""} aria-pressed={region.code === regionCode} onClick={() => chooseRegion(region, false)}><em>{String(index + 1).padStart(2, "0")}</em>{region.sigungu}<span>›</span></button>)}</div></div>
