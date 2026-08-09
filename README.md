@@ -1,4 +1,15 @@
-# vinext-starter
+# 집값의 정석
+
+대한민국 부동산 실거래, 지역 환경, 생활권과 정책을 함께 비교하는 부동산 의사결정 서비스입니다.
+
+프로젝트를 수정하기 전에 다음 문서를 확인하세요.
+
+- [사업 및 제품 운영 기준](BUSINESS.md)
+- [저장소 전체 필수 작업 규칙](AGENTS.md)
+- [제품 원칙](PRODUCT.md)
+- [디자인 기준](DESIGN.md)
+
+## Technical Base
 
 A clean full-stack starter running on
 [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
