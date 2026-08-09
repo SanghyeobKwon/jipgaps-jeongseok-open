@@ -25,9 +25,9 @@ function key() {
   if (!value) throw new Error("국토교통부 API 키가 설정되지 않았습니다.");
   try { return decodeURIComponent(value); } catch { return value; }
 }
-function completedMonths() {
+function comparisonMonths() {
   const now = new Date();
-  return [6, 5, 4, 3, 2, 1].map((back) => { const date = new Date(now.getFullYear(), now.getMonth() - back, 1); return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}`; });
+  return [4, 1].map((back) => { const date = new Date(now.getFullYear(), now.getMonth() - back, 1); return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}`; });
 }
 function median(values: number[]) { const sorted = [...values].sort((a, b) => a - b); const middle = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2; }
 async function fetchMarket(type: PropertyType, code: string, month: string) {
@@ -43,14 +43,13 @@ export async function GET(request: Request) {
   try {
     const requested = new URL(request.url).searchParams.get("type") || "apt";
     if (!(requested in SERVICES)) return Response.json({ error: "지원하지 않는 부동산 유형입니다." }, { status: 400 });
-    const type = requested as PropertyType; const quarterMonths = completedMonths(); const previousMonths = quarterMonths.slice(0, 3); const currentMonths = quarterMonths.slice(3); const results = [];
-    for (let index = 0; index < MARKETS.length; index += 2) {
-      const batch = await Promise.all(MARKETS.slice(index, index + 2).map(async ([short, sido, code]) => {
-        const monthly = await Promise.all(quarterMonths.map((month) => fetchMarket(type, code, month))); const previous = monthly.slice(0, 3).flat(); const current = monthly.slice(3).flat();
-        const before = previous.length ? median(previous) : 0; const latest = current.length ? median(current) : 0;
+    const type = requested as PropertyType; const [baselineMonth, currentMonth] = comparisonMonths(); const results = [];
+    for (let index = 0; index < MARKETS.length; index += 4) {
+      const batch = await Promise.all(MARKETS.slice(index, index + 4).map(async ([short, sido, code]) => {
+        const [previous, current] = await Promise.all([fetchMarket(type, code, baselineMonth), fetchMarket(type, code, currentMonth)]); const before = previous.length ? median(previous) : 0; const latest = current.length ? median(current) : 0;
         return { short, sido, code, count: current.length, median: latest, change: previous.length >= 3 && current.length >= 3 && before && latest ? (latest / before - 1) * 100 : 0 };
       })); results.push(...batch);
     }
-    return Response.json({ markets: results, month: `${currentMonths[0]}~${currentMonths[2]}`, previousMonth: `${previousMonths[0]}~${previousMonths[2]}`, type }, { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" } });
+    return Response.json({ markets: results, month: currentMonth, previousMonth: baselineMonth, type }, { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" } });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "전국 시장 데이터를 불러오지 못했습니다." }, { status: 502 }); }
 }
