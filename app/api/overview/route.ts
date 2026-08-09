@@ -25,10 +25,8 @@ function key() {
   if (!value) throw new Error("국토교통부 API 키가 설정되지 않았습니다.");
   try { return decodeURIComponent(value); } catch { return value; }
 }
-function comparisonMonths() {
-  const now = new Date();
-  return [4, 1].map((back) => { const date = new Date(now.getFullYear(), now.getMonth() - back, 1); return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}`; });
-}
+function monthKey(back: number) { const now = new Date(); const date = new Date(now.getFullYear(), now.getMonth() - back, 1); return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}`; }
+function comparisonMonths() { return { current: [1, 2, 3].map(monthKey), previous: [4, 5, 6].map(monthKey) }; }
 function median(values: number[]) { const sorted = [...values].sort((a, b) => a - b); const middle = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2; }
 async function fetchMarket(type: PropertyType, code: string, month: string) {
   const [service, operation] = SERVICES[type]; const url = new URL(`${API_ROOT}/${service}/${operation}`);
@@ -38,18 +36,19 @@ async function fetchMarket(type: PropertyType, code: string, month: string) {
   for (const match of xml.matchAll(/<dealAmount>([\s\S]*?)<\/dealAmount>/g)) { const amount = Number(match[1].replaceAll(",", "").trim()); if (amount) amounts.push(amount); }
   return amounts;
 }
+async function fetchQuarter(type: PropertyType, code: string, months: string[]) { const rows = await Promise.all(months.map((month) => fetchMarket(type, code, month))); return rows.flat(); }
 
 export async function GET(request: Request) {
   try {
     const requested = new URL(request.url).searchParams.get("type") || "apt";
     if (!(requested in SERVICES)) return Response.json({ error: "지원하지 않는 부동산 유형입니다." }, { status: 400 });
-    const type = requested as PropertyType; const [baselineMonth, currentMonth] = comparisonMonths(); const results = [];
+    const type = requested as PropertyType; const periods = comparisonMonths(); const results = [];
     for (let index = 0; index < MARKETS.length; index += 4) {
       const batch = await Promise.all(MARKETS.slice(index, index + 4).map(async ([short, sido, code]) => {
-        const [previous, current] = await Promise.all([fetchMarket(type, code, baselineMonth), fetchMarket(type, code, currentMonth)]); const before = previous.length ? median(previous) : 0; const latest = current.length ? median(current) : 0;
+        const [previous, current] = await Promise.all([fetchQuarter(type, code, periods.previous), fetchQuarter(type, code, periods.current)]); const before = previous.length ? median(previous) : 0; const latest = current.length ? median(current) : 0;
         return { short, sido, code, count: current.length, median: latest, change: previous.length >= 3 && current.length >= 3 && before && latest ? (latest / before - 1) * 100 : 0 };
       })); results.push(...batch);
     }
-    return Response.json({ markets: results, month: currentMonth, previousMonth: baselineMonth, type }, { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" } });
+    return Response.json({ markets: results, month: periods.current[0], previousMonth: periods.previous[0], basis: "rolling-quarter", type }, { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" } });
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "전국 시장 데이터를 불러오지 못했습니다." }, { status: 502 }); }
 }
