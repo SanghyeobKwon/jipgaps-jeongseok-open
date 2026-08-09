@@ -101,6 +101,12 @@ const SIDO_CENTERS: Record<string, { lat: number; lng: number; zoom: number }> =
 };
 const QUICK_REGIONS = [{ code: "11680", label: "강남구" }, { code: "11650", label: "서초구" }, { code: "11710", label: "송파구" }, { code: "11200", label: "성동구" }, { code: "41135", label: "분당구" }, { code: "26350", label: "해운대구" }];
 const FIELD_GROUPS = ["입지·동선", "주거환경", "동·세대", "비용·가격", "검증·비교"];
+const FIELD_LEVELS = [
+  { id: "region", label: "지역 임장", summary: "지역 자체를 분석", example: "강남구·성동구·분당·동탄", group: "입지·동선", featureId: "region", status: "사용 가능" },
+  { id: "complex", label: "단지 임장", summary: "아파트 단지를 분석", example: "래미안·자이 등 개별 단지", group: "비용·가격", featureId: "price", status: "사용 가능" },
+  { id: "unit", label: "동·호수 임장", summary: "동·층·방향에 따른 차이 분석", example: "101동·15층·전용 84㎡", group: "동·세대", featureId: "building", status: "베타" },
+  { id: "life", label: "생활 임장", summary: "실제 하루 동선을 시뮬레이션", example: "출근·귀가·장보기·주차·산책·학교·병원", group: "입지·동선", featureId: "lifestyle", status: "일부 사용 가능" },
+];
 const FIELD_SCORE_EXAMPLE = [
   { label: "교통", score: 92, grade: "매우 좋음" }, { label: "생활편의", score: 91, grade: "매우 좋음" },
   { label: "학군", score: 85, grade: "좋음" }, { label: "일조", score: 84, grade: "좋음" },
@@ -823,6 +829,7 @@ export default function Home() {
 
     <section className="field-intelligence" id="field">
       <header className="field-heading"><div><span>온라인 임장</span><h2>집을 보러 가기 전에,<br/>생활부터 시뮬레이션하세요.</h2><p>현재 선택한 지역과 단지를 기준으로 이동·환경·세대·비용을 한 흐름에서 점검합니다.</p></div><div className="field-status-summary"><b>{FIELD_FEATURES.filter((feature) => feature.status === "live").length}<small>바로 사용</small></b><b>{FIELD_FEATURES.filter((feature) => feature.status === "beta").length}<small>베타</small></b><b>{FIELD_FEATURES.filter((feature) => feature.status === "connect").length}<small>데이터 연결</small></b></div></header>
+      <nav className="field-level-path" aria-label="온라인 임장 4단계">{FIELD_LEVELS.map((level, index) => { const activeLevel = fieldFeatureId === level.featureId; const liveContext = level.id === "region" ? `${activeRegion.sigungu} 지역` : level.id === "complex" ? selectedProperty?.name || level.example : level.id === "unit" ? selectedVariant ? `${dongLabel(selectedVariant.buildingDong) || "동 정보 없음"} · 전용 ${selectedVariant.areaBucket}평` : level.example : level.example; return <button type="button" key={level.id} className={activeLevel ? "active" : ""} aria-pressed={activeLevel} onClick={() => { setFieldGroup(level.group); setFieldFeatureId(level.featureId); }}><em>LEVEL {index + 1}</em><b>{level.label}</b><span>{level.summary}</span><small>{liveContext}</small><i>{level.status}</i></button>; })}</nav>
       <div className="field-context"><span>분석 위치</span><b>{fieldMapQuery}</b><small>상단 지역·단지 선택과 자동 동기화됩니다.</small></div>
       <div className="field-shell">
         <nav className="field-groups" aria-label="온라인 임장 분류">{FIELD_GROUPS.map((group) => <button key={group} className={fieldGroup === group ? "active" : ""} onClick={() => { setFieldGroup(group); setFieldFeatureId(FIELD_FEATURES.find((feature) => feature.group === group)?.id || "region"); }}><span>{group}</span><b>{FIELD_FEATURES.filter((feature) => feature.group === group).length}</b></button>)}</nav>
