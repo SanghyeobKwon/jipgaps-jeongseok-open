@@ -54,7 +54,7 @@ const PROPERTY_TYPES: { key: PropertyType; label: string }[] = [
   { key: "commercial", label: "상가·업무" }, { key: "factory", label: "공장·창고" },
 ];
 const PERIODS = [{ label: "3개월", value: 3 }, { label: "6개월", value: 6 }, { label: "1년", value: 12 }, { label: "3년", value: 36 }, { label: "5년", value: 60 }];
-const NAV_ITEMS = [{ id: "home", label: "살 집 찾기" }, { id: "chart", label: "상세 차트" }, { id: "field", label: "온라인 임장" }, { id: "research", label: "리서치" }, { id: "map", label: "전국 지도" }, { id: "community", label: "커뮤니티" }, { id: "policy", label: "정책" }];
+const NAV_ITEMS = [{ id: "home", label: "지도에서 찾기" }, { id: "chart", label: "상세 차트" }, { id: "field", label: "온라인 임장" }, { id: "research", label: "리서치" }, { id: "map", label: "전국 지도" }, { id: "community", label: "커뮤니티" }, { id: "policy", label: "정책" }];
 const SIDO_CENTERS: Record<string, { lat: number; lng: number; zoom: number }> = {
   서울특별시: { lat: 37.5665, lng: 126.978, zoom: 10 }, 부산광역시: { lat: 35.1796, lng: 129.0756, zoom: 10 }, 대구광역시: { lat: 35.8714, lng: 128.6014, zoom: 10 }, 인천광역시: { lat: 37.4563, lng: 126.7052, zoom: 9 },
   전남광주통합특별시: { lat: 35.15, lng: 126.95, zoom: 8 }, 대전광역시: { lat: 36.3504, lng: 127.3845, zoom: 10 }, 울산광역시: { lat: 35.5384, lng: 129.3114, zoom: 9 }, 세종특별자치시: { lat: 36.48, lng: 127.289, zoom: 10 },
@@ -685,6 +685,7 @@ export default function Home() {
     </section>
 
     <section className="map-section" id="map">
+      <div className="map-current-location" aria-live="polite"><div><span>현재 보고 있는 위치</span><strong>{selectedMapSido}<i>›</i>{selectedMapSido === activeRegion.sido ? activeRegion.sigungu : "시·군·구를 선택하세요"}{selectedMapSido === activeRegion.sido && selectedDong !== "all" && <><i>›</i>{selectedDong}</>}</strong><small>{selectedMapSido === activeRegion.sido ? `${PROPERTY_TYPES.find((item) => item.key === type)?.label} · 최근 3개월 실거래 기준` : "아래 지역 목록에서 세부 지역을 선택하면 차트와 함께 변경됩니다."}</small></div><button onClick={() => { changeView("home"); window.setTimeout(() => document.querySelector<HTMLSelectElement>('.search-console select')?.focus(), 250); }}>지역 다시 선택</button></div>
       <div className="section-title wide"><div><p>KOREA MARKET MAP</p><h2>전국 경계에서 행당동까지</h2><span>{marketMonth ? `${marketMonth.slice(0, 4)}년 ${Number(marketMonth.slice(4))}월 기준 최근 3개월` : "전국 집계 중"} · 전국 16개 시·도 → 256개 시·군·구 → 3,558개 읍·면·동 → 단지 순으로 확대</span></div><div className="map-controls"><button type="button" className="gangnam-map-shortcut" onClick={openGangnamMap}>강남구 바로보기 ↗</button><button type="button" className="gangnam-map-shortcut secondary" onClick={openHaengdangMap}>행당동 예시보기 ↗</button><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">최근 3개월 거래량순</option><option value="price">최근 3개월 중위가순</option><option value="rise">직전 3개월 대비 상승순</option><option value="fall">직전 3개월 대비 하락순</option></select><div className="map-legend"><i className="cold"/>하락 <i className="flat"/>보합 <i className="hot"/>상승</div></div></div>
       <div className="map-level-tabs" aria-label="지도 확대 단계">
         <button className={mapFocus === "national" ? "active" : ""} aria-pressed={mapFocus === "national"} onClick={() => setMapFocus("national")}><em>01</em><span>전국</span><small>16개 시·도</small></button>
