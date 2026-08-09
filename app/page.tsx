@@ -589,7 +589,7 @@ export default function Home() {
   const mapDistricts = useMemo(() => REGIONS.filter((region) => region.sido === selectedMapSido).sort(sortRegions), [selectedMapSido]);
   const dongOptions = useMemo(() => [...new Set(trades.map((trade) => trade.dong).filter(Boolean))].sort(), [trades]);
   const mapDongVolumes = useMemo(() => { const counts: Record<string, number> = {}; trades.forEach((trade) => { if (trade.dong && latestQuarterMonths.includes(trade.date.slice(0, 7))) counts[trade.dong] = (counts[trade.dong] || 0) + 1; }); return counts; }, [trades, latestQuarterMonths]);
-  const buildingCandidates = useMemo(() => propertyRows.filter((property) => property.dong === selectedDong).slice(0, 30), [propertyRows, selectedDong]);
+  const buildingCandidates = useMemo(() => properties.filter((property) => property.dong === selectedDong).slice(0, 30), [properties, selectedDong]);
   useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
@@ -604,7 +604,7 @@ export default function Home() {
           sido: activeRegion.sido,
           sigungu: activeRegion.sigungu,
           dong: selectedDong,
-          properties: buildingCandidates.map((property) => ({ key: property.propertyKey, name: property.name, dong: property.dong, jibun: property.jibun, count: property.quarterCount, lastAmount: property.current })),
+          properties: buildingCandidates.map((property) => ({ key: property.key, name: property.name, dong: property.dong, jibun: property.jibun, count: property.count, lastAmount: property.lastAmount })),
         }),
         signal: controller.signal,
       }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "건물 위치를 불러오지 못했습니다."); return data; })
