@@ -15,6 +15,7 @@ type ResearchTool = { id: string; label: string; description: string; mode: Rese
 type ResearchCategory = { id: string; number: string; label: string; short: string; description: string; tools: ResearchTool[] };
 type CommunityCategory = { id: string; number: string; label: string; description: string; boards: string[] };
 type CommunityGuide = { id: string; category: string; board: string; tag: string; title: string; summary: string; evidence: string };
+type FieldFeature = { id: string; group: string; title: string; information: string; value: string; importance: 4 | 5; status: "live" | "beta" | "connect"; source: string };
 type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAddress: string };
 type MapFocus = "national" | "sido" | "district" | "detail";
 type GeoJsonFeature = { type: "Feature"; properties: Record<string, unknown>; geometry: Record<string, unknown> };
@@ -53,7 +54,7 @@ const PROPERTY_TYPES: { key: PropertyType; label: string }[] = [
   { key: "commercial", label: "상가·업무" }, { key: "factory", label: "공장·창고" },
 ];
 const PERIODS = [{ label: "3개월", value: 3 }, { label: "6개월", value: 6 }, { label: "1년", value: 12 }, { label: "3년", value: 36 }, { label: "5년", value: 60 }];
-const NAV_ITEMS = [{ id: "national", label: "살 집 찾기" }, { id: "chart", label: "상세 차트" }, { id: "research", label: "리서치" }, { id: "map", label: "전국 지도" }, { id: "community", label: "커뮤니티" }, { id: "policy", label: "정책" }];
+const NAV_ITEMS = [{ id: "national", label: "살 집 찾기" }, { id: "chart", label: "상세 차트" }, { id: "field", label: "온라인 임장" }, { id: "research", label: "리서치" }, { id: "map", label: "전국 지도" }, { id: "community", label: "커뮤니티" }, { id: "policy", label: "정책" }];
 const SIDO_CENTERS: Record<string, { lat: number; lng: number; zoom: number }> = {
   서울특별시: { lat: 37.5665, lng: 126.978, zoom: 10 }, 부산광역시: { lat: 35.1796, lng: 129.0756, zoom: 10 }, 대구광역시: { lat: 35.8714, lng: 128.6014, zoom: 10 }, 인천광역시: { lat: 37.4563, lng: 126.7052, zoom: 9 },
   전남광주통합특별시: { lat: 35.15, lng: 126.95, zoom: 8 }, 대전광역시: { lat: 36.3504, lng: 127.3845, zoom: 10 }, 울산광역시: { lat: 35.5384, lng: 129.3114, zoom: 9 }, 세종특별자치시: { lat: 36.48, lng: 127.289, zoom: 10 },
@@ -68,6 +69,27 @@ const FACILITY_SEARCHES = [
   { id: "shopping", label: "장보기", keyword: "마트 시장", description: "마트·시장과 일상 장보기 동선" },
   { id: "leisure", label: "여가", keyword: "공원 도서관", description: "공원·도서관과 주말 생활권" },
 ] as const;
+const FIELD_GROUPS = ["입지·동선", "주거환경", "동·세대", "비용·가격", "검증·비교"];
+const FIELD_FEATURES: FieldFeature[] = [
+  { id: "region", group: "입지·동선", title: "지역 온라인 임장", information: "상권·교통·학교·병원·공원·유흥시설", value: "동네를 직접 돌지 않고 생활권을 먼저 파악", importance: 5, status: "live", source: "네이버 지도·장소 검색" },
+  { id: "walk", group: "입지·동선", title: "도보 임장", information: "역에서 단지까지 실제 동선과 보행 환경", value: "지도 거리와 실제 체감거리 차이를 확인", importance: 5, status: "beta", source: "네이버 길찾기 연결" },
+  { id: "time", group: "입지·동선", title: "시간대 분석", information: "출근·퇴근·야간 교통과 유동인구", value: "낮과 밤의 지역 분위기 차이를 확인", importance: 5, status: "connect", source: "시간대별 교통·유동인구 원천 필요" },
+  { id: "night", group: "입지·동선", title: "야간 임장", information: "가로등·골목·편의점·보행 동선", value: "밤의 생활환경과 귀가 동선을 확인", importance: 4, status: "connect", source: "공공 조도·현장 제보 데이터 필요" },
+  { id: "commute", group: "입지·동선", title: "Door-to-Door 출퇴근", information: "집에서 회사까지 실제 예상 경로", value: "직선거리 대신 매일 쓰는 생활시간을 비교", importance: 5, status: "live", source: "네이버 지도 경로 검색" },
+  { id: "lifestyle", group: "입지·동선", title: "개인 생활권", information: "헬스장·마트·카페·병원·학교", value: "내 생활패턴에 맞는 입지를 평가", importance: 4, status: "live", source: "선택 지역 장소 검색" },
+  { id: "noise", group: "주거환경", title: "소음 지도", information: "도로·철도·상가·학교 소음", value: "조용한 지역과 동을 선택", importance: 5, status: "connect", source: "환경소음·현장 측정 데이터 필요" },
+  { id: "parking", group: "주거환경", title: "시간대별 주차난", information: "혼잡·이중주차·동별 접근성", value: "실거주 주차 불편을 계약 전에 확인", importance: 5, status: "connect", source: "관리사무소·거주자 제보 필요" },
+  { id: "environment", group: "주거환경", title: "냄새·환경 지도", information: "하수구·음식점·쓰레기·공장 악취", value: "온라인에서 놓치기 쉬운 환경을 확인", importance: 5, status: "connect", source: "환경 민원·인증 현장 제보 필요" },
+  { id: "building", group: "동·세대", title: "동·층·방향 분석", information: "소음·도로거리·앞동거리", value: "같은 단지 안에서 더 나은 동을 판단", importance: 5, status: "beta", source: "실거래 동·층 정보 기반, 방향 데이터 보강 필요" },
+  { id: "view", group: "동·세대", title: "세대별 조망", information: "앞동·산·공원·도로·하늘 개방도", value: "실제 창밖 환경을 계약 전에 예상", importance: 4, status: "connect", source: "3D 건물·세대 방향 데이터 필요" },
+  { id: "sun", group: "동·세대", title: "계절별 일조", information: "시간·동·층·방향별 햇빛", value: "남향 표기보다 정밀하게 채광을 판단", importance: 4, status: "connect", source: "건물 3D·태양 궤적 계산 필요" },
+  { id: "maintenance", group: "비용·가격", title: "관리비 분석", information: "월별 관리비와 주변 단지 비교", value: "매매가에 가려진 실제 주거비용을 확인", importance: 4, status: "connect", source: "K-apt 관리비 데이터 필요" },
+  { id: "price", group: "비용·가격", title: "실거래·가격 분석", information: "실거래·중위가·최고가·평형 보정 가격", value: "현재 매수 가격의 적정성을 판단", importance: 5, status: "live", source: "국토교통부 실거래" },
+  { id: "review", group: "검증·비교", title: "인증 주민 리뷰", information: "주차·층간소음·관리·엘리베이터", value: "실제 거주 경험으로 데이터의 빈틈을 보완", importance: 5, status: "connect", source: "거주 인증·신고 관리 체계 필요" },
+  { id: "report", group: "검증·비교", title: "자동 임장 리포트", information: "장점·단점·주의사항과 표본 근거", value: "많은 데이터를 한 번에 이해", importance: 5, status: "live", source: "현재 실거래 분석 요약" },
+  { id: "compare", group: "검증·비교", title: "A/B/C 단지 비교", information: "교통·가격·주차·소음·학군", value: "후보 단지를 빠르게 세 곳까지 압축", importance: 5, status: "beta", source: "관심 후보·실거래 비교" },
+  { id: "proxy", group: "검증·비교", title: "대리 임장 요청", information: "현장 영상·사진·특정 항목 확인", value: "먼 지역도 필요한 부분만 대신 확인", importance: 5, status: "connect", source: "현장 파트너·거래 보호 체계 필요" },
+];
 const POLICIES = [
   { date: "2026.07.20", tone: "positive", label: "호재", scope: "비아파트·임대", title: "비아파트 공급 보완조치 전면 시행", summary: "토지 확보 지원금 상향과 PF 보증 강화로 오피스텔·도시형생활주택 공급 사업의 초기 자금 부담이 완화됩니다.", url: "https://www.korea.kr/news/policyNewsView.do?newsId=148968416" },
   { date: "2026.07.15", tone: "negative", label: "악재", scope: "분양·신축", title: "기본형건축비 0.77% 인상", summary: "공사비 상승분이 분양가에 반영될 가능성이 있어 신규 주택 구매자의 가격 부담에는 부정적으로 해석됩니다.", url: "https://www.molit.go.kr/portal.do" },
@@ -400,6 +422,8 @@ export default function Home() {
   const [activeSection, setActiveSection] = useState("national"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
   const [selectedMapSido, setSelectedMapSido] = useState("서울특별시"); const [mapFocus, setMapFocus] = useState<MapFocus>("district"); const [selectedBoundaryDong, setSelectedBoundaryDong] = useState("");
   const [savedHomes, setSavedHomes] = useState<SavedHome[]>([]);
+  const [fieldGroup, setFieldGroup] = useState(FIELD_GROUPS[0]); const [fieldFeatureId, setFieldFeatureId] = useState("region");
+  const [commuteDestination, setCommuteDestination] = useState(""); const [lifestyleKeyword, setLifestyleKeyword] = useState("마트");
   const [researchCategory, setResearchCategory] = useState("price"); const [researchTool, setResearchTool] = useState("recent-fall");
   const [communityCategory, setCommunityCategory] = useState("living"); const [communityBoard, setCommunityBoard] = useState("전체");
   const [showStudyWriter, setShowStudyWriter] = useState(false); const [studyTitle, setStudyTitle] = useState(""); const [studyBody, setStudyBody] = useState(""); const [draftSaved, setDraftSaved] = useState(false);
@@ -524,6 +548,12 @@ export default function Home() {
   const subjectPyeongPrice = subjectPerPy.length ? median(subjectPerPy) : 0; const peerPyeongPrice = peerPerPy.length ? median(peerPerPy) : 0; const valuationGap = peerPyeongPrice ? (subjectPyeongPrice / peerPyeongPrice - 1) * 100 : 0;
   const fairPrice = targetArea && peerPyeongPrice ? peerPyeongPrice * (targetArea / 3.3058) : 0; const valuationScore = peerPyeongPrice ? Math.max(0, Math.min(100, Math.round(100 - Math.abs(valuationGap) * 2))) : 0; const valuationLabel = valuationGap <= -5 ? "저평가 구간" : valuationGap >= 5 ? "고평가 구간" : "적정가격 구간";
   const selectedOpportunity = scoredCandidates.find((candidate) => candidate.key === selectedVariantKey); const isSaved = selectedOpportunity ? savedHomes.some((home) => home.id === `${regionCode}|${selectedOpportunity.key}`) : false;
+  const activeFieldFeature = FIELD_FEATURES.find((feature) => feature.id === fieldFeatureId) || FIELD_FEATURES[0];
+  const fieldGroupFeatures = FIELD_FEATURES.filter((feature) => feature.group === fieldGroup);
+  const fieldMapQuery = `${activeRegion.sido} ${activeRegion.sigungu} ${selectedDong !== "all" ? selectedDong : ""} ${selectedProperty?.name || ""}`.replace(/\s+/g, " ").trim();
+  const fieldMapUrl = `https://map.naver.com/p/search/${encodeURIComponent(fieldMapQuery)}`;
+  const lifestyleUrl = `https://map.naver.com/p/search/${encodeURIComponent(`${fieldMapQuery} ${lifestyleKeyword}`)}`;
+  const commuteUrl = commuteDestination.trim() ? `https://map.naver.com/p/search/${encodeURIComponent(`${fieldMapQuery} ${commuteDestination.trim()} 길찾기`)}` : "";
   const chooseRegion = useCallback((region: Region, scrollToTop = true) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedMapSido(region.sido); setMapFocus("district"); setSelectedBoundaryDong(""); setSelectedDong("all"); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setSubmittedQuery(""); setQuery(""); if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
   const chooseMapSido = useCallback((sido: string) => { setSelectedMapSido(sido); setMapFocus("sido"); setSelectedBoundaryDong(""); }, []);
   const chooseMapRegion = useCallback((region: Region) => chooseRegion(region, false), [chooseRegion]);
@@ -601,6 +631,25 @@ export default function Home() {
           </div> : <div className="facility-empty"><span>01</span><b>단지 선택</b><i>→</i><span>02</span><b>정확한 주소 좌표 확인</b><i>→</i><span>03</span><b>주변 생활시설 비교</b></div>}
           <p className="facility-note">단지 위치는 네이버 Maps Geocoding으로 확인합니다. 시설명·거리·통학구역은 자동 추정하지 않으며, 분야별 링크에서 최신 지도 라벨과 실제 이동 동선을 다시 확인하세요.</p>
         </section>
+      </div>
+    </section>
+
+    <section className="field-intelligence" id="field">
+      <header className="field-heading"><div><span>온라인 임장</span><h2>집을 보러 가기 전에,<br/>생활부터 시뮬레이션하세요.</h2><p>현재 선택한 지역과 단지를 기준으로 이동·환경·세대·비용을 한 흐름에서 점검합니다.</p></div><div className="field-status-summary"><b>{FIELD_FEATURES.filter((feature) => feature.status === "live").length}<small>바로 사용</small></b><b>{FIELD_FEATURES.filter((feature) => feature.status === "beta").length}<small>베타</small></b><b>{FIELD_FEATURES.filter((feature) => feature.status === "connect").length}<small>데이터 연결</small></b></div></header>
+      <div className="field-context"><span>분석 위치</span><b>{fieldMapQuery}</b><small>상단 지역·단지 선택과 자동 동기화됩니다.</small></div>
+      <div className="field-shell">
+        <nav className="field-groups" aria-label="온라인 임장 분류">{FIELD_GROUPS.map((group) => <button key={group} className={fieldGroup === group ? "active" : ""} onClick={() => { setFieldGroup(group); setFieldFeatureId(FIELD_FEATURES.find((feature) => feature.group === group)?.id || "region"); }}><span>{group}</span><b>{FIELD_FEATURES.filter((feature) => feature.group === group).length}</b></button>)}</nav>
+        <div className="field-feature-list">{fieldGroupFeatures.map((feature) => <button key={feature.id} className={fieldFeatureId === feature.id ? "active" : ""} onClick={() => setFieldFeatureId(feature.id)}><div><b>{feature.title}</b><span>{feature.information}</span></div><em className={feature.status}>{feature.status === "live" ? "사용 가능" : feature.status === "beta" ? "베타" : "연결 예정"}</em><i className="importance-meter" aria-label={`중요도 5점 중 ${feature.importance}점`}>{[1,2,3,4,5].map((point) => <span key={point} className={point <= feature.importance ? "on" : ""} />)}</i></button>)}</div>
+        <article className="field-workspace">
+          <header><span className={activeFieldFeature.status}>{activeFieldFeature.status === "live" ? "LIVE" : activeFieldFeature.status === "beta" ? "BETA" : "DATA CONNECT"}</span><small>{activeFieldFeature.source}</small><h3>{activeFieldFeature.title}</h3><p>{activeFieldFeature.value}</p></header>
+          {(activeFieldFeature.id === "region" || activeFieldFeature.id === "walk") && <div className="field-action-panel"><b>{fieldMapQuery}</b><p>실제 지도에서 상권과 역·단지 동선을 확인합니다. 도보 시간은 경로를 선택한 뒤 최신 길찾기 결과로 검증하세요.</p><a href={fieldMapUrl} target="_blank" rel="noreferrer">네이버 지도에서 임장 시작 ↗</a></div>}
+          {activeFieldFeature.id === "commute" && <div className="field-action-panel"><label><span>회사·학교·자주 가는 곳</span><input value={commuteDestination} onChange={(event) => setCommuteDestination(event.target.value)} placeholder="예: 광화문역" /></label>{commuteUrl ? <a href={commuteUrl} target="_blank" rel="noreferrer">Door-to-Door 경로 확인 ↗</a> : <button disabled>목적지를 입력해주세요</button>}<small>출발지는 현재 선택한 단지 또는 지역입니다.</small></div>}
+          {activeFieldFeature.id === "lifestyle" && <div className="field-action-panel"><div className="lifestyle-chips">{["마트","병원","학교","헬스장","카페","공원"].map((keyword) => <button key={keyword} className={lifestyleKeyword === keyword ? "active" : ""} onClick={() => setLifestyleKeyword(keyword)}>{keyword}</button>)}</div><b>{fieldMapQuery} 주변 {lifestyleKeyword}</b><a href={lifestyleUrl} target="_blank" rel="noreferrer">생활권 지도에서 확인 ↗</a></div>}
+          {activeFieldFeature.id === "price" && <div className="field-facts"><div><span>최근 3개월 거래</span><strong>{latestQuarterTrades.length.toLocaleString()}건</strong></div><div><span>분기 중위가격</span><strong>{formatPrice(median(latestQuarterTrades.map((trade) => trade.amount)))}</strong></div><div><span>유사 면적 대비</span><strong>{selectedKey && peerPyeongPrice ? `${valuationGap >= 0 ? "+" : ""}${valuationGap.toFixed(1)}%` : "단지 선택 필요"}</strong></div><a href="#chart">상세 가격 차트 보기 ↓</a></div>}
+          {activeFieldFeature.id === "report" && <div className="field-report"><h4>현재 실거래 자동 요약</h4><ul><li>{activeRegion.sigungu}에서 최근 3개월 신고 거래 {latestQuarterTrades.length.toLocaleString()}건을 확인했습니다.</li><li>{propertyRows.length ? `동·평형 조건 ${propertyRows.length.toLocaleString()}개를 같은 기준으로 비교할 수 있습니다.` : "현재 조건은 비교 가능한 동·평형 표본이 부족합니다."}</li><li>{selectedKey && peerPyeongPrice ? `선택 후보는 유사 면적 지역 중위보다 ${Math.abs(valuationGap).toFixed(1)}% ${valuationGap > 0 ? "높습니다." : "낮습니다."}` : "단지를 선택하면 유사 면적 실거래와 가격 차이를 계산합니다."}</li></ul><small>생성형 문장이 아니라 현재 화면의 실거래 계산값을 요약합니다.</small></div>}
+          {activeFieldFeature.id === "compare" && <div className="field-compare">{savedHomes.length ? savedHomes.slice(0,3).map((home) => <div key={home.id}><b>{home.name}</b><span>{home.region} · {home.area}평</span><strong>{home.score}점</strong></div>) : <p>가격 차트에서 관심 후보를 담으면 최대 3개 단지를 한눈에 비교할 수 있습니다.</p>}<a href="#chart">비교 후보 고르기 ↓</a></div>}
+          {!(["region","walk","commute","lifestyle","price","report","compare"].includes(activeFieldFeature.id)) && <div className="field-connect"><span>{activeFieldFeature.information}</span><strong>{activeFieldFeature.source} 연결이 필요합니다.</strong><p>현장·센서·공식 원천이 확보되기 전에는 그럴듯한 추정 점수를 표시하지 않습니다. 데이터 출처와 갱신일을 확인한 뒤 같은 화면에 연결합니다.</p><div><i />원천 검증 <i />주소·동 매칭 <i />사용자 교차 확인</div></div>}
+        </article>
       </div>
     </section>
 
