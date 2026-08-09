@@ -214,3 +214,45 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 /* Capital-region context and a dedicated top label layer keep every place name readable. */
 .capital-context-region{fill:#e9eef3;stroke:#c8d3dd;stroke-width:1.2;vector-effect:non-scaling-stroke}.capital-context-region.context-11{fill:#f3f6f9}.capital-context-labels text{fill:#77899a;font-family:"Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif;font-size:14px;font-weight:800;paint-order:stroke;stroke:#f4f7fa;stroke-width:5px;stroke-linejoin:round}.administrative-label-layer{position:relative;z-index:3;pointer-events:none}.administrative-label.selected .administrative-label-name{fill:#0b4f88;stroke:#fff;stroke-width:4px!important}.level-sido .administrative-label-name{font-size:14px!important}.level-sido .administrative-label-line{stroke:#6e879a;stroke-width:1}.level-sido .administrative-map-svg{isolation:isolate}
 @media(max-width:760px){.capital-context-labels text{font-size:18px}.level-sido .administrative-label-name{font-size:18px!important}.level-district .administrative-label-name{font-size:11px!important}}
+.watch-scroll > .watch-more {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 14px;
+  border: 0;
+  border-top: 1px solid #dfe3e8;
+  background: #f7faff;
+  color: #0066cc;
+  text-align: left;
+}
+
+.watch-scroll > .watch-more:hover {
+  background: #eaf4ff;
+}
+
+.watch-scroll > .watch-more b {
+  font-size: 12px;
+}
+
+.watch-scroll > .watch-more span {
+  color: #667085;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.watch-scroll > .watch-more:focus-visible {
+  outline: 2px solid #0071e3;
+  outline-offset: -3px;
+}
+
+@media (max-width: 760px) {
+  .watch-scroll > .watch-more {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
