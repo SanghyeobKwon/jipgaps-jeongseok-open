@@ -41,4 +41,6 @@ yarn-error.log*
 /outputs/
 /work/
 /.site-package-*.tar.gz
+/.openai/package-*/
+/.openai/site-*.tar.gz
 *.tsbuildinfo

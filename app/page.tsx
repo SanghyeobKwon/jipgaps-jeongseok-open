@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Baby, Building2, BusFront, Drama, Dumbbell, Film, GraduationCap, HeartPulse, Hospital, Landmark, Library, Mail, MapPin, Pill, School, ShoppingBasket, ShoppingCart, Stethoscope, Store, TrainFront, Trees, Trophy, WashingMachine, Waves, type LucideIcon } from "lucide-react";
 import regions from "./data/regions.json";
 
 type PropertyType = "apt" | "rowhouse" | "house" | "officetel" | "commercial" | "factory";
@@ -18,8 +19,31 @@ type CommunityGuide = { id: string; category: string; board: string; tag: string
 type FieldFeature = { id: string; group: string; title: string; information: string; value: string; importance: 4 | 5; status: "live" | "beta" | "connect"; source: string };
 type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAddress: string };
 type PropertyMapLocation = PropertyLocation & { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; propertyType: PropertyType };
-type NearbyPlace = { id: string; name: string; category: string; distance: number; walkingMinutes: number; lat: number; lng: number; detail: string };
-const NEARBY_CATEGORIES = ["교통", "교육", "의료", "장보기", "여가", "생활"] as const;
+type NearbyPlace = { id: string; name: string; category: string; subCategory: string; distance: number; walkingMinutes: number; lat: number; lng: number; detail: string };
+type FacilityMeta = { label: string; description: string; color: string; icon: LucideIcon; subtypes: string[] };
+const NEARBY_CATEGORIES: FacilityMeta[] = [
+  { label: "교통", description: "역·터미널", color: "#6d3ed1", icon: TrainFront, subtypes: ["지하철역", "기차역", "버스터미널"] },
+  { label: "교육", description: "보육·학교", color: "#2463c7", icon: GraduationCap, subtypes: ["어린이집", "유치원", "초등학교", "중학교", "고등학교"] },
+  { label: "의료", description: "병원·약국", color: "#c83d4f", icon: HeartPulse, subtypes: ["종합병원", "병·의원", "약국", "치과"] },
+  { label: "장보기", description: "마트·시장", color: "#15805d", icon: ShoppingBasket, subtypes: ["대형마트", "슈퍼마켓", "편의점", "전통시장"] },
+  { label: "문화·여가", description: "영화·공원", color: "#b66716", icon: Film, subtypes: ["영화관", "공연장", "공원", "도서관", "박물관"] },
+  { label: "운동", description: "체육·운동", color: "#087f8c", icon: Dumbbell, subtypes: ["헬스장", "수영장", "체육관"] },
+  { label: "생활", description: "금융·행정", color: "#526173", icon: Landmark, subtypes: ["은행", "우체국", "주민센터", "세탁소"] },
+];
+const FACILITY_SUBTYPE_ICONS: Record<string, LucideIcon> = {
+  "지하철역": TrainFront, "기차역": TrainFront, "버스터미널": BusFront,
+  "어린이집": Baby, "유치원": School, "초등학교": School, "중학교": School, "고등학교": GraduationCap,
+  "종합병원": Hospital, "병·의원": Stethoscope, "약국": Pill, "치과": HeartPulse,
+  "대형마트": ShoppingCart, "슈퍼마켓": Store, "편의점": Store, "전통시장": ShoppingBasket,
+  "영화관": Film, "공연장": Drama, "공원": Trees, "도서관": Library, "박물관": Landmark,
+  "헬스장": Dumbbell, "수영장": Waves, "체육관": Trophy,
+  "은행": Landmark, "우체국": Mail, "주민센터": Building2, "세탁소": WashingMachine,
+};
+
+function FacilityIcon({ name, size = 16 }: { name: string; size?: number }) {
+  const category = NEARBY_CATEGORIES.find((item) => item.label === name); const Icon = FACILITY_SUBTYPE_ICONS[name] || category?.icon || MapPin;
+  return <Icon size={size} strokeWidth={1.9} aria-hidden="true" />;
+}
 type MapFocus = "national" | "sido" | "district" | "buildings" | "detail";
 type GeoJsonFeature = { type: "Feature"; properties: Record<string, unknown>; geometry: Record<string, unknown> };
 type GeoJsonFeatureCollection = { type: "FeatureCollection"; features: GeoJsonFeature[] };
@@ -257,8 +281,8 @@ function NaverPlaceMap({ location, title, places, active }: { location: Property
       overlays.push(new maps.Circle({ map, center, radius: 1000, strokeColor: "#0071e3", strokeOpacity: .34, strokeWeight: 1, fillColor: "#0071e3", fillOpacity: .035 }));
       overlays.push(new maps.Circle({ map, center, radius: 500, strokeColor: "#0071e3", strokeOpacity: .72, strokeWeight: 2, fillColor: "#0071e3", fillOpacity: .065 }));
       overlays.push(new maps.Marker({ position: center, map, title, icon: { content: `<div class="nearby-home-pin"><b>${escapeMapHtml(title)}</b><span>선택 단지</span></div>`, anchor: new maps.Point(42, 42) }, zIndex: 100 }));
-      const colors: Record<string, string> = { "교통": "#7c3aed", "교육": "#2563eb", "의료": "#dc2626", "장보기": "#059669", "여가": "#d97706" };
-      places.slice(0, 24).forEach((place) => { const position = new maps.LatLng(place.lat, place.lng); overlays.push(new maps.Marker({ position, map, title: `${place.name} · ${place.distance}m`, icon: { content: `<div class="nearby-place-pin" style="--pin:${colors[place.category] || "#526173"}"><i></i><b>${escapeMapHtml(place.name)}</b><span>${place.distance}m</span></div>`, anchor: new maps.Point(12, 12) }, zIndex: Math.max(10, 70 - Math.round(place.distance / 30)) })); });
+      const colors = Object.fromEntries(NEARBY_CATEGORIES.map((category) => [category.label, category.color]));
+      places.slice(0, 28).forEach((place) => { const position = new maps.LatLng(place.lat, place.lng); overlays.push(new maps.Marker({ position, map, title: `${place.subCategory} · ${place.name} · ${place.distance}m`, icon: { content: `<div class="nearby-place-pin" style="--pin:${colors[place.category] || "#526173"}"><i></i><b>${escapeMapHtml(place.subCategory || place.category)} · ${escapeMapHtml(place.name)}</b><span>${place.distance}m</span></div>`, anchor: new maps.Point(12, 12) }, zIndex: Math.max(10, 70 - Math.round(place.distance / 30)) })); });
       setMapError("");
     }).catch((error) => { if (!disposed) setMapError(error instanceof Error ? error.message : "지도를 표시하지 못했습니다."); });
     return () => { disposed = true; overlays.forEach((overlay) => overlay.setMap(null)); map?.destroy?.(); };
@@ -331,9 +355,11 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
   const boundaryUrl = focus === "national" ? "/data/boundaries/sido.json" : focus === "sido" ? `/data/boundaries/sgg/${SIDO_CODES[selectedSido]}.json` : `/data/boundaries/emd/${activeRegion.code}.json`;
   useEffect(() => {
     if (!active) return;
-    const controller = new AbortController(); setData(null); setBoundaryError("");
-    fetch(boundaryUrl, { signal: controller.signal }).then((response) => { if (!response.ok) throw new Error("행정경계 데이터를 불러오지 못했습니다."); return response.json(); }).then(setData).catch((error) => { if (error instanceof Error && error.name !== "AbortError") setBoundaryError(error.message); });
-    return () => controller.abort();
+    const controller = new AbortController(); const timer = window.setTimeout(() => {
+      setData(null); setBoundaryError("");
+      fetch(boundaryUrl, { signal: controller.signal }).then((response) => { if (!response.ok) throw new Error("행정경계 데이터를 불러오지 못했습니다."); return response.json(); }).then(setData).catch((error) => { if (error instanceof Error && error.name !== "AbortError") setBoundaryError(error.message); });
+    }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [active, boundaryRetry, boundaryUrl]);
   const boundaries = useMemo(() => data ? projectAdministrativeBoundaries(data) : [], [data]);
   const stageTitle = focus === "national" ? "대한민국 전체" : focus === "sido" ? selectedSido : `${activeRegion.sido} ${activeRegion.sigungu}`;
@@ -510,7 +536,7 @@ export default function Home() {
   const [communityCategory, setCommunityCategory] = useState("living"); const [communityBoard, setCommunityBoard] = useState("전체");
   const [showStudyWriter, setShowStudyWriter] = useState(false); const [studyTitle, setStudyTitle] = useState(""); const [studyBody, setStudyBody] = useState(""); const [draftSaved, setDraftSaved] = useState(false);
   const [propertyLocation, setPropertyLocation] = useState<PropertyLocation | null>(null); const [locationLoading, setLocationLoading] = useState(false); const [locationError, setLocationError] = useState("");
-  const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]); const [nearbyLoading, setNearbyLoading] = useState(false); const [nearbyError, setNearbyError] = useState(""); const [nearbyCategory, setNearbyCategory] = useState("전체");
+  const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]); const [nearbyLoading, setNearbyLoading] = useState(false); const [nearbyError, setNearbyError] = useState(""); const [nearbyCategory, setNearbyCategory] = useState("전체"); const [nearbySubtype, setNearbySubtype] = useState("전체");
   const [buildingLocations, setBuildingLocations] = useState<PropertyMapLocation[]>([]); const [buildingsLoading, setBuildingsLoading] = useState(false); const [buildingsError, setBuildingsError] = useState("");
   const activeRegion = REGIONS.find((item) => item.code === regionCode) || REGIONS[0];
 
@@ -609,14 +635,15 @@ export default function Home() {
   useEffect(() => {
     const controller = new AbortController(); const timer = window.setTimeout(() => {
       if (!propertyLocation) { setNearbyPlaces([]); setNearbyError(""); return; }
-      setNearbyLoading(true); setNearbyError(""); setNearbyCategory("전체");
+      setNearbyLoading(true); setNearbyError(""); setNearbyCategory("전체"); setNearbySubtype("전체");
       const nearbyArea = `${placeRegion} ${placePropertyDong}`.trim();
-      fetch(`/api/nearby?lat=${propertyLocation.lat}&lng=${propertyLocation.lng}&area=${encodeURIComponent(nearbyArea)}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "주변 시설을 불러오지 못했습니다."); return data; }).then((data) => setNearbyPlaces(data.places || [])).catch((reason) => { if (reason.name !== "AbortError") setNearbyError(reason.message); }).finally(() => { if (!controller.signal.aborted) setNearbyLoading(false); });
+      fetch(`/api/nearby?taxonomy=2&lat=${propertyLocation.lat}&lng=${propertyLocation.lng}&area=${encodeURIComponent(nearbyArea)}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "주변 시설을 불러오지 못했습니다."); return data; }).then((data) => setNearbyPlaces(data.places || [])).catch((reason) => { if (reason.name !== "AbortError") setNearbyError(reason.message); }).finally(() => { if (!controller.signal.aborted) setNearbyLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [propertyLocation, placeRegion, placePropertyDong]);
   const latestQuarterTrades = scopedTrades.filter((trade) => latestQuarterMonths.includes(trade.date.slice(0, 7)));
-  const nearbyCategories = ["전체", ...NEARBY_CATEGORIES]; const visibleNearbyPlaces = nearbyCategory === "전체" ? nearbyPlaces : nearbyPlaces.filter((place) => place.category === nearbyCategory);
+  const nearbyCategories = ["전체", ...NEARBY_CATEGORIES.map((category) => category.label)]; const activeFacilityCategory = NEARBY_CATEGORIES.find((category) => category.label === nearbyCategory); const nearbySubtypeOptions = activeFacilityCategory ? ["전체", ...activeFacilityCategory.subtypes] : [];
+  const visibleNearbyPlaces = nearbyPlaces.filter((place) => (nearbyCategory === "전체" || place.category === nearbyCategory) && (nearbySubtype === "전체" || place.subCategory === nearbySubtype));
   const nearbyWithin500 = nearbyPlaces.filter((place) => place.distance <= 500).length;
   const risingCount = propertyRows.filter((property) => property.change !== null && property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change !== null && property.change < 0).length;
   const visibleProperties = useMemo(() => propertyRows.filter((property) => property.quarterCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? (b.change ?? -Infinity) - (a.change ?? -Infinity) : buildingSort === "fall" ? (a.change ?? Infinity) - (b.change ?? Infinity) : b.quarterCount - a.quarterCount), [propertyRows, buildingSort, minVolume]);
@@ -743,12 +770,16 @@ export default function Home() {
           </> : <div className="valuation-empty"><p>AREA-ADJUSTED VALUE</p><strong>내가 살 집의 가격은 적정할까?</strong><span>왼쪽에서 집 후보를 선택하면 같은 지역의 유사 면적 거래와 비교해 저평가·적정·고평가 구간을 보여드립니다.</span></div>}
         </section>
         <section className="facility-panel">
-          <header><div><p>NEARBY LIFE MAP</p><h2>{selectedProperty ? `${selectedProperty.name}에서 얼마나 가까울까?` : "집 하나를 고르면 주변 생활권이 자동으로 열립니다"}</h2><span>{selectedProperty ? `${placeRegion} ${placePropertyDong} · 500m·1km 반경 안의 교통·교육·의료·장보기·여가 시설` : "왼쪽 목록에서 집을 선택하면 별도 검색 없이 주변 시설과 거리를 계산합니다."}</span></div>{selectedProperty && <div><b>{nearbyPlaces.length}<small>곳</small></b><span>1km 안 시설</span><em>자동 거리 계산</em></div>}</header>
-          {selectedProperty ? <><div className="facility-radar-summary" aria-label="생활권 반경별 편의시설 집계"><div className="radar-totals"><span><b>{nearbyWithin500}</b><small>500m 안</small></span><span><b>{nearbyPlaces.length}</b><small>1km 안</small></span></div><div className="radar-category-counts">{NEARBY_CATEGORIES.map((category) => { const inside500 = nearbyPlaces.filter((place) => place.category === category && place.distance <= 500).length; const inside1000 = nearbyPlaces.filter((place) => place.category === category).length; return <button key={category} className={nearbyCategory === category ? "active" : ""} onClick={() => setNearbyCategory(category)}><span>{category}</span><b>{inside500}<small> / {inside1000}</small></b><em>500m / 1km</em></button>; })}</div></div><div className="facility-layout">
+          <header><div><p>NEARBY LIFE MAP</p><h2>{selectedProperty ? `${selectedProperty.name}에서 어떤 생활을 누릴 수 있을까?` : "집 하나를 고르면 주변 생활권이 자동으로 열립니다"}</h2><span>{selectedProperty ? `${placeRegion} ${placePropertyDong} · 7개 생활 영역과 영화관·공연장·학교·병원 등 28개 세부 유형` : "왼쪽 목록에서 집을 선택하면 별도 검색 없이 주변 시설과 거리를 계산합니다."}</span></div>{selectedProperty && <div><b>{nearbyPlaces.length}<small>곳</small></b><span>1km 안 시설</span><em>세부 유형 분석</em></div>}</header>
+          {selectedProperty ? <><div className="facility-radar-summary" aria-label="생활권 반경별 편의시설 집계"><div className="radar-totals"><span><b>{nearbyWithin500}</b><small>500m 안</small></span><span><b>{nearbyPlaces.length}</b><small>1km 안</small></span></div><div className="radar-category-counts">{NEARBY_CATEGORIES.map((category) => { const inside500 = nearbyPlaces.filter((place) => place.category === category.label && place.distance <= 500).length; const inside1000 = nearbyPlaces.filter((place) => place.category === category.label).length; const CategoryIcon = category.icon; return <button key={category.label} className={nearbyCategory === category.label ? "active" : ""} aria-pressed={nearbyCategory === category.label} style={{ "--facility-color": category.color } as React.CSSProperties} onClick={() => { setNearbyCategory(category.label); setNearbySubtype("전체"); }}><i><CategoryIcon size={16} strokeWidth={1.9} aria-hidden="true" /></i><span>{category.label}<small>{category.description}</small></span><b>{inside500}<small> / {inside1000}</small></b><em>500m / 1km</em></button>; })}</div></div><div className="facility-layout">
             <div className="facility-map">{locationLoading ? <div className="facility-state"><i />단지 좌표를 확인하고 있습니다.</div> : propertyLocation ? <><NaverPlaceMap location={propertyLocation} title={selectedProperty.name} places={visibleNearbyPlaces} active={activeSection === "chart"} /><span className="facility-address">{propertyLocation.roadAddress || propertyLocation.jibunAddress || placeAddressQuery}</span><div className="radius-key"><span><i />500m 생활권</span><span><i />1km 생활권</span></div></> : <div className="facility-state error"><b>지도 위치를 표시하지 못했습니다.</b><span>{locationError || "선택 지역과 일치하는 주소 좌표가 없습니다."}</span></div>}</div>
-            <div className="nearby-browser"><div className="nearby-tabs">{nearbyCategories.map((category) => <button key={category} className={nearbyCategory === category ? "active" : ""} onClick={() => setNearbyCategory(category)}>{category}<small>{category === "전체" ? nearbyPlaces.length : nearbyPlaces.filter((place) => place.category === category).length}</small></button>)}</div>{nearbyLoading ? <div className="nearby-state"><i />1km 안 생활시설을 찾고 있습니다.</div> : nearbyError ? <div className="nearby-state error"><b>주변 시설을 불러오지 못했습니다.</b><span>{nearbyError}</span></div> : visibleNearbyPlaces.length ? <div className="nearby-list">{visibleNearbyPlaces.map((place) => <article key={place.id}><em>{place.category}</em><div><b>{place.name}</b><span>{place.distance <= 500 ? "500m 생활권" : "1km 생활권"}</span></div><strong>{place.distance.toLocaleString()}m<small>직선거리</small></strong><p>도보 약 {place.walkingMinutes}분<small>경로 보정 추정</small></p></article>)}</div> : <div className="nearby-state"><b>이 범위에서 등록된 시설이 없습니다.</b><span>다른 분류를 선택하거나 지도의 최신 등록 상태를 확인해주세요.</span></div>}</div>
+            <div className="nearby-browser">
+              <div className="nearby-tabs">{nearbyCategories.map((category) => { const meta = NEARBY_CATEGORIES.find((item) => item.label === category); return <button key={category} className={nearbyCategory === category ? "active" : ""} aria-pressed={nearbyCategory === category} onClick={() => { setNearbyCategory(category); setNearbySubtype("전체"); }}><FacilityIcon name={category} size={14} /><span>{category}</span><small>{category === "전체" ? nearbyPlaces.length : nearbyPlaces.filter((place) => place.category === category).length}</small>{meta && <em>{meta.description}</em>}</button>; })}</div>
+              {activeFacilityCategory && <div className="nearby-subtype-tabs" aria-label={`${activeFacilityCategory.label} 세부 유형`}>{nearbySubtypeOptions.map((subtype) => <button key={subtype} className={nearbySubtype === subtype ? "active" : ""} aria-pressed={nearbySubtype === subtype} onClick={() => setNearbySubtype(subtype)}><FacilityIcon name={subtype === "전체" ? activeFacilityCategory.label : subtype} size={14} /><span>{subtype === "전체" ? `${activeFacilityCategory.label} 전체` : subtype}</span><small>{subtype === "전체" ? nearbyPlaces.filter((place) => place.category === nearbyCategory).length : nearbyPlaces.filter((place) => place.category === nearbyCategory && place.subCategory === subtype).length}</small></button>)}</div>}
+              {nearbyLoading ? <div className="nearby-state"><i />1km 안 생활시설을 세부 유형별로 찾고 있습니다.</div> : nearbyError ? <div className="nearby-state error"><b>주변 시설을 불러오지 못했습니다.</b><span>{nearbyError}</span></div> : visibleNearbyPlaces.length ? <div className="nearby-list">{visibleNearbyPlaces.map((place) => { const meta = NEARBY_CATEGORIES.find((item) => item.label === place.category); return <article key={place.id} style={{ "--facility-color": meta?.color || "#526173" } as React.CSSProperties}><i className="nearby-place-icon"><FacilityIcon name={place.subCategory || place.category} size={17} /></i><div><em>{place.subCategory || place.category}</em><b>{place.name}</b><span>{place.category} · {place.distance <= 500 ? "500m 생활권" : "1km 생활권"}</span></div><strong>{place.distance.toLocaleString()}m<small>직선거리</small></strong><p>도보 약 {place.walkingMinutes}분<small>경로 보정 추정</small></p></article>; })}</div> : <div className="nearby-state"><b>{nearbySubtype === "전체" ? "이 범위에서 등록된 시설이 없습니다." : `1km 안에 확인된 ${nearbySubtype}이 없습니다.`}</b><span>0건도 생활권 판단에 필요한 결과입니다. 다른 세부 유형을 함께 비교해보세요.</span></div>}
+            </div>
           </div></> : <div className="facility-empty"><span>01</span><b>단지 선택</b><i>→</i><span>02</span><b>정확한 주소 좌표 확인</b><i>→</i><span>03</span><b>주변 생활시설 비교</b></div>}
-          <p className="facility-note">단지 좌표와 배경 지도는 네이버 Maps, 주변 시설은 NAVER API HUB 지역 검색을 사용합니다. 카테고리별 상위 검색 결과를 좌표 거리로 재분류한 집계이며, 거리는 두 좌표 사이의 직선거리입니다. 도보 시간은 경로 굴곡을 20% 반영한 참고 추정값으로 실제 길찾기 시간과 다를 수 있습니다.</p>
+          <p className="facility-note">단지 좌표와 배경 지도는 네이버 Maps, 주변 시설은 NAVER API HUB 지역 검색을 사용합니다. 7개 생활 영역을 영화관·공연장·공원·학교·병원·마트 등 28개 유형으로 나눈 결과이며, 거리는 직선거리입니다. 도보 시간은 경로 굴곡을 20% 반영한 참고값으로 실제 길찾기와 다를 수 있습니다.</p>
         </section>
       </div>
     </section>
