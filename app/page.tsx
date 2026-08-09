@@ -135,8 +135,8 @@ export default function Home() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/overview?type=${type}&basis=quarter-v1`, { signal: controller.signal }).then((response) => response.json()).then((data) => { if (data.markets) { setMarkets(data.markets); setMarketMonth(data.month); } }).catch(() => undefined);
-    return () => controller.abort();
+    const timer = window.setTimeout(() => { fetch(`/api/overview?type=${type}&basis=quarter-v1`, { signal: controller.signal }).then((response) => response.json()).then((data) => { if (data.markets) { setMarkets(data.markets); setMarketMonth(data.month); } }).catch(() => undefined); }, 3000);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [type]);
 
   useEffect(() => {

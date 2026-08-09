@@ -44,8 +44,8 @@ export async function GET(request: Request) {
     const requested = new URL(request.url).searchParams.get("type") || "apt";
     if (!(requested in SERVICES)) return Response.json({ error: "지원하지 않는 부동산 유형입니다." }, { status: 400 });
     const type = requested as PropertyType; const quarterMonths = completedMonths(); const previousMonths = quarterMonths.slice(0, 3); const currentMonths = quarterMonths.slice(3); const results = [];
-    for (let index = 0; index < MARKETS.length; index += 3) {
-      const batch = await Promise.all(MARKETS.slice(index, index + 3).map(async ([short, sido, code]) => {
+    for (let index = 0; index < MARKETS.length; index += 2) {
+      const batch = await Promise.all(MARKETS.slice(index, index + 2).map(async ([short, sido, code]) => {
         const monthly = await Promise.all(quarterMonths.map((month) => fetchMarket(type, code, month))); const previous = monthly.slice(0, 3).flat(); const current = monthly.slice(3).flat();
         const before = previous.length ? median(previous) : 0; const latest = current.length ? median(current) : 0;
         return { short, sido, code, count: current.length, median: latest, change: previous.length >= 3 && current.length >= 3 && before && latest ? (latest / before - 1) * 100 : 0 };
