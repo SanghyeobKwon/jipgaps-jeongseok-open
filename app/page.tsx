@@ -11,6 +11,11 @@ type ChartPoint = { month: string; price: number; average: number; volume: numbe
 type OverviewMarket = { short: string; sido: string; code: string; count: number; median: number; change: number };
 type PolicyItem = { date: string; tone: string; label: string; scope: string; title: string; summary: string; url: string };
 type SavedHome = { id: string; name: string; region: string; area: number; price: number; score: number; savedAt: string };
+type ResearchMode = "live" | "connect";
+type ResearchTool = { id: string; label: string; description: string; mode: ResearchMode; source: string };
+type ResearchCategory = { id: string; number: string; label: string; short: string; description: string; tools: ResearchTool[] };
+type CommunityCategory = { id: string; number: string; label: string; description: string; boards: string[] };
+type CommunityGuide = { id: string; category: string; board: string; tag: string; title: string; summary: string; evidence: string };
 
 const SIDO_ORDER = ["서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도", "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도"];
 const SEOUL_PRIORITY = ["강남구", "서초구", "송파구", "용산구", "성동구", "마포구", "영등포구", "강동구", "양천구", "광진구", "동작구", "종로구", "중구", "서대문구", "강서구", "관악구", "동대문구", "성북구", "은평구", "노원구", "구로구", "금천구", "중랑구", "도봉구", "강북구"];
@@ -33,7 +38,7 @@ const PROPERTY_TYPES: { key: PropertyType; label: string }[] = [
   { key: "commercial", label: "상가·업무" }, { key: "factory", label: "공장·창고" },
 ];
 const PERIODS = [{ label: "3개월", value: 3 }, { label: "6개월", value: 6 }, { label: "1년", value: 12 }, { label: "3년", value: 36 }, { label: "5년", value: 60 }];
-const NAV_ITEMS = [{ id: "national", label: "살 집 찾기" }, { id: "market", label: "월간 시장" }, { id: "chart", label: "상세 차트" }, { id: "map", label: "전국 지도" }, { id: "transactions", label: "거래 내역" }, { id: "policy", label: "정책 레이더" }];
+const NAV_ITEMS = [{ id: "national", label: "살 집 찾기" }, { id: "chart", label: "상세 차트" }, { id: "research", label: "리서치" }, { id: "map", label: "전국 지도" }, { id: "community", label: "커뮤니티" }, { id: "policy", label: "정책" }];
 const MAP_POSITIONS: Record<string, [number, number]> = { 서울: [29, 20], 부산: [65, 66], 대구: [56, 53], 인천: [20, 21], 광주: [29, 63], 대전: [42, 43], 울산: [70, 54], 세종: [34, 36], 경기: [36, 25], 강원: [58, 12], 충북: [45, 33], 충남: [27, 41], 전북: [31, 52], 전남: [25, 73], 경북: [67, 34], 경남: [50, 64], 제주: [25, 93] };
 const KOREA_BOUNDARY_SVG = "https://raw.githubusercontent.com/statgarten/maps/main/svg/simple/%EC%A0%84%EA%B5%AD_%EC%8B%9C%EB%8F%84_%EA%B2%BD%EA%B3%84.svg";
 const QUICK_REGIONS = [{ code: "11680", label: "강남구" }, { code: "11650", label: "서초구" }, { code: "11710", label: "송파구" }, { code: "11200", label: "성동구" }, { code: "41135", label: "분당구" }, { code: "26350", label: "해운대구" }];
@@ -42,6 +47,76 @@ const POLICIES = [
   { date: "2026.07.15", tone: "negative", label: "악재", scope: "분양·신축", title: "기본형건축비 0.77% 인상", summary: "공사비 상승분이 분양가에 반영될 가능성이 있어 신규 주택 구매자의 가격 부담에는 부정적으로 해석됩니다.", url: "https://www.molit.go.kr/portal.do" },
   { date: "2026.05.12", tone: "neutral", label: "중립", scope: "토지거래허가", title: "세입자 있는 주택 실거주 유예 확대", summary: "임대 중 주택의 매도 편의는 개선되지만 갭투자 제한 원칙은 유지돼 수요·공급 양쪽 효과가 혼재합니다.", url: "https://www.molit.go.kr/USR/NEWS/m_71/dtl.jsp?id=95091995" },
   { date: "2026 업무계획", tone: "positive", label: "호재", scope: "주거복지·공급", title: "공적 임대주택 최소 15.2만호 공급", summary: "공공임대 14만호와 공공지원 민간임대 1.2만호 공급 계획으로 무주택 실수요자의 선택지가 확대됩니다.", url: "https://www.molit.go.kr/2026plan/251212%28%EC%9E%90%EB%A3%8C%29_%EA%B5%AD%ED%86%A0%EA%B5%90%ED%86%B5%EB%B6%80_%EC%97%85%EB%AC%B4%EB%B3%B4%EA%B3%A0_%EC%84%9C%EB%A9%B4%EC%9E%90%EB%A3%8C.pdf" },
+];
+
+const RESEARCH_CATEGORIES: ResearchCategory[] = [
+  {
+    id: "price", number: "01", label: "가격·실거래", short: "PRICE", description: "실제 체결가를 같은 동·평형끼리 비교해 가격의 방향과 상대 가치를 봅니다.",
+    tools: [
+      { id: "recent-fall", label: "최근하락", description: "직전 분기와 비교 가능한 동·평형 중 하락폭이 큰 순서로 봅니다.", mode: "live", source: "국토교통부 실거래가" },
+      { id: "record-high", label: "최고가", description: "선택 지역의 최근 3개월 중위가격이 높은 동·평형을 찾습니다.", mode: "live", source: "국토교통부 실거래가" },
+      { id: "top-rise", label: "최고상승", description: "직전 분기 대비 중위가격 상승률이 높은 순서로 비교합니다.", mode: "live", source: "국토교통부 실거래가" },
+      { id: "price-change", label: "가격변동", description: "상승·하락 방향과 무관하게 변동폭이 큰 동·평형을 먼저 보여줍니다.", mode: "live", source: "국토교통부 실거래가" },
+      { id: "price-compare", label: "가격비교", description: "같은 지역의 유사 평형 평당가와 비교해 상대 가격차를 계산합니다.", mode: "live", source: "국토교통부 실거래가" },
+      { id: "multi-compare", label: "여러단지비교", description: "가격 매력·거래량·가격 흐름을 합산해 여러 후보를 한 번에 비교합니다.", mode: "live", source: "국토교통부 실거래가" },
+    ],
+  },
+  {
+    id: "demand", number: "02", label: "수급·시장심리", short: "DEMAND", description: "얼마에 거래됐는지와 함께 시장 참여자가 실제로 움직이는지를 확인합니다.",
+    tools: [
+      { id: "listing-change", label: "매물증감", description: "지역·단지별 매물 재고가 늘거나 줄어드는 속도를 추적합니다.", mode: "connect", source: "일별 매물 스냅샷 데이터" },
+      { id: "most-bought", label: "많이산단지", description: "최근 3개월 실제 계약이 많이 체결된 동·평형을 보여줍니다.", mode: "live", source: "국토교통부 실거래가" },
+      { id: "volume", label: "거래량", description: "선택 지역 안에서 분기 거래가 집중된 단지를 비교합니다.", mode: "live", source: "국토교통부 실거래가" },
+      { id: "gap", label: "갭투자", description: "매매가와 동일 평형 전세가의 차이와 갭 비율을 계산합니다.", mode: "connect", source: "매매·전월세 실거래 결합" },
+      { id: "sentiment", label: "매수심리", description: "상승·하락 동·평형 비중과 거래 회복 정도로 체결 심리를 읽습니다.", mode: "live", source: "실거래 기반 자체 체결심리" },
+    ],
+  },
+  {
+    id: "supply", number: "03", label: "공급·분양", short: "SUPPLY", description: "앞으로 들어올 주택과 분양 가격을 함께 봐서 지역의 공급 부담을 판단합니다.",
+    tools: [
+      { id: "supply-volume", label: "공급물량", description: "인허가·착공·준공·입주예정 물량을 시계열로 비교합니다.", mode: "connect", source: "국토교통부 주택건설실적·입주예정" },
+      { id: "unsold", label: "미분양", description: "시·군·구별 미분양과 준공 후 미분양의 변화 속도를 봅니다.", mode: "connect", source: "국토교통부 미분양주택현황" },
+      { id: "presale-price", label: "분양가비교", description: "신규 분양가를 인근 구축·신축 실거래 평당가와 비교합니다.", mode: "connect", source: "청약홈 분양정보·실거래가" },
+    ],
+  },
+  {
+    id: "location", number: "04", label: "입지·생활가치", short: "LOCATION", description: "인구·학교·단지 규모·관심도를 가격 옆에 놓고 오래 살기 좋은지를 봅니다.",
+    tools: [
+      { id: "population", label: "인구변화", description: "전입·전출과 연령별 인구 변화로 실수요 기반을 확인합니다.", mode: "connect", source: "행정안전부 주민등록 인구통계" },
+      { id: "school", label: "학군비교", description: "학교 접근성·학업 지표와 같은 평형 가격 프리미엄을 함께 비교합니다.", mode: "connect", source: "학교알리미·교육통계" },
+      { id: "mega-complex", label: "대단지", description: "세대수 기준으로 대단지를 찾고 거래 유동성과 관리비를 비교합니다.", mode: "connect", source: "K-apt 공동주택 기본정보" },
+      { id: "views", label: "조회수", description: "집값의 정석 안에서 관심이 빠르게 늘어난 지역과 단지를 추적합니다.", mode: "connect", source: "서비스 익명 관심도 집계" },
+    ],
+  },
+  {
+    id: "income", number: "05", label: "수익·비주거", short: "INCOME", description: "보유 비용과 임대 현금흐름, 상가·토지 시장까지 투자 관점에서 분리해 봅니다.",
+    tools: [
+      { id: "rent-yield", label: "월세수익", description: "보증금을 환산한 월세 수익률과 매매가 대비 현금흐름을 계산합니다.", mode: "connect", source: "전월세·매매 실거래 결합" },
+      { id: "retail", label: "상가통계", description: "상권 매출·공실·상가 실거래를 지역별로 비교합니다.", mode: "connect", source: "소상공인 상권정보·상업업무용 실거래" },
+      { id: "land", label: "토지통계", description: "지목·용도지역별 토지 거래량과 면적당 가격 흐름을 봅니다.", mode: "connect", source: "국토교통부 토지 실거래" },
+    ],
+  },
+];
+
+const COMMUNITY_CATEGORIES: CommunityCategory[] = [
+  { id: "living", number: "01", label: "실거주·갈아타기", description: "내 예산과 생애주기에 맞는 집을 고르는 방", boards: ["전체", "첫 집 마련", "갈아타기", "지역 선택", "대출·자금", "계약 체크"] },
+  { id: "price", number: "02", label: "가격·실거래", description: "호가보다 실제 거래 근거로 가격을 토론하는 방", boards: ["전체", "실거래 복기", "단지 비교", "저평가 찾기", "신고가·하락", "평형별 분석"] },
+  { id: "market", number: "03", label: "수급·정책", description: "거래량·공급·정책이 시장에 미칠 영향을 읽는 방", boards: ["전체", "거래량·매물", "공급·입주", "청약·미분양", "정책·세금", "재건축 규제"] },
+  { id: "location", number: "04", label: "입지·임장", description: "지도 밖의 생활 환경을 직접 확인하고 기록하는 방", boards: ["전체", "교통", "학군", "상권·생활", "재개발·재건축", "임장기"] },
+  { id: "invest", number: "05", label: "투자·수익", description: "리스크와 현금흐름을 숫자로 검증하는 방", boards: ["전체", "전월세", "갭투자", "수익률", "상가·토지", "포트폴리오"] },
+];
+
+const COMMUNITY_GUIDES: CommunityGuide[] = [
+  { id: "living-1", category: "living", board: "첫 집 마련", tag: "체크리스트", title: "첫 집 예산에서 취득세·중개보수까지 빼고 계산했나요?", summary: "매매가만 보지 않고 계약부터 입주까지 필요한 현금을 한 장으로 정리해 봅니다.", evidence: "자금계획표 첨부 권장" },
+  { id: "living-2", category: "living", board: "갈아타기", tag: "비교 토론", title: "지금 집을 먼저 팔지, 갈 집을 먼저 살지 판단하는 기준", summary: "잔금일·대출 한도·지역 거래량을 기준으로 두 시나리오의 위험을 비교합니다.", evidence: "거래 일정과 실거래 근거" },
+  { id: "price-1", category: "price", board: "평형별 분석", tag: "실거래 분석", title: "같은 단지 84㎡인데 가격 차이가 큰 이유를 어떻게 걸러낼까", summary: "동·층·방향 차이와 표본 수를 분리해 과장된 변동률을 피하는 방법을 토론합니다.", evidence: "최근 3개월 실거래" },
+  { id: "price-2", category: "price", board: "저평가 찾기", tag: "단지 비교", title: "평당가가 낮으면 정말 저평가일까? 비교군부터 맞춰봅시다", summary: "입주연도와 면적이 다른 단지를 섞지 않고 비교군을 고르는 기준을 공유합니다.", evidence: "유사 면적 ±15%" },
+  { id: "market-1", category: "market", board: "거래량·매물", tag: "시장 읽기", title: "가격보다 거래량이 먼저 움직이는 구간을 어떻게 볼까", summary: "직전 분기와 최근 분기의 체결 건수를 비교해 회복 신호와 일시 반등을 구분합니다.", evidence: "분기 거래량 비교" },
+  { id: "market-2", category: "market", board: "정책·세금", tag: "정책 해석", title: "정책 발표를 호재·악재로 단정하기 전에 볼 세 가지", summary: "대상 지역, 시행 시점, 실제 자금 부담으로 나눠 내 상황에 미치는 영향을 검증합니다.", evidence: "정부 공식 원문 필수" },
+  { id: "location-1", category: "location", board: "임장기", tag: "현장 기록", title: "지도에서는 안 보였던 출퇴근·소음·경사, 이렇게 기록하세요", summary: "시간대별 이동과 생활 동선을 같은 형식으로 남겨 다른 사람의 임장기와 비교합니다.", evidence: "방문 시각·동선 표기" },
+  { id: "location-2", category: "location", board: "학군", tag: "생활 가치", title: "학교 거리와 단지 가격 프리미엄을 같이 보는 방법", summary: "직선거리보다 실제 통학 동선과 배정 가능성을 먼저 확인하는 체크리스트입니다.", evidence: "공식 배정·학교정보 확인" },
+  { id: "invest-1", category: "invest", board: "전월세", tag: "현금흐름", title: "표면 수익률보다 보유비용을 넣은 순수익률로 비교합시다", summary: "공실·수선·세금·이자를 포함해 월세 투자 후보의 실제 현금흐름을 계산합니다.", evidence: "비용 가정 공개" },
+  { id: "invest-2", category: "invest", board: "갭투자", tag: "리스크 점검", title: "갭이 작아도 위험할 수 있는 단지의 공통점", summary: "역전세 가능성, 입주 물량, 전세 거래 깊이를 함께 보고 레버리지 위험을 토론합니다.", evidence: "전세·매매 동시 비교" },
 ];
 
 function formatPrice(value: number) {
@@ -106,9 +181,12 @@ export default function Home() {
   const [activeSection, setActiveSection] = useState("national"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
   const [selectedMapSido, setSelectedMapSido] = useState("서울특별시");
   const [savedHomes, setSavedHomes] = useState<SavedHome[]>([]);
+  const [researchCategory, setResearchCategory] = useState("price"); const [researchTool, setResearchTool] = useState("recent-fall");
+  const [communityCategory, setCommunityCategory] = useState("living"); const [communityBoard, setCommunityBoard] = useState("전체");
+  const [showStudyWriter, setShowStudyWriter] = useState(false); const [studyTitle, setStudyTitle] = useState(""); const [studyBody, setStudyBody] = useState(""); const [draftSaved, setDraftSaved] = useState(false);
   const activeRegion = REGIONS.find((item) => item.code === regionCode) || REGIONS[0];
 
-  useEffect(() => { const timer = window.setTimeout(() => { try { const stored = window.localStorage.getItem("jipgaps:saved-homes"); if (stored) setSavedHomes(JSON.parse(stored)); } catch { /* device storage is optional */ } }, 0); return () => window.clearTimeout(timer); }, []);
+  useEffect(() => { const timer = window.setTimeout(() => { try { const stored = window.localStorage.getItem("jipgaps:saved-homes"); if (stored) setSavedHomes(JSON.parse(stored)); const draft = window.localStorage.getItem("jipgaps:study-draft"); if (draft) { const parsed = JSON.parse(draft); setStudyTitle(parsed.title || ""); setStudyBody(parsed.body || ""); } } catch { /* device storage is optional */ } }, 0); return () => window.clearTimeout(timer); }, []);
 
   useEffect(() => {
     const updateSection = () => {
@@ -128,10 +206,13 @@ export default function Home() {
   }, [activeSection]);
 
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true); setError(""); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all");
-    const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 6)), query: submittedQuery });
-    fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { setTrades(data.trades); setProperties(data.properties); if (data.properties.length === 1) setSelectedKey(data.properties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") setError(reason.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setLoading(true); setError(""); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all");
+      const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 6)), query: submittedQuery });
+      fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { setTrades(data.trades); setProperties(data.properties); if (data.properties.length === 1) setSelectedKey(data.properties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") setError(reason.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [type, regionCode, period, submittedQuery]);
 
   useEffect(() => {
@@ -156,7 +237,7 @@ export default function Home() {
   const latest = chartPoints.at(-1)?.price || 0; const previous = chartPoints.at(-2)?.price || latest; const chartChangeComparable = (chartPoints.at(-1)?.volume || 0) >= 2 && (chartPoints.at(-2)?.volume || 0) >= 2; const change = chartChangeComparable && previous ? (latest / previous - 1) * 100 : 0;
   const high = chartPoints.length ? Math.max(...chartPoints.map((point) => point.price)) : 0; const low = chartPoints.length ? Math.min(...chartPoints.map((point) => point.price)) : 0;
   const latestMonth = scopedTrades.at(-1)?.date.slice(0, 7) || "";
-  const latestQuarterMonths = [0, -1, -2].map((offset) => shiftMonth(latestMonth, offset)); const previousQuarterMonths = [-3, -4, -5].map((offset) => shiftMonth(latestMonth, offset));
+  const latestQuarterMonths = useMemo(() => [0, -1, -2].map((offset) => shiftMonth(latestMonth, offset)), [latestMonth]); const previousQuarterMonths = useMemo(() => [-3, -4, -5].map((offset) => shiftMonth(latestMonth, offset)), [latestMonth]);
   const propertyRows = useMemo(() => {
     const groups = new Map<string, Trade[]>();
     scopedTrades.forEach((trade) => { const bucket = areaBucket(trade.area); const key = `${trade.propertyKey}|${trade.buildingDong || "-"}|${bucket}`; groups.set(key, [...(groups.get(key) || []), trade]); });
@@ -165,7 +246,7 @@ export default function Home() {
       const quarterValues = quarterRows.map((trade) => trade.amount); const previousValues = previousRows.map((trade) => trade.amount); const current = quarterValues.length ? median(quarterValues) : sample.amount; const before = previousValues.length ? median(previousValues) : 0;
       const comparable = quarterValues.length >= 2 && previousValues.length >= 2; return { key, propertyKey: sample.propertyKey, name: sample.name, dong: sample.dong, jibun: sample.jibun, buildingDong: sample.buildingDong, areaBucket: areaBucket(sample.area), areaMedian: median(rows.map((trade) => trade.area).filter(Boolean)), count: rows.length, current, change: comparable && before ? (current / before - 1) * 100 : null, quarterCount: quarterValues.length };
     }).sort((a, b) => b.quarterCount - a.quarterCount || b.count - a.count);
-  }, [scopedTrades, latestQuarterMonths.join("|"), previousQuarterMonths.join("|")]);
+  }, [scopedTrades, latestQuarterMonths, previousQuarterMonths]);
   const scoredCandidates = useMemo(() => {
     const areaPeers = new Map<number, number[]>();
     propertyRows.forEach((row) => { if (row.areaMedian > 0) areaPeers.set(row.areaBucket, [...(areaPeers.get(row.areaBucket) || []), row.current / (row.areaMedian / 3.3058)]); });
@@ -176,8 +257,26 @@ export default function Home() {
       return { ...row, score, gap, tag };
     }).filter((row) => row.quarterCount > 0).sort((a, b) => b.score - a.score || b.quarterCount - a.quarterCount);
   }, [propertyRows]);
+  const activeResearchCategory = RESEARCH_CATEGORIES.find((category) => category.id === researchCategory) || RESEARCH_CATEGORIES[0];
+  const activeResearchTool = RESEARCH_CATEGORIES.flatMap((category) => category.tools).find((tool) => tool.id === researchTool) || RESEARCH_CATEGORIES[0].tools[0];
+  const researchRows = useMemo(() => {
+    const scoreIndex = new Map(scoredCandidates.map((row) => [row.key, row]));
+    const base = propertyRows.map((row) => { const scored = scoreIndex.get(row.key); return { ...row, score: scored?.score || 0, gap: scored?.gap || 0, tag: scored?.tag || "분석 후보" }; });
+    const comparable = base.filter((row) => row.change !== null);
+    const rows = researchTool === "recent-fall" ? comparable.filter((row) => (row.change ?? 0) < 0).sort((a, b) => (a.change ?? 0) - (b.change ?? 0))
+      : researchTool === "record-high" ? base.sort((a, b) => b.current - a.current)
+      : researchTool === "top-rise" ? comparable.sort((a, b) => (b.change ?? 0) - (a.change ?? 0))
+      : researchTool === "price-change" ? comparable.sort((a, b) => Math.abs(b.change ?? 0) - Math.abs(a.change ?? 0))
+      : researchTool === "price-compare" ? base.sort((a, b) => a.gap - b.gap)
+      : researchTool === "multi-compare" ? base.sort((a, b) => b.score - a.score || b.quarterCount - a.quarterCount)
+      : researchTool === "sentiment" ? comparable.sort((a, b) => (b.change ?? 0) - (a.change ?? 0))
+      : base.sort((a, b) => b.quarterCount - a.quarterCount || b.count - a.count);
+    return rows.slice(0, 8);
+  }, [propertyRows, scoredCandidates, researchTool]);
+  const activeCommunityCategory = COMMUNITY_CATEGORIES.find((category) => category.id === communityCategory) || COMMUNITY_CATEGORIES[0];
+  const visibleCommunityGuides = COMMUNITY_GUIDES.filter((guide) => guide.category === communityCategory && (communityBoard === "전체" || guide.board === communityBoard));
   const selectedProperty = properties.find((property) => property.key === selectedKey); const selectedVariant = propertyRows.find((property) => property.key === selectedVariantKey); const variantSuffix = selectedVariant ? `${dongLabel(selectedVariant.buildingDong)}${selectedVariant.buildingDong ? " · " : ""}전용 ${selectedVariant.areaBucket}평` : ""; const displayName = selectedProperty ? `${selectedProperty.name}${variantSuffix ? ` · ${variantSuffix}` : ""}` : (submittedQuery ? `${submittedQuery} 검색 결과` : `${activeRegion.sigungu} 전체`);
-  const latestMonthTrades = scopedTrades.filter((trade) => trade.date.startsWith(latestMonth)); const latestQuarterTrades = scopedTrades.filter((trade) => latestQuarterMonths.includes(trade.date.slice(0, 7)));
+  const latestQuarterTrades = scopedTrades.filter((trade) => latestQuarterMonths.includes(trade.date.slice(0, 7)));
   const risingCount = propertyRows.filter((property) => property.change !== null && property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change !== null && property.change < 0).length;
   const visibleProperties = useMemo(() => propertyRows.filter((property) => property.quarterCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? (b.change ?? -Infinity) - (a.change ?? -Infinity) : buildingSort === "fall" ? (a.change ?? Infinity) - (b.change ?? Infinity) : b.quarterCount - a.quarterCount), [propertyRows, buildingSort, minVolume]);
   const sortedMarkets = useMemo(() => [...markets].sort((a, b) => marketSort === "price" ? b.median - a.median : marketSort === "rise" ? b.change - a.change : marketSort === "fall" ? a.change - b.change : b.count - a.count), [markets, marketSort]);
@@ -198,8 +297,10 @@ export default function Home() {
   const selectSido = (sido: string) => { const next = REGIONS.filter((region) => region.sido === sido).sort(sortRegions)[0]; if (next) chooseRegion(next); };
   const selectSigungu = (code: string) => { const next = REGIONS.find((region) => region.code === code); if (next) chooseRegion(next); };
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = REGIONS.find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); setSubmittedQuery(query.trim()); };
-  const selectCandidate = (candidate: typeof scoredCandidates[number]) => { setSelectedKey(candidate.propertyKey); setSelectedBuildingDong(candidate.buildingDong); setSelectedAreaBucket(candidate.areaBucket); setSelectedVariantKey(candidate.key); setArea("all"); document.getElementById("chart")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  const selectCandidate = (candidate: { propertyKey: string; buildingDong: string; areaBucket: number; key: string }) => { setSelectedKey(candidate.propertyKey); setSelectedBuildingDong(candidate.buildingDong); setSelectedAreaBucket(candidate.areaBucket); setSelectedVariantKey(candidate.key); setArea("all"); document.getElementById("chart")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
   const toggleSavedHome = () => { if (!selectedOpportunity) return; const id = `${regionCode}|${selectedOpportunity.key}`; const next = isSaved ? savedHomes.filter((home) => home.id !== id) : [...savedHomes, { id, name: selectedOpportunity.name, region: `${activeRegion.sido} ${activeRegion.sigungu}`, area: selectedOpportunity.areaBucket, price: selectedOpportunity.current, score: selectedOpportunity.score, savedAt: new Date().toISOString() }].slice(-6); setSavedHomes(next); try { window.localStorage.setItem("jipgaps:saved-homes", JSON.stringify(next)); } catch { /* device storage is optional */ } };
+  const researchMetric = (row: typeof researchRows[number]) => researchTool === "record-high" ? formatPrice(row.current) : researchTool === "price-compare" ? `${row.gap >= 0 ? "+" : ""}${row.gap.toFixed(1)}%` : researchTool === "multi-compare" ? `${row.score}점` : researchTool === "most-bought" || researchTool === "volume" ? `${row.quarterCount}건` : `${(row.change ?? 0) >= 0 ? "+" : ""}${(row.change ?? 0).toFixed(1)}%`;
+  const saveStudyDraft = (event: React.FormEvent) => { event.preventDefault(); if (!studyTitle.trim() || !studyBody.trim()) return; try { window.localStorage.setItem("jipgaps:study-draft", JSON.stringify({ category: activeCommunityCategory.label, board: communityBoard === "전체" ? activeCommunityCategory.boards[1] : communityBoard, title: studyTitle.trim(), body: studyBody.trim(), savedAt: new Date().toISOString() })); setDraftSaved(true); } catch { setDraftSaved(false); } };
 
   return <main className="terminal-shell">
     <header className="topbar"><a href="#top" className="brand"><span>집값</span>의 정석 <em>PRO</em></a><nav ref={navRef}>{NAV_ITEMS.map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}<i className="nav-indicator" style={{ left: navIndicator.left, width: navIndicator.width }} /></nav><a className="saved-badge" href="#chart">관심 후보 <b>{savedHomes.length}</b></a><div className="live"><i /> 실거래 연동</div></header>
@@ -226,7 +327,7 @@ export default function Home() {
       <article><span>분기 중위가격</span><strong>{formatPrice(median(latestQuarterTrades.map((trade) => trade.amount)))}</strong><small>고가·저가 왜곡을 줄인 값</small></article>
     </section>
 
-    <section className="opportunity-section" aria-label="매수 검토 후보"><div className="opportunity-head"><div><p>SMART SHORTLIST</p><h2>{activeRegion.sigungu}에서 먼저 볼 후보</h2><span>평형별 가격 매력 45% · 거래량 35% · 가격 흐름 20%를 합산한 탐색 점수입니다.</span></div><b>추천이 아닌 검토 우선순위</b></div><div className="opportunity-grid">{loading ? <div className="opportunity-empty">후보를 계산하고 있습니다…</div> : scoredCandidates.length ? scoredCandidates.slice(0, 3).map((candidate, index) => <button key={candidate.key} onClick={() => selectCandidate(candidate)}><span className="candidate-rank">0{index + 1}</span><div><em>{candidate.tag}</em><h3>{candidate.name}</h3><p>{candidate.dong} · {dongLabel(candidate.buildingDong) || "동 정보 없음"} · 전용 {candidate.areaBucket}평</p></div><strong>{candidate.score}<small>/100</small><i>{formatPrice(candidate.current)}</i></strong></button>) : <div className="opportunity-empty"><b>이 지역은 아직 표본이 부족합니다.</b><span>아파트 또는 인기 지역을 선택하면 거래가 있는 후보를 빠르게 확인할 수 있습니다.</span></div>}</div>{savedHomes.length > 0 && <div className="saved-shelf"><span>내 관심 후보</span>{savedHomes.map((home) => <article key={home.id}><div><b>{home.name}</b><small>{home.region} · {home.area}평</small></div><strong>{home.score}점 · {formatPrice(home.price)}</strong><button aria-label={`${home.name} 관심 후보에서 삭제`} onClick={() => { const next = savedHomes.filter((item) => item.id !== home.id); setSavedHomes(next); try { window.localStorage.setItem("jipgaps:saved-homes", JSON.stringify(next)); } catch {} }}>×</button></article>)}</div>}</section>
+    <section className="opportunity-section" aria-label="매수 검토 후보"><div className="opportunity-head"><div><p>SMART SHORTLIST</p><h2>{activeRegion.sigungu}에서 먼저 볼 후보</h2><span>평형별 가격 매력 45% · 거래량 35% · 가격 흐름 20%를 합산한 탐색 점수입니다.</span></div><b>추천이 아닌 검토 우선순위</b></div><div className="opportunity-grid">{loading ? <div className="opportunity-empty">후보를 계산하고 있습니다…</div> : scoredCandidates.length ? scoredCandidates.slice(0, 3).map((candidate, index) => <button key={candidate.key} onClick={() => selectCandidate(candidate)}><span className="candidate-rank">0{index + 1}</span><div><em>{candidate.tag}</em><h3>{candidate.name}</h3><p>{candidate.dong} · {dongLabel(candidate.buildingDong) || "동 정보 없음"} · 전용 {candidate.areaBucket}평</p></div><strong>{candidate.score}<small>/100</small><i>{formatPrice(candidate.current)}</i></strong></button>) : <div className="opportunity-empty"><b>이 지역은 아직 표본이 부족합니다.</b><span>아파트 또는 인기 지역을 선택하면 거래가 있는 후보를 빠르게 확인할 수 있습니다.</span></div>}</div>{savedHomes.length > 0 && <div className="saved-shelf"><span>내 관심 후보</span>{savedHomes.map((home) => <article key={home.id}><div><b>{home.name}</b><small>{home.region} · {home.area}평</small></div><strong>{home.score}점 · {formatPrice(home.price)}</strong><button aria-label={`${home.name} 관심 후보에서 삭제`} onClick={() => { const next = savedHomes.filter((item) => item.id !== home.id); setSavedHomes(next); try { window.localStorage.setItem("jipgaps:saved-homes", JSON.stringify(next)); } catch { /* device storage is optional */ } }}>×</button></article>)}</div>}</section>
 
     <section className="market-browser" id="chart">
       <aside className="watchlist">
@@ -259,6 +360,31 @@ export default function Home() {
       </div>
     </section>
 
+    <section className="research-section" id="research">
+      <div className="research-heading">
+        <div><p>REAL ESTATE RESEARCH DESK</p><h2>21가지 부동산 리서치, 한 흐름으로</h2><span>기능을 나열하지 않고 가격 → 수급 → 공급 → 입지 → 수익 순서로 매수 판단을 좁혀갑니다.</span></div>
+        <div className="research-counts"><article><strong>21</strong><span>전체 도구</span></article><article><strong>09</strong><span>실거래 즉시 분석</span></article><article><strong>12</strong><span>공식 데이터 연결 대상</span></article></div>
+      </div>
+      <div className="research-scope"><span>현재 분석 범위</span><b>{activeRegion.sido}</b><i>›</i><b>{activeRegion.sigungu}</b>{selectedDong !== "all" && <><i>›</i><b>{selectedDong}</b></>}<em>{PROPERTY_TYPES.find((item) => item.key === type)?.label}</em><small>위 지역 선택과 자동 동기화</small></div>
+      <div className="research-shell">
+        <aside className="research-axis" aria-label="리서치 대분류">
+          {RESEARCH_CATEGORIES.map((category) => <button key={category.id} className={researchCategory === category.id ? "active" : ""} aria-pressed={researchCategory === category.id} onClick={() => { setResearchCategory(category.id); setResearchTool(category.tools[0].id); }}><em>{category.number}</em><span><b>{category.label}</b><small>{category.short}</small></span><i>{category.tools.length}</i></button>)}
+        </aside>
+        <div className="research-workspace">
+          <div className="research-category-head"><div><span>{activeResearchCategory.number} / {activeResearchCategory.short}</span><h3>{activeResearchCategory.label}</h3><p>{activeResearchCategory.description}</p></div><b>{activeResearchCategory.tools.filter((tool) => tool.mode === "live").length}개 LIVE</b></div>
+          <div className="research-tool-grid">{activeResearchCategory.tools.map((tool) => <button key={tool.id} className={researchTool === tool.id ? "active" : ""} aria-pressed={researchTool === tool.id} onClick={() => setResearchTool(tool.id)}><span>{tool.label}</span><small className={tool.mode}>{tool.mode === "live" ? "● LIVE" : "○ DATA"}</small></button>)}</div>
+          <article className="research-output">
+            <header><div><span className={activeResearchTool.mode}>{activeResearchTool.mode === "live" ? "실거래 LIVE" : "공식 데이터 연결 설계"}</span><h3>{activeResearchTool.label}</h3><p>{activeResearchTool.description}</p></div><small>DATA · {activeResearchTool.source}</small></header>
+            {activeResearchTool.mode === "live" ? <div className="research-live-board">
+              <div className="research-table-head"><span>순위</span><span>단지 · 동 · 평형</span><span>3개월 중위가</span><span>도구 기준</span></div>
+              {loading ? <div className="research-state"><i />선택 지역의 실거래를 계산하고 있습니다.</div> : error ? <div className="research-state error">{error}</div> : researchRows.length ? researchRows.map((row, index) => <button key={row.key} onClick={() => selectCandidate(row)}><em>{String(index + 1).padStart(2, "0")}</em><span className={`research-building tone-${index % 5}`}>{row.name.slice(0, 1)}</span><b>{row.name}<small>{row.dong} · {dongLabel(row.buildingDong) || "동 정보 없음"} · 전용 {row.areaBucket}평 · {row.quarterCount}건</small></b><span>{formatPrice(row.current)}</span><strong className={researchTool === "record-high" || researchTool === "multi-compare" || researchTool === "most-bought" || researchTool === "volume" ? "" : researchTool === "price-compare" ? row.gap >= 0 ? "up" : "down" : (row.change ?? 0) >= 0 ? "up" : "down"}>{researchMetric(row)}</strong></button>) : <div className="research-state"><b>이 조건에서 비교 가능한 표본이 없습니다.</b><span>시·군·구 전체 또는 다른 주택 유형으로 범위를 넓혀보세요.</span></div>}
+            </div> : <div className="research-connect-state"><div><span>CONNECT NEXT</span><strong>값을 추정해 채우지 않고<br/>공식 원천부터 연결합니다.</strong><p>{activeResearchTool.label}에는 현재 실거래 API 외에 <b>{activeResearchTool.source}</b>가 필요합니다. 연결 전에는 그럴듯한 가짜 수치를 보여주지 않습니다.</p></div><ol><li><em>01</em><b>원천 검증</b><span>공식 기관·갱신주기 확인</span></li><li><em>02</em><b>지역 코드 통합</b><span>시·군·구·읍면동 매칭</span></li><li><em>03</em><b>교차 분석</b><span>실거래와 같은 화면에 결합</span></li></ol></div>}
+          </article>
+        </div>
+      </div>
+      <p className="research-note">가격·거래량 도구는 현재 선택 지역의 신고 실거래로 즉시 계산합니다. 매물·전세·공급·인구·학군 데이터는 별도 공식 원천 연결이 필요한 기능으로 구분해 표시했습니다.</p>
+    </section>
+
     <section className="map-section" id="map">
       <div className="section-title wide"><div><p>KOREA MARKET MAP</p><h2>실제 행정경계 기반 전국 지도</h2><span>{marketMonth ? `${marketMonth.slice(0, 4)}년 ${Number(marketMonth.slice(4))}월 완료 거래` : "전국 집계 중"} · 통계청 SGIS 시·도 경계 위에 3개월 가격 방향 표시</span></div><div className="map-controls"><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">최근 월 거래량순</option><option value="price">최근 월 중위가순</option><option value="rise">3개월 상승순</option><option value="fall">3개월 하락순</option></select><div className="map-legend"><i className="cold"/>하락 <i className="flat"/>보합 <i className="hot"/>상승</div></div></div>
       <div className="map-layout"><div className="real-korea-map"><img src={KOREA_BOUNDARY_SVG} alt="대한민국 17개 시도 실제 행정구역 경계 지도" loading="lazy" referrerPolicy="no-referrer" />{markets.map((market) => { const position = MAP_POSITIONS[market.short] || [50, 50]; return <button key={market.code} title={`${market.sido} ${market.change >= 0 ? "+" : ""}${market.change.toFixed(2)}% · 세부 지역 보기`} style={{ left: `${position[0]}%`, top: `${position[1]}%` }} className={`map-marker ${market.sido === selectedMapSido ? "selected" : ""} ${market.change > 1 ? "hot" : market.change < -1 ? "cold" : "flat"}`} onClick={() => setSelectedMapSido(market.sido)}><b>{market.short}</b><span>{market.change >= 0 ? "+" : ""}{market.change.toFixed(1)}%</span></button>})}{!markets.length && <div className="map-loading"><i />전국 시장을 집계하는 중…</div>}<div className="map-compass"><i />N</div></div>
@@ -269,6 +395,21 @@ export default function Home() {
     </section>
 
     <section className="trade-section" id="transactions"><div className="section-title wide"><div><p>RECENT CONTRACTS</p><h2>{displayName} 최근 실거래</h2></div><span>단위: 만원 · 최대 30건 표시</span></div><div className="trade-table"><div className="table-head"><span>계약일</span><span>건물명</span><span>전용면적</span><span>층</span><span>거래금액</span><span>평당가</span></div>{[...filteredTrades].reverse().slice(0, 30).map((trade) => <div className="table-row" key={trade.id}><span>{trade.date.replaceAll("-", ".")}</span><b>{trade.name}</b><span>{trade.area ? `${trade.area.toFixed(1)}㎡` : "-"}</span><span>{trade.floor === null ? "-" : `${trade.floor}층`}</span><strong>{formatPrice(trade.amount)}</strong><span>{trade.area ? `${Math.round(trade.amount / (trade.area / 3.3058)).toLocaleString()}만` : "-"}</span></div>)}</div></section>
+
+    <section className="study-community" id="community">
+      <div className="study-heading"><div><p>JIPGAPS STUDY COMMUNITY</p><h2>광고보다 근거가 먼저인 부동산 스터디</h2><span>질문이 섞이지 않도록 5개 대분류와 25개 세부 게시판으로 나눴습니다. 글마다 지역·평형·근거 출처를 붙이는 구조입니다.</span></div><div><strong>5</strong><span>대분류</span><i /><strong>25</strong><span>세부 게시판</span></div></div>
+      <div className="study-shell">
+        <aside className="study-categories" aria-label="커뮤니티 대분류">{COMMUNITY_CATEGORIES.map((category) => <button key={category.id} className={communityCategory === category.id ? "active" : ""} aria-pressed={communityCategory === category.id} onClick={() => { setCommunityCategory(category.id); setCommunityBoard("전체"); setDraftSaved(false); }}><em>{category.number}</em><span><b>{category.label}</b><small>{category.description}</small></span><i>›</i></button>)}</aside>
+        <div className="study-stage">
+          <header><div><span>{activeCommunityCategory.number} / STUDY ROOM</span><h3>{activeCommunityCategory.label}</h3><p>{activeCommunityCategory.description}</p></div><button type="button" onClick={() => { setShowStudyWriter((value) => !value); setDraftSaved(false); }}>{showStudyWriter ? "초안 닫기" : "+ 분석 글 초안 쓰기"}</button></header>
+          <div className="study-board-tabs" aria-label={`${activeCommunityCategory.label} 세부 게시판`}>{activeCommunityCategory.boards.map((board) => <button key={board} className={communityBoard === board ? "active" : ""} aria-pressed={communityBoard === board} onClick={() => { setCommunityBoard(board); setDraftSaved(false); }}>{board}</button>)}</div>
+          {showStudyWriter && <form className="study-writer" onSubmit={saveStudyDraft}><div><span>선택한 방</span><b>{activeCommunityCategory.label} · {communityBoard === "전체" ? activeCommunityCategory.boards[1] : communityBoard}</b></div><label><span>제목</span><input value={studyTitle} onChange={(event) => { setStudyTitle(event.target.value); setDraftSaved(false); }} maxLength={80} placeholder="무엇을 비교했고 어떤 판단이 궁금한가요?" required /></label><label><span>분석 내용</span><textarea value={studyBody} onChange={(event) => { setStudyBody(event.target.value); setDraftSaved(false); }} maxLength={1500} placeholder="지역·단지·평형, 확인한 실거래와 내 관점을 함께 적어주세요." required /></label><div className="study-writer-actions"><small>안전한 오픈 베타 전까지 초안은 이 기기에만 저장됩니다. 공개 게시와 댓글은 로그인·신고 기능을 갖춘 뒤 연결합니다.</small><button type="submit">{draftSaved ? "이 기기에 저장됨 ✓" : "초안 저장"}</button></div></form>}
+          <div className="study-topic-head"><div><b>{communityBoard === "전체" ? "운영팀이 먼저 여는 토론" : communityBoard}</b><span>사실과 의견을 분리하는 글쓰기 예시</span></div><small>{visibleCommunityGuides.length}개 주제</small></div>
+          {visibleCommunityGuides.length ? <div className="study-topic-grid">{visibleCommunityGuides.map((guide) => <article key={guide.id}><div><span>{guide.board}</span><em>{guide.tag}</em></div><h4>{guide.title}</h4><p>{guide.summary}</p><div className="study-topic-foot"><b>근거</b><span>{guide.evidence}</span><button type="button" onClick={() => { setCommunityBoard(guide.board); setStudyTitle(guide.title); setShowStudyWriter(true); setDraftSaved(false); }}>이 주제로 쓰기 ↗</button></div></article>)}</div> : <div className="study-empty"><span>{communityBoard}</span><b>아직 운영팀이 준비한 예시 주제가 없습니다.</b><p>이 게시판에서 가장 먼저 검증하고 싶은 질문을 초안으로 남겨보세요.</p><button type="button" onClick={() => setShowStudyWriter(true)}>첫 분석 초안 쓰기</button></div>}
+        </div>
+      </div>
+      <div className="study-rules"><article><em>01</em><b>근거 먼저</b><span>실거래·정부 원문·현장 사진처럼 확인 가능한 출처를 붙입니다.</span></article><article><em>02</em><b>조건을 정확히</b><span>지역·단지·동·평형·기간을 적어 다른 조건끼리 섞지 않습니다.</span></article><article><em>03</em><b>광고는 분리</b><span>중개·매물 유도·수익 보장 글은 일반 분석 게시판과 섞지 않습니다.</span></article></div>
+    </section>
 
     <section className="policy-section" id="policy"><div className="section-title wide"><div><p>POLICY RADAR · 6시간마다 자동 확인</p><h2>부동산 정책 레이더</h2><span>언론 기사가 아닌 국토교통부·정책브리핑 공식 발표만 표시합니다.{policyUpdated ? ` · ${new Date(policyUpdated).toLocaleString("ko-KR")} 확인` : ""}</span></div><a href="https://www.molit.go.kr/portal.do" target="_blank" rel="noreferrer">국토교통부 최신 정책 ↗</a></div><div className="policy-grid">{policyItems.map((policy) => <a key={policy.title} href={policy.url} target="_blank" rel="noreferrer" className={`policy-card ${policy.tone}`}><div><span>{policy.date}</span><em>{policy.scope}</em></div><b><i>{policy.label}</i>{policy.title}</b><p>{policy.summary}</p><small>공식 원문 확인 ↗</small></a>)}</div><p className="policy-method">호재·악재·중립 평가는 실수요자의 선택지, 금융·세금 부담, 공급 확대 여부를 기준으로 한 서비스 자체 해석입니다. 정책 효과는 지역과 보유 상황에 따라 달라질 수 있습니다.</p></section>
 
