@@ -29,26 +29,18 @@ jobs:
         with:
           node-version: 24
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.28.0
-
       - name: Install Vercel CLI
         run: npm install --global vercel@58.9.0
 
       - name: Pull production configuration
         run: vercel pull --yes --environment=production --scope=trader-kwon
 
-      - name: Build production artifact
-        run: vercel build --prod --scope=trader-kwon
-
-      - name: Deploy production artifact
+      - name: Build and deploy on Vercel
         id: deploy
         shell: bash
         run: |
           set -euo pipefail
-          url="$(vercel deploy --prebuilt --prod --scope=trader-kwon)"
+          url="$(vercel deploy --prod --yes --scope=trader-kwon)"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "### Production deployment" >> "$GITHUB_STEP_SUMMARY"
           echo "$url" >> "$GITHUB_STEP_SUMMARY"
