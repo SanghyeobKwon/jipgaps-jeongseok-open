@@ -287,6 +287,95 @@ function geoJsonExtent(data: GeoJsonFeatureCollection) {
   return Number.isFinite(minLng) ? { minLng, minLat, maxLng, maxLat } : null;
 }
 
+type AdministrativeFocus = "national" | "sido" | "district";
+type ProjectedBoundary = { code: string; name: string; path: string; centerX: number; centerY: number; width: number; height: number };
+const NATIONAL_LABEL_OFFSETS: Record<string, [number, number]> = {
+  "서울특별시": [27, -12], "인천광역시": [-28, 9], "세종특별자치시": [-24, -10], "대전광역시": [26, 10],
+  "대구광역시": [-18, 12], "울산광역시": [24, 8], "부산광역시": [20, 16], "전남광주통합특별시": [-26, 8],
+};
+
+function coordinateRings(value: unknown) {
+  const rings: number[][][] = [];
+  const visit = (item: unknown) => {
+    if (!Array.isArray(item) || !item.length) return;
+    if (Array.isArray(item[0]) && typeof item[0][0] === "number" && typeof item[0][1] === "number") rings.push(item as number[][]);
+    else item.forEach(visit);
+  };
+  visit(value);
+  return rings;
+}
+
+function projectAdministrativeBoundaries(data: GeoJsonFeatureCollection, width = 760, height = 560) {
+  const extent = geoJsonExtent(data);
+  if (!extent) return [];
+  const pad = 34;
+  const lngSpan = Math.max(.001, extent.maxLng - extent.minLng); const latSpan = Math.max(.001, extent.maxLat - extent.minLat);
+  const scale = Math.min((width - pad * 2) / lngSpan, (height - pad * 2 - 14) / latSpan);
+  const contentWidth = lngSpan * scale; const contentHeight = latSpan * scale;
+  const offsetX = (width - contentWidth) / 2; const offsetY = (height - contentHeight) / 2 - 5;
+  return data.features.map((feature) => {
+    const rings = coordinateRings(feature.geometry.coordinates); const points = rings.flat();
+    const projected = points.map(([lng, lat]) => [offsetX + (lng - extent.minLng) * scale, offsetY + (extent.maxLat - lat) * scale]);
+    const xs = projected.map((point) => point[0]); const ys = projected.map((point) => point[1]);
+    const path = rings.map((ring) => ring.map(([lng, lat], index) => `${index ? "L" : "M"}${(offsetX + (lng - extent.minLng) * scale).toFixed(1)},${(offsetY + (extent.maxLat - lat) * scale).toFixed(1)}`).join(" ") + " Z").join(" ");
+    const minX = Math.min(...xs); const maxX = Math.max(...xs); const minY = Math.min(...ys); const maxY = Math.max(...ys);
+    return { code: String(feature.properties.code || ""), name: String(feature.properties.name || ""), path, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, width: maxX - minX, height: maxY - minY };
+  }).filter((feature) => feature.path && feature.name);
+}
+
+function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, dongVolumes, onSelectSido, onSelectRegion, onSelectDong }: {
+  focus: AdministrativeFocus; active: boolean; markets: OverviewMarket[]; selectedSido: string; activeRegion: Region; selectedDong: string; selectedBoundaryDong: string; dongVolumes: Record<string, number>;
+  onSelectSido: (sido: string) => void; onSelectRegion: (region: Region) => void; onSelectDong: (dong: string) => void;
+}) {
+  const [data, setData] = useState<GeoJsonFeatureCollection | null>(null); const [boundaryError, setBoundaryError] = useState(""); const [boundaryRetry, setBoundaryRetry] = useState(0);
+  const boundaryUrl = focus === "national" ? "/data/boundaries/sido.json" : focus === "sido" ? `/data/boundaries/sgg/${SIDO_CODES[selectedSido]}.json` : `/data/boundaries/emd/${activeRegion.code}.json`;
+  useEffect(() => {
+    if (!active) return;
+    const controller = new AbortController(); setData(null); setBoundaryError("");
+    fetch(boundaryUrl, { signal: controller.signal }).then((response) => { if (!response.ok) throw new Error("행정경계 데이터를 불러오지 못했습니다."); return response.json(); }).then(setData).catch((error) => { if (error instanceof Error && error.name !== "AbortError") setBoundaryError(error.message); });
+    return () => controller.abort();
+  }, [active, boundaryRetry, boundaryUrl]);
+  const boundaries = useMemo(() => data ? projectAdministrativeBoundaries(data) : [], [data]);
+  const stageTitle = focus === "national" ? "대한민국 전체" : focus === "sido" ? selectedSido : `${activeRegion.sido} ${activeRegion.sigungu}`;
+  const stageLabel = focus === "national" ? "01 · 시·도 선택" : focus === "sido" ? "02 · 시·군·구 선택" : "03 · 읍·면·동 선택";
+  const stageHint = focus === "national" ? "대한민국 행정경계를 기준으로 16개 시·도를 비교합니다." : focus === "sido" ? `${selectedSido} 안의 시·군·구 경계를 선택하세요.` : "동 경계를 선택하면 실제 지도와 건물 가격 단계로 이동합니다.";
+  const isSelected = (boundary: ProjectedBoundary) => focus === "national" ? boundary.name === selectedSido : focus === "sido" ? boundary.code === activeRegion.code : selectedBoundaryDong ? boundary.name === selectedBoundaryDong : selectedDong !== "all" && legalDongName(boundary.name) === selectedDong;
+  const selectBoundary = (boundary: ProjectedBoundary) => {
+    if (focus === "national") onSelectSido(boundary.name);
+    else if (focus === "sido") { const region = REGIONS.find((item) => item.code === boundary.code); if (region) onSelectRegion(region); }
+    else onSelectDong(boundary.name);
+  };
+  const boundaryMetric = (boundary: ProjectedBoundary) => {
+    if (focus === "national") { const market = markets.find((item) => item.sido === boundary.name); return market ? `${market.change >= 0 ? "+" : ""}${market.change.toFixed(1)}%` : "집계 중"; }
+    if (focus === "district") return `${dongVolumes[legalDongName(boundary.name)] || 0}건`;
+    return boundary.code === activeRegion.code ? "선택됨" : "보기";
+  };
+  const boundaryTone = (boundary: ProjectedBoundary) => {
+    if (isSelected(boundary)) return "selected";
+    if (focus !== "national") return "neutral";
+    const change = markets.find((item) => item.sido === boundary.name)?.change || 0;
+    return change > 1 ? "hot" : change < -1 ? "cold" : "flat";
+  };
+  return <div className={`administrative-market-map level-${focus}`}>
+    <div className="administrative-map-head"><div><span>{stageLabel}</span><b>{stageTitle}</b><small>{stageHint}</small></div><div className="administrative-map-mode"><i />3D 행정경계</div></div>
+    {data ? <svg className="administrative-map-svg" viewBox="0 0 760 560" role="img" aria-label={`${stageTitle} 3D 행정구역 선택 지도`}>
+      <defs><linearGradient id={`admin-surface-${focus}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f7fbff"/><stop offset="1" stopColor="#d9e9f8"/></linearGradient></defs>
+      <g className="administrative-map-shadow" transform="translate(0 13)">{boundaries.map((boundary) => <path key={`depth-${boundary.code}`} d={boundary.path} />)}</g>
+      {boundaries.map((boundary) => {
+        const selected = isSelected(boundary); const offset = focus === "national" ? NATIONAL_LABEL_OFFSETS[boundary.name] || [0, 0] : [0, 0]; const labelX = boundary.centerX + offset[0]; const labelY = boundary.centerY + offset[1];
+        return <g key={boundary.code} className={`administrative-region tone-${boundaryTone(boundary)}${selected ? " selected" : ""}`} role="button" tabIndex={0} aria-label={`${boundary.name} ${boundaryMetric(boundary)}`} onClick={() => selectBoundary(boundary)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectBoundary(boundary); } }}>
+          <path className="administrative-region-depth" d={boundary.path} transform={`translate(0 ${selected ? 11 : 8})`} />
+          <path className="administrative-region-surface" d={boundary.path} fillRule="evenodd" />
+          {(offset[0] !== 0 || offset[1] !== 0) && <line className="administrative-label-line" x1={boundary.centerX} y1={boundary.centerY} x2={labelX} y2={labelY} />}
+          <g className="administrative-label" transform={`translate(${labelX} ${labelY})`}><text className="administrative-label-name" textAnchor="middle" y="-2">{focus === "national" ? markets.find((item) => item.sido === boundary.name)?.short || boundary.name : boundary.name}</text><text className="administrative-label-metric" textAnchor="middle" y="12">{boundaryMetric(boundary)}</text></g>
+        </g>;
+      })}
+    </svg> : <div className="administrative-map-loading"><i />행정경계를 조립하고 있습니다.</div>}
+    <div className="administrative-map-foot"><span><i />선택 지역</span><b>{focus === "national" ? selectedSido : focus === "sido" ? activeRegion.sigungu : selectedBoundaryDong || "동을 선택하세요"}</b><small>실제 도로·건물 지도는 04 단계부터 표시됩니다.</small></div>
+    {boundaryError && <div className="administrative-map-error" role="status"><b>행정경계를 불러오지 못했습니다.</b><span>{boundaryError}</span><button type="button" onClick={() => setBoundaryRetry((value) => value + 1)}>다시 불러오기</button></div>}
+  </div>;
+}
+
 function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, dongVolumes, buildingLocations, buildingsLoading, buildingsError, propertyLocation, propertyName, onSelectSido, onSelectRegion, onSelectDong, onSelectProperty }: {
   markets: OverviewMarket[];
   focus: MapFocus;
@@ -320,7 +409,7 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     let map: NaverMapInstance | null = null;
     const markers: NaverMarkerInstance[] = [];
     const listeners: NaverEventListener[] = [];
-    if (!host || !active) return;
+    if (!host || !active || (focus !== "buildings" && focus !== "detail")) return;
     if (!clientId) {
       const timer = window.setTimeout(() => setMapError("네이버 지도 클라이언트 ID가 연결되지 않았습니다."), 0);
       return () => window.clearTimeout(timer);
@@ -336,7 +425,7 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       if (disposed || !window.naver?.maps) return;
       const maps = window.naver.maps;
       const province = SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
-      const initial = focus === "national" ? { lat: 36.35, lng: 127.85, zoom: 7 } : focus === "detail" && propertyLocation ? { lat: propertyLocation.lat, lng: propertyLocation.lng, zoom: 17 } : province;
+      const initial = focus === "detail" && propertyLocation ? { lat: propertyLocation.lat, lng: propertyLocation.lng, zoom: 17 } : province;
       map = new maps.Map(host, { center: new maps.LatLng(initial.lat, initial.lng), zoom: initial.zoom, minZoom: 6, maxZoom: 20, zoomControl: true, zoomControlOptions: { position: maps.Position.TOP_RIGHT }, scaleControl: true, mapDataControl: false, logoControlOptions: { position: maps.Position.BOTTOM_LEFT } });
 
       const addMarkerListener = (marker: NaverMarkerInstance, listener: () => void) => {
@@ -348,31 +437,6 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
         map.fitBounds?.(bounds, { top: 76, right: 34, bottom: 34, left: 34 });
         if (zoomOut) window.setTimeout(() => { if (!disposed && map?.getZoom && map.setZoom) map.setZoom(Math.max(6, map.getZoom() - zoomOut)); }, 80);
       };
-      const makeMarketMarker = (market: OverviewMarket, selected: boolean) => {
-        const position = SIDO_CENTERS[market.sido];
-        if (!position || !map) return;
-        const tone = market.change > 1 ? "hot" : market.change < -1 ? "cold" : "flat";
-        const change = `${market.change >= 0 ? "+" : ""}${market.change.toFixed(1)}%`;
-        const marker = new maps.Marker({
-          position: new maps.LatLng(position.lat, position.lng), map, title: `${market.sido} ${change}`,
-          icon: { content: `<div class="naver-market-pin ${tone}${selected ? " selected" : ""}"><span>${escapeMapHtml(market.short)}</span><strong>${change}</strong></div>`, anchor: new maps.Point(34, 23) },
-          zIndex: selected ? 100 : 10,
-        });
-        markers.push(marker); addMarkerListener(marker, () => onSelectSido(market.sido));
-      };
-
-      if (focus === "national") {
-        const boundaries = await readGeoJson("/data/boundaries/sido.json");
-        if (disposed || !map) return;
-        map.data.addGeoJson(boundaries);
-        map.data.setStyle((feature) => { const selected = String(feature.getProperty("name") || "") === selectedSido; return { fillColor: selected ? "#0071e3" : "#8ec5ff", fillOpacity: selected ? 0.34 : 0.14, strokeColor: selected ? "#0071e3" : "#6d91b8", strokeWeight: selected ? 3 : 1.4, strokeOpacity: 0.95, clickable: true }; });
-        listeners.push(maps.Event.addListener(map.data, "click", (event) => { const name = String(event.feature?.getProperty("name") || ""); if (name) onSelectSido(name); }));
-        markets.forEach((market) => makeMarketMarker(market, market.sido === selectedSido));
-        fitCollection(boundaries);
-        setMapError("");
-        return;
-      }
-
       if (focus === "detail" && propertyLocation && map) {
         const position = new maps.LatLng(propertyLocation.lat, propertyLocation.lng);
         markers.push(new maps.Marker({ position, map, title: propertyName, icon: { content: `<div class="naver-property-pin"><i></i><span>${escapeMapHtml(propertyName || "선택 단지")}</span></div>`, anchor: new maps.Point(17, 38) } }));
@@ -409,45 +473,6 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
         return;
       }
 
-      if (focus === "sido" && map) {
-        const sidoCode = SIDO_CODES[selectedSido];
-        if (!sidoCode) throw new Error("선택한 시·도의 경계 코드를 찾지 못했습니다.");
-        const districts = await readGeoJson(`/data/boundaries/sgg/${sidoCode}.json`);
-        if (disposed || !map) return;
-        const features = map.data.addGeoJson(districts);
-        map.data.setStyle((feature) => {
-          const code = String(feature.getProperty("code") || ""); const selected = activeRegion.sido === selectedSido && code === activeRegion.code;
-          return { fillColor: selected ? "#0071e3" : "#b8d9ff", fillOpacity: selected ? 0.34 : 0.16, strokeColor: selected ? "#0071e3" : "#7194b8", strokeWeight: selected ? 3 : 1.25, strokeOpacity: 0.9, clickable: true };
-        });
-        listeners.push(maps.Event.addListener(map.data, "click", (event) => {
-          const code = String(event.feature?.getProperty("code") || ""); const region = REGIONS.find((item) => item.code === code); if (region) onSelectRegion(region);
-        }));
-        features.forEach((feature) => { const code = String(feature.getProperty("code") || ""); const name = String(feature.getProperty("name") || ""); const center = feature.getBounds?.().getCenter(); const region = REGIONS.find((item) => item.code === code); if (!center || !region || !map) return; const marker = new maps.Marker({ position: center, map, title: name, icon: { content: `<div class="naver-sigungu-label">${escapeMapHtml(name)}</div>`, anchor: new maps.Point(28, 12) }, zIndex: 20 }); markers.push(marker); addMarkerListener(marker, () => onSelectRegion(region)); });
-        fitCollection(districts, selectedSido === "서울특별시" ? 1 : 0);
-        setMapError("");
-        return;
-      }
-
-      if (focus === "district" && map) {
-        const dongs = await readGeoJson(`/data/boundaries/emd/${activeRegion.code}.json`);
-        if (disposed || !map) return;
-        const dongFeatures = map.data.addGeoJson(dongs);
-        map.data.setStyle((feature) => {
-          const name = String(feature.getProperty("name") || "");
-          const selected = selectedBoundaryDong ? name === selectedBoundaryDong : selectedDong !== "all" && legalDongName(name) === selectedDong;
-          return { fillColor: selected ? "#0071e3" : "#cfe6ff", fillOpacity: selected ? 0.42 : 0.18, strokeColor: selected ? "#0071e3" : "#7596b8", strokeWeight: selected ? 2.5 : 1.1, strokeOpacity: 0.88, clickable: true };
-        });
-        dongFeatures.forEach((feature) => {
-          const name = String(feature.getProperty("name") || ""); const center = feature.getBounds?.().getCenter(); if (!name || !center || !map) return;
-          const legalDong = legalDongName(name); const volume = dongVolumes[legalDong] || 0; const selected = selectedBoundaryDong ? name === selectedBoundaryDong : selectedDong !== "all" && legalDong === selectedDong;
-          const marker = new maps.Marker({ position: center, map, title: `${name} · 최근 3개월 ${volume}건`, icon: { content: `<div class="naver-dong-label${selected ? " selected" : ""}"><b>${escapeMapHtml(name)}</b><span>${volume}건</span></div>`, anchor: new maps.Point(28, 15) }, zIndex: selected ? 80 : 20 });
-          markers.push(marker); addMarkerListener(marker, () => onSelectDong(name));
-        });
-        listeners.push(maps.Event.addListener(map.data, "click", (event) => { const name = String(event.feature?.getProperty("name") || ""); if (name) onSelectDong(name); }));
-        fitCollection(dongs, activeRegion.code === "11680" ? 1 : 0);
-        setMapError("");
-        return;
-      }
       setMapError("");
     }).catch((error) => { if (!disposed && (!(error instanceof Error) || error.name !== "AbortError")) setMapError(error instanceof Error ? error.message : "지도를 표시하지 못했습니다."); });
 
@@ -456,11 +481,12 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     };
   }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, dongVolumes, focus, markets, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyLocation, propertyName, propertyType, retry, selectedBoundaryDong, selectedDong, selectedSido]);
 
+  if (focus === "national" || focus === "sido" || focus === "district") return <AdministrativeMarketMap focus={focus} active={active} markets={markets} selectedSido={selectedSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongVolumes={dongVolumes} onSelectSido={onSelectSido} onSelectRegion={onSelectRegion} onSelectDong={onSelectDong} />;
+
   return <div className="naver-market-map">
     <div ref={hostRef} className="naver-market-canvas" aria-label={`${stageTitle} 네이버 지도`} />
-    <div className="map-stage-card"><span>{focus === "national" ? "NATIONAL" : focus === "sido" ? "CITY · PROVINCE" : focus === "district" ? "DISTRICT" : focus === "buildings" ? "BUILDINGS" : "PROPERTY"}</span><b>{stageTitle}</b><small>{stageHint}</small></div>
+    <div className="map-stage-card"><span>{focus === "buildings" ? "BUILDINGS" : "PROPERTY"}</span><b>{stageTitle}</b><small>{stageHint}</small></div>
     {focus === "buildings" && <div className={`building-map-legend kind-${propertyType}`}><i /><span>현재 표시</span><b>{PROPERTY_MAP_META[propertyType].label}</b><small>가격을 누르면 단지 선택</small></div>}
-    {focus === "national" && !markets.length && <div className="map-loading"><i />전국 시장 표식을 계산하는 중…</div>}
     {mapError && <div className="naver-market-error" role="status"><b>지도를 불러오지 못했습니다.</b><span>{mapError}</span><button type="button" onClick={() => { setMapError(""); setRetry((value) => value + 1); }}>다시 불러오기</button></div>}
   </div>;
 }
@@ -780,11 +806,11 @@ export default function Home() {
 
     <section className="map-section" id="map">
       <div className="map-current-location" aria-live="polite"><div><span>현재 보고 있는 위치</span><strong>{selectedMapSido}<i>›</i>{selectedMapSido === activeRegion.sido ? activeRegion.sigungu : "시·군·구를 선택하세요"}{selectedMapSido === activeRegion.sido && selectedDong !== "all" && <><i>›</i>{selectedDong}</>}</strong><small>{selectedMapSido === activeRegion.sido ? `${PROPERTY_TYPES.find((item) => item.key === type)?.label} · 최근 3개월 실거래 기준` : "아래 지역 목록에서 세부 지역을 선택하면 차트와 함께 변경됩니다."}</small></div><button onClick={() => { changeView("home"); window.setTimeout(() => document.querySelector<HTMLSelectElement>('.search-console select')?.focus(), 250); }}>지역 다시 선택</button></div>
-      <div className="section-title wide"><div><p>KOREA MARKET MAP</p><h2>전국 경계에서 행당동까지</h2><span>{marketMonth ? `${marketMonth.slice(0, 4)}년 ${Number(marketMonth.slice(4))}월 기준 최근 3개월` : "전국 집계 중"} · 전국 16개 시·도 → 256개 시·군·구 → 3,558개 읍·면·동 → 단지 순으로 확대</span></div><div className="map-controls"><button type="button" className="gangnam-map-shortcut" onClick={openGangnamMap}>강남구 바로보기 ↗</button><button type="button" className="gangnam-map-shortcut secondary" onClick={openHaengdangMap}>행당동 예시보기 ↗</button><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">최근 3개월 거래량순</option><option value="price">최근 3개월 중위가순</option><option value="rise">직전 3개월 대비 상승순</option><option value="fall">직전 3개월 대비 하락순</option></select><div className="map-legend"><i className="cold"/>하락 <i className="flat"/>보합 <i className="hot"/>상승</div></div></div>
+      <div className="section-title wide"><div><p>KOREA MARKET ATLAS</p><h2>입체 행정경계에서 실제 생활권까지</h2><span>{marketMonth ? `${marketMonth.slice(0, 4)}년 ${Number(marketMonth.slice(4))}월 기준 최근 3개월` : "전국 집계 중"} · 전국·시도·구·동은 3D 행정지도로 탐색하고, 동 선택 후 실제 지도로 평가합니다.</span></div><div className="map-controls"><button type="button" className="gangnam-map-shortcut" onClick={openGangnamMap}>강남구 바로보기 ↗</button><button type="button" className="gangnam-map-shortcut secondary" onClick={openHaengdangMap}>행당동 예시보기 ↗</button><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">최근 3개월 거래량순</option><option value="price">최근 3개월 중위가순</option><option value="rise">직전 3개월 대비 상승순</option><option value="fall">직전 3개월 대비 하락순</option></select><div className="map-legend"><i className="cold"/>하락 <i className="flat"/>보합 <i className="hot"/>상승</div></div></div>
       <div className="map-level-tabs" aria-label="지도 확대 단계">
-        <button className={mapFocus === "national" ? "active" : ""} aria-pressed={mapFocus === "national"} onClick={() => setMapFocus("national")}><em>01</em><span>전국</span><small>16개 시·도</small></button>
-        <button className={mapFocus === "sido" ? "active" : ""} aria-pressed={mapFocus === "sido"} onClick={() => setMapFocus("sido")}><em>02</em><span>{selectedMapSido}</span><small>시·도 전체</small></button>
-        <button className={mapFocus === "district" ? "active" : ""} aria-pressed={mapFocus === "district"} disabled={selectedMapSido !== activeRegion.sido} onClick={() => setMapFocus("district")}><em>03</em><span>{selectedMapSido === activeRegion.sido ? `${activeRegion.sigungu} 전체` : "시·군·구 선택"}</span><small>읍·면·동 경계 · 거래량</small></button>
+        <button className={mapFocus === "national" ? "active" : ""} aria-pressed={mapFocus === "national"} onClick={() => setMapFocus("national")}><em>01</em><span>대한민국</span><small>3D 시·도 경계</small></button>
+        <button className={mapFocus === "sido" ? "active" : ""} aria-pressed={mapFocus === "sido"} onClick={() => setMapFocus("sido")}><em>02</em><span>{selectedMapSido}</span><small>3D 시·군·구 경계</small></button>
+        <button className={mapFocus === "district" ? "active" : ""} aria-pressed={mapFocus === "district"} disabled={selectedMapSido !== activeRegion.sido} onClick={() => setMapFocus("district")}><em>03</em><span>{selectedMapSido === activeRegion.sido ? `${activeRegion.sigungu} 전체` : "시·군·구 선택"}</span><small>3D 읍·면·동 경계</small></button>
         <button className={mapFocus === "buildings" ? "active" : ""} aria-pressed={mapFocus === "buildings"} disabled={selectedDong === "all" || selectedMapSido !== activeRegion.sido} onClick={() => setMapFocus("buildings")}><em>04</em><span>{selectedDong === "all" ? "동을 선택하세요" : `${selectedDong} 건물`}</span><small>실거래 건물 위치 · 가격</small></button>
         <button className={mapFocus === "detail" ? "active" : ""} aria-pressed={mapFocus === "detail"} disabled={!propertyLocation || selectedMapSido !== activeRegion.sido} onClick={() => setMapFocus("detail")}><em>05</em><span>{propertyLocation && selectedProperty ? selectedProperty.name : "단지 상세"}</span><small>{propertyLocation ? "검증된 실제 주소" : "건물 핀에서 선택"}</small></button>
       </div>
@@ -793,7 +819,7 @@ export default function Home() {
         <div className="map-ranking"><h3>전국 3개월 흐름</h3><div className="ranking-labels"><span>순위</span><span>지역</span><span>중위가격</span><span>3개월</span></div>{sortedMarkets.length ? sortedMarkets.map((market, index) => <button key={market.code} className={market.sido === selectedMapSido ? "selected" : ""} aria-pressed={market.sido === selectedMapSido} onClick={() => chooseMapSido(market.sido)}><em>{String(index + 1).padStart(2,"0")}</em><b>{market.sido}<small>{market.count}건</small></b><span>{formatPrice(market.median)}</span><strong className={market.change >= 0 ? "up" : "down"}>{market.change >= 0 ? "+" : ""}{market.change.toFixed(2)}%</strong></button>) : <div className="ranking-loading">16개 대표 권역의 공공데이터를 확인하고 있습니다.</div>}</div>
       </div>
       <div className="region-drilldown"><div><p>SELECT DISTRICT</p><h3>{selectedMapSido} 세부 지역</h3><span>지역을 누르면 지도는 해당 시·군·구 전체로 확대되고, 실거래 차트 조건도 함께 바뀝니다.</span></div><div>{mapDistricts.map((region, index) => <button key={region.code} className={region.code === regionCode ? "selected" : ""} aria-pressed={region.code === regionCode} onClick={() => chooseRegion(region, false)}><em>{String(index + 1).padStart(2, "0")}</em>{region.sigungu}<span>›</span></button>)}</div></div>
-      <p className="map-note">배경 지도·주소 좌표는 네이버 지도 API, 가격 표식은 국토교통부 실거래를 사용합니다. 전국 경계는 <a href="https://github.com/vuski/admdongkor" target="_blank" rel="noreferrer">2026-07-01 SGIS 기반 행정구역 경계</a>(CC BY 4.0)를 사용한 화면 탐색용 참고선입니다.</p>
+      <p className="map-note">전국·시도·구·동 탐색은 <a href="https://github.com/vuski/admdongkor" target="_blank" rel="noreferrer">2026-07-01 SGIS 기반 행정구역 경계</a>(CC BY 4.0)를 사용합니다. 동을 선택한 뒤부터 네이버 실제 지도와 국토교통부 실거래 가격을 결합해 건물과 생활권을 평가합니다.</p>
     </section>
 
     <section className="trade-section" id="transactions"><div className="section-title wide"><div><p>RECENT CONTRACTS</p><h2>{displayName} 최근 실거래</h2></div><span>단위: 만원 · 최대 30건 표시</span></div><div className="trade-table"><div className="table-head"><span>계약일</span><span>건물명</span><span>전용면적</span><span>층</span><span>거래금액</span><span>평당가</span></div>{[...filteredTrades].reverse().slice(0, 30).map((trade) => <div className="table-row" key={trade.id}><span>{trade.date.replaceAll("-", ".")}</span><b>{trade.name}</b><span>{trade.area ? `${trade.area.toFixed(1)}㎡` : "-"}</span><span>{trade.floor === null ? "-" : `${trade.floor}층`}</span><strong>{formatPrice(trade.amount)}</strong><span>{trade.area ? `${Math.round(trade.amount / (trade.area / 3.3058)).toLocaleString()}만` : "-"}</span></div>)}</div></section>
