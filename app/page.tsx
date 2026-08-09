@@ -70,6 +70,13 @@ const FACILITY_SEARCHES = [
   { id: "leisure", label: "여가", keyword: "공원 도서관", description: "공원·도서관과 주말 생활권" },
 ] as const;
 const FIELD_GROUPS = ["입지·동선", "주거환경", "동·세대", "비용·가격", "검증·비교"];
+const FIELD_SCORE_EXAMPLE = [
+  { label: "교통", score: 92, grade: "매우 좋음" }, { label: "생활편의", score: 91, grade: "매우 좋음" },
+  { label: "학군", score: 85, grade: "좋음" }, { label: "일조", score: 84, grade: "좋음" },
+  { label: "조망", score: 81, grade: "좋음" }, { label: "보행환경", score: 80, grade: "좋음" },
+  { label: "소음", score: 73, grade: "보통" }, { label: "관리비", score: 76, grade: "보통" },
+  { label: "주차", score: 68, grade: "주의" },
+];
 const FIELD_FEATURES: FieldFeature[] = [
   { id: "region", group: "입지·동선", title: "지역 온라인 임장", information: "상권·교통·학교·병원·공원·유흥시설", value: "동네를 직접 돌지 않고 생활권을 먼저 파악", importance: 5, status: "live", source: "네이버 지도·장소 검색" },
   { id: "walk", group: "입지·동선", title: "도보 임장", information: "역에서 단지까지 실제 동선과 보행 환경", value: "지도 거리와 실제 체감거리 차이를 확인", importance: 5, status: "beta", source: "네이버 길찾기 연결" },
@@ -651,6 +658,12 @@ export default function Home() {
           {!(["region","walk","commute","lifestyle","price","report","compare"].includes(activeFieldFeature.id)) && <div className="field-connect"><span>{activeFieldFeature.information}</span><strong>{activeFieldFeature.source} 연결이 필요합니다.</strong><p>현장·센서·공식 원천이 확보되기 전에는 그럴듯한 추정 점수를 표시하지 않습니다. 데이터 출처와 갱신일을 확인한 뒤 같은 화면에 연결합니다.</p><div><i />원천 검증 <i />주소·동 매칭 <i />사용자 교차 확인</div></div>}
         </article>
       </div>
+      <section className="field-scorecard" aria-label="온라인 임장 평가 예시">
+        <header><div><span>평가 예시</span><h3>한눈에 보는 임장 점수</h3><p>평가 방식과 화면 구성을 미리 확인하는 예시입니다. 실제 단지 점수는 항목별 공식·현장 데이터 연결 후 산출합니다.</p></div><div className="field-total"><strong>82</strong><span>종합 점수</span><b>추천</b></div></header>
+        <div className="field-score-head"><span>평가항목</span><span>점수</span><span>평가</span></div>
+        <div className="field-score-rows">{FIELD_SCORE_EXAMPLE.map((item) => <div key={item.label}><b>{item.label}</b><span className="field-score-bar"><i style={{ width: `${item.score}%` }} /></span><strong>{item.score}</strong><em className={item.grade === "주의" ? "caution" : item.grade === "보통" ? "neutral" : "good"}>{item.grade}</em></div>)}</div>
+        <footer><span>예시 데이터</span><p>현재 수치는 화면 설계를 위한 샘플이며 특정 지역·단지의 실제 평가가 아닙니다.</p></footer>
+      </section>
     </section>
 
     <section className="research-section" id="research">
