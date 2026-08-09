@@ -917,11 +917,11 @@ export default function Home() {
     if (next) { setRegionCode(next.code); setRegionInput(`${next.sido} ${next.sigungu}`); }
   }, [resetPropertySelection]);
   const chooseMapRegion = useCallback((region: Region) => chooseRegion(region, false), [chooseRegion]);
-  const chooseMapDong = useCallback((dong: string) => { const legalDong = legalDongName(dong); setSelectedBoundaryDong(dong); setMapPickerDong(dong); setMapFocus("district"); resetPropertySelection(); setSelectedDong(legalDong || dong); }, [resetPropertySelection]);
+  const chooseMapDong = useCallback((dong: string) => { const legalDong = legalDongName(dong); setSelectedBoundaryDong(dong); setMapPickerDong(dong); setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); resetPropertySelection(); setSelectedDong(legalDong || dong); }, [resetPropertySelection]);
   const openMapBuildings = useCallback(() => { if (ROAD_MAP_AVAILABLE && selectedDong !== "all") setMapFocus("buildings"); }, [selectedDong]);
   const chooseMapProperty = useCallback((key: string) => { setSelectedKey(key); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); setMapFocus("detail"); }, []);
   const openGangnamMap = useCallback(() => { const gangnam = REGIONS.find((region) => region.code === "11680"); if (gangnam) chooseRegion(gangnam, false); }, [chooseRegion]);
-  const openHaengdangMap = useCallback(() => { const seongdong = REGIONS.find((region) => region.code === "11200"); if (seongdong) { chooseRegion(seongdong, false); setSelectedDong("행당동"); setMapFocus("district"); } }, [chooseRegion]);
+  const openHaengdangMap = useCallback(() => { const seongdong = REGIONS.find((region) => region.code === "11200"); if (seongdong) { chooseRegion(seongdong, false); setSelectedBoundaryDong("행당1동"); setMapPickerDong("행당1동"); setSelectedDong("행당동"); setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); } }, [chooseRegion]);
   const selectSido = (sido: string) => { const next = REGIONS.filter((region) => region.sido === sido).sort(sortRegions)[0]; if (next) chooseRegion(next); };
   const selectSigungu = (code: string) => { const next = REGIONS.find((region) => region.code === code); if (next) chooseRegion(next); };
   const chooseFieldFeature = (featureId: string) => { const feature = FIELD_FEATURES.find((item) => item.id === featureId); if (!feature) return; setFieldGroup(feature.group); setFieldFeatureId(feature.id); setActiveSection("field"); const url = new URL(window.location.href); url.searchParams.set("feature", feature.id); url.hash = "field"; window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`); };

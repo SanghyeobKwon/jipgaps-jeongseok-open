@@ -324,3 +324,33 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 @media(min-width:961px){.map-layout>.administrative-market-map,.map-layout>.naver-market-map{height:720px!important;min-height:720px!important}.map-ranking{height:720px!important}}
 @media(max-width:960px){.map-layout{grid-template-columns:1fr!important}.map-layout>.administrative-market-map,.map-layout>.naver-market-map{min-height:600px!important}}
 @media(max-width:760px){.map-layout>.administrative-market-map{height:520px!important;min-height:520px!important}.administrative-market-map{grid-template-rows:96px minmax(0,1fr) auto!important}.administrative-map-head{min-height:96px!important}.administrative-label-name,.level-national .administrative-label-name{font-size:26px!important}.administrative-label.selected .administrative-label-name{font-size:31px!important;stroke-width:6px!important}.administrative-map-foot{grid-template-columns:auto minmax(0,1fr) auto!important;row-gap:5px!important}.administrative-map-foot>small{grid-column:1/-1!important}.administrative-map-open{grid-column:3;grid-row:1;min-height:44px;padding:0 10px;font-size:10px}}
+
+/* High-contrast administrative map states */
+.administrative-region.tone-hot:not(.selected) .administrative-region-surface { fill: #d96d55 !important; }
+.administrative-region.tone-cold:not(.selected) .administrative-region-surface { fill: #5797c2 !important; }
+.administrative-region.tone-flat:not(.selected) .administrative-region-surface { fill: #aebbc7 !important; }
+.administrative-region.tone-neutral:not(.selected) .administrative-region-surface { fill: #b8cfe1 !important; }
+.administrative-region.tone-price-high:not(.selected) .administrative-region-surface { fill: #4389bb !important; }
+.administrative-region.tone-price-mid:not(.selected) .administrative-region-surface { fill: #91bddb !important; }
+.administrative-region.tone-price-low:not(.selected) .administrative-region-surface { fill: #c8dcea !important; }
+.administrative-region.tone-no-data:not(.selected) .administrative-region-surface { fill: #cbd3db !important; }
+.administrative-region.selected .administrative-region-surface {
+  fill: #005fb8 !important;
+  stroke: #003d78 !important;
+  stroke-width: 4px !important;
+  filter: drop-shadow(0 6px 7px rgba(0, 63, 120, .32)) !important;
+}
+.administrative-label.selected .administrative-label-name,
+.administrative-region.selected + .administrative-label .administrative-label-name {
+  fill: #fff !important;
+  stroke: #005fb8 !important;
+}
+.administrative-label-name { fill: #102a43 !important; stroke: rgba(255, 255, 255, .96) !important; }
+.capital-context-region { fill: #d7e0e8 !important; stroke: #9fb0bf !important; }
+.capital-context-region.context-11 { fill: #e5ebf0 !important; }
+.administrative-map-key i.price-low { background: #c8dcea !important; }
+.administrative-map-key i.price-mid { background: #91bddb !important; }
+.administrative-map-key i.price-high { background: #4389bb !important; }
+.administrative-map-key i.cold { background: #5797c2 !important; }
+.administrative-map-key i.flat { background: #aebbc7 !important; }
+.administrative-map-key i.hot { background: #d96d55 !important; }
