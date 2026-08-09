@@ -11,6 +11,16 @@ type ChartPoint = { month: string; price: number; average: number; volume: numbe
 type OverviewMarket = { short: string; sido: string; code: string; count: number; median: number; change: number };
 type PolicyItem = { date: string; tone: string; label: string; scope: string; title: string; summary: string; url: string };
 
+const SIDO_ORDER = ["서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도", "충청북도", "충청남도", "전라북도", "전라남도", "경상북도", "경상남도", "제주특별자치도"];
+function normalizeRegion(region: Region): Region {
+  let sigungu = region.sigungu.replace(/^서울시/, "");
+  if (region.code.startsWith("4128") && !sigungu.startsWith("고양시")) sigungu = `고양시 ${sigungu}`;
+  if (region.code.startsWith("4146") && !sigungu.startsWith("용인시")) sigungu = `용인시 ${sigungu}`;
+  sigungu = sigungu.replace(/시(?=[가-힣]+구$)/, "시 ");
+  return { ...region, sigungu };
+}
+const REGIONS = (regions as Region[]).map(normalizeRegion);
+
 const PROPERTY_TYPES: { key: PropertyType; label: string }[] = [
   { key: "apt", label: "아파트" }, { key: "rowhouse", label: "연립·다세대" },
   { key: "house", label: "단독·다가구" }, { key: "officetel", label: "오피스텔" },
@@ -85,7 +95,7 @@ export default function Home() {
   const [buildingSort, setBuildingSort] = useState<"volume" | "price" | "rise" | "fall">("volume"); const [minVolume, setMinVolume] = useState(0); const [marketSort, setMarketSort] = useState<"volume" | "price" | "rise" | "fall">("volume");
   const [policyItems, setPolicyItems] = useState<readonly PolicyItem[]>(POLICIES); const [policyUpdated, setPolicyUpdated] = useState("");
   const [activeSection, setActiveSection] = useState("national"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
-  const activeRegion = (regions as Region[]).find((item) => item.code === regionCode) || regions[0] as Region;
+  const activeRegion = REGIONS.find((item) => item.code === regionCode) || REGIONS[0];
 
   useEffect(() => {
     const updateSection = () => {
@@ -145,8 +155,8 @@ export default function Home() {
   const visibleProperties = useMemo(() => propertyRows.filter((property) => property.quarterCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? b.change - a.change : buildingSort === "fall" ? a.change - b.change : b.quarterCount - a.quarterCount), [propertyRows, buildingSort, minVolume]);
   const sortedMarkets = useMemo(() => [...markets].sort((a, b) => marketSort === "price" ? b.median - a.median : marketSort === "rise" ? b.change - a.change : marketSort === "fall" ? a.change - b.change : b.count - a.count), [markets, marketSort]);
   const nationalDeals = markets.reduce((sum, market) => sum + market.count, 0); const activeMarkets = markets.filter((market) => market.median > 0); const nationalMedian = activeMarkets.length ? median(activeMarkets.map((market) => market.median)) : 0; const nationalChange = nationalDeals ? markets.reduce((sum, market) => sum + market.change * market.count, 0) / nationalDeals : 0;
-  const sidoOptions = useMemo(() => [...new Set((regions as Region[]).map((region) => region.sido))].sort(), []);
-  const sigunguOptions = useMemo(() => (regions as Region[]).filter((region) => region.sido === activeRegion.sido), [activeRegion.sido]);
+  const sidoOptions = useMemo(() => SIDO_ORDER.filter((sido) => REGIONS.some((region) => region.sido === sido)), []);
+  const sigunguOptions = useMemo(() => REGIONS.filter((region) => region.sido === activeRegion.sido).sort((a, b) => Number(a.code) - Number(b.code)), [activeRegion.sido]);
   const dongOptions = useMemo(() => [...new Set(trades.map((trade) => trade.dong).filter(Boolean))].sort(), [trades]);
   const targetTrade = filteredTrades.at(-1); const targetArea = area === "all" ? targetTrade?.area || 0 : Number(area);
   const subjectPerPy = filteredTrades.filter((trade) => trade.area > 0 && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15)).slice(-20).map((trade) => trade.amount / (trade.area / 3.3058));
@@ -156,9 +166,9 @@ export default function Home() {
   const subjectPyeongPrice = subjectPerPy.length ? median(subjectPerPy) : 0; const peerPyeongPrice = peerPerPy.length ? median(peerPerPy) : 0; const valuationGap = peerPyeongPrice ? (subjectPyeongPrice / peerPyeongPrice - 1) * 100 : 0;
   const fairPrice = targetArea && peerPyeongPrice ? peerPyeongPrice * (targetArea / 3.3058) : 0; const valuationScore = peerPyeongPrice ? Math.max(0, Math.min(100, Math.round(100 - Math.abs(valuationGap) * 2))) : 0; const valuationLabel = valuationGap <= -5 ? "저평가 구간" : valuationGap >= 5 ? "고평가 구간" : "적정가격 구간";
   const chooseRegion = (region: Region) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedDong("all"); setSelectedKey(""); setSubmittedQuery(""); setQuery(""); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const selectSido = (sido: string) => { const next = (regions as Region[]).find((region) => region.sido === sido); if (next) chooseRegion(next); };
-  const selectSigungu = (code: string) => { const next = (regions as Region[]).find((region) => region.code === code); if (next) chooseRegion(next); };
-  const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = (regions as Region[]).find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); setSubmittedQuery(query.trim()); };
+  const selectSido = (sido: string) => { const next = REGIONS.filter((region) => region.sido === sido).sort((a, b) => Number(a.code) - Number(b.code))[0]; if (next) chooseRegion(next); };
+  const selectSigungu = (code: string) => { const next = REGIONS.find((region) => region.code === code); if (next) chooseRegion(next); };
+  const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = REGIONS.find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); setSubmittedQuery(query.trim()); };
 
   return <main className="terminal-shell">
     <header className="topbar"><a href="#top" className="brand"><span>집값</span>의 정석 <em>HOME</em></a><nav ref={navRef}>{NAV_ITEMS.map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}<i className="nav-indicator" style={{ left: navIndicator.left, width: navIndicator.width }} /></nav><div className="live"><i /> 국토교통부 실거래가 연동</div></header>
@@ -217,8 +227,8 @@ export default function Home() {
 
     <section className="map-section" id="map">
       <div className="section-title wide"><div><p>KOREA MARKET MAP</p><h2>전국 실거래 온도 지도</h2><span>{marketMonth ? `${marketMonth.slice(0, 4)}년 ${Number(marketMonth.slice(4))}월` : "최근 월"} · 시도별 대표 권역 중위가격 변화</span></div><div className="map-controls"><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">거래량 많은순</option><option value="price">가격 높은순</option><option value="rise">상승률 높은순</option><option value="fall">하락률 높은순</option></select><div className="map-legend"><i className="cold"/>하락 <i className="flat"/>보합 <i className="hot"/>상승</div></div></div>
-      <div className="map-layout"><div className="korea-map">{markets.map((market) => <button key={market.code} className={`map-tile map-${market.short} ${market.change > 1 ? "hot" : market.change < -1 ? "cold" : "flat"}`} onClick={() => { const region = (regions as Region[]).find((item) => item.code === market.code); if (region) chooseRegion(region); }}><b>{market.short}</b><span>{market.change >= 0 ? "+" : ""}{market.change.toFixed(1)}%</span><small>{market.count}건</small></button>)}</div>
-        <div className="map-ranking"><h3>전국 월간 흐름</h3><div className="ranking-labels"><span>순위</span><span>지역</span><span>중위가격</span><span>전월대비</span></div>{sortedMarkets.map((market, index) => <button key={market.code} onClick={() => { const region = (regions as Region[]).find((item) => item.code === market.code); if (region) chooseRegion(region); }}><em>{String(index + 1).padStart(2,"0")}</em><b>{market.sido}<small>{market.count}건</small></b><span>{formatPrice(market.median)}</span><strong className={market.change >= 0 ? "up" : "down"}>{market.change >= 0 ? "+" : ""}{market.change.toFixed(2)}%</strong></button>)}</div>
+      <div className="map-layout"><div className="korea-map">{markets.map((market) => <button key={market.code} className={`map-tile map-${market.short} ${market.change > 1 ? "hot" : market.change < -1 ? "cold" : "flat"}`} onClick={() => { const region = REGIONS.find((item) => item.code === market.code); if (region) chooseRegion(region); }}><b>{market.short}</b><span>{market.change >= 0 ? "+" : ""}{market.change.toFixed(1)}%</span><small>{market.count}건</small></button>)}</div>
+        <div className="map-ranking"><h3>전국 월간 흐름</h3><div className="ranking-labels"><span>순위</span><span>지역</span><span>중위가격</span><span>전월대비</span></div>{sortedMarkets.map((market, index) => <button key={market.code} onClick={() => { const region = REGIONS.find((item) => item.code === market.code); if (region) chooseRegion(region); }}><em>{String(index + 1).padStart(2,"0")}</em><b>{market.sido}<small>{market.count}건</small></b><span>{formatPrice(market.median)}</span><strong className={market.change >= 0 ? "up" : "down"}>{market.change >= 0 ? "+" : ""}{market.change.toFixed(2)}%</strong></button>)}</div>
       </div>
       <p className="map-note">지도 수치는 시·도 전체 통계가 아니라 각 시·도의 대표 권역에서 신고된 실거래 중위가격 변화입니다. 전국 방향을 빠르게 탐색하기 위한 온도계로 사용하세요.</p>
     </section>
