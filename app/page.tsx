@@ -59,7 +59,13 @@ type NaverEventListener = unknown;
 type NaverMapsApi = { maps: { Map: new (element: HTMLElement, options: Record<string, unknown>) => NaverMapInstance; LatLng: new (lat: number, lng: number) => unknown; LatLngBounds: new (southWest: unknown, northEast: unknown) => NaverBounds; Point: new (x: number, y: number) => unknown; Marker: new (options: Record<string, unknown>) => NaverMarkerInstance; Circle: new (options: Record<string, unknown>) => NaverOverlayInstance; Position: { TOP_RIGHT: unknown; BOTTOM_LEFT: unknown }; Event: { addListener: (target: unknown, eventName: string, listener: (event: { feature?: NaverDataFeature }) => void) => NaverEventListener; removeListener: (listener: NaverEventListener) => void } } };
 
 declare global {
-  interface Window { naver?: NaverMapsApi; __jipgapsNaverMap?: Promise<void> }
+  interface Window {
+    naver?: NaverMapsApi;
+    navermap_authFailure?: () => void;
+    __jipgapsNaverMap?: Promise<void>;
+    __jipgapsNaverMapAuthFailed?: boolean;
+    __jipgapsNaverMapAuthHandler?: boolean;
+  }
 }
 
 const SIDO_ORDER = ["서울특별시", "경기도", "인천광역시", "부산광역시", "대구광역시", "대전광역시", "울산광역시", "세종특별자치시", "강원특별자치도", "충청북도", "충청남도", "전남광주통합특별시", "전북특별자치도", "경상북도", "경상남도", "제주특별자치도"];
@@ -242,6 +248,17 @@ function monthLabel(value: string) { const [year, month] = value.split("-"); ret
 function shiftMonth(value: string, offset: number) { if (!value) return ""; const [year, month] = value.split("-").map(Number); const date = new Date(year, month - 1 + offset, 1); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`; }
 
 function loadNaverMap(clientId: string) {
+  if (!window.__jipgapsNaverMapAuthHandler) {
+    const previousHandler = window.navermap_authFailure;
+    window.navermap_authFailure = () => {
+      window.__jipgapsNaverMapAuthFailed = true;
+      window.__jipgapsNaverMap = undefined;
+      window.dispatchEvent(new Event("jipgaps:naver-map-auth-failure"));
+      previousHandler?.();
+    };
+    window.__jipgapsNaverMapAuthHandler = true;
+  }
+  if (window.__jipgapsNaverMapAuthFailed) return Promise.reject(new Error("NAVER_MAP_AUTH_FAILED"));
   if (window.naver?.maps) return Promise.resolve();
   if (window.__jipgapsNaverMap) return window.__jipgapsNaverMap;
   window.__jipgapsNaverMap = new Promise<void>((resolve, reject) => {
@@ -255,6 +272,23 @@ function loadNaverMap(clientId: string) {
     document.head.appendChild(script);
   }).catch((error) => { window.__jipgapsNaverMap = undefined; throw error; });
   return window.__jipgapsNaverMap;
+}
+
+function safeMapMessage(error: unknown) {
+  return error instanceof Error && error.message === "NAVER_MAP_AUTH_FAILED"
+    ? "Vercel 도메인이 네이버 지도 허용 URL에 등록되지 않아 안전 지도로 전환했습니다."
+    : error instanceof Error ? error.message : "지도를 표시하지 못했습니다.";
+}
+
+function MapFallback({ lat, lng, title, message }: { lat: number; lng: number; title: string; message: string }) {
+  const delta = .035;
+  const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
+  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${lat},${lng}`)}`;
+  const naverUrl = `https://map.naver.com/p/search/${encodeURIComponent(title)}`;
+  return <div className="safe-map-fallback">
+    <iframe title={`${title} 안전 지도`} src={src} loading="lazy" referrerPolicy="no-referrer" />
+    <div className="safe-map-notice"><b>안전 지도로 전환됨</b><span>{message}</span><a href={naverUrl} target="_blank" rel="noreferrer">네이버 지도에서 열기 →</a></div>
+  </div>;
 }
 
 function PriceChart({ points, unit }: { points: ChartPoint[]; unit: "price" | "py" }) {
@@ -297,11 +331,18 @@ function PriceChart({ points, unit }: { points: ChartPoint[]; unit: "price" | "p
 }
 
 function NaverPlaceMap({ location, title, places, active }: { location: PropertyLocation; title: string; places: NearbyPlace[]; active: boolean }) {
-  const hostRef = useRef<HTMLDivElement>(null); const [mapError, setMapError] = useState(""); const [retry, setRetry] = useState(0);
+  const hostRef = useRef<HTMLDivElement>(null); const [mapError, setMapError] = useState("");
   useEffect(() => {
     const host = hostRef.current; const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID; let disposed = false; let map: NaverMapInstance | null = null; const overlays: NaverOverlayInstance[] = [];
     if (!host || !active) return;
-    if (!clientId) { const timer = window.setTimeout(() => setMapError("네이버 지도 클라이언트 ID가 연결되지 않았습니다."), 0); return () => window.clearTimeout(timer); }
+    const handleAuthFailure = () => {
+      if (disposed) return;
+      map?.destroy?.();
+      host.replaceChildren();
+      setMapError(safeMapMessage(new Error("NAVER_MAP_AUTH_FAILED")));
+    };
+    window.addEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure);
+    if (!clientId) { const timer = window.setTimeout(() => setMapError("네이버 지도 클라이언트 ID가 연결되지 않았습니다."), 0); return () => { window.clearTimeout(timer); window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); }; }
     loadNaverMap(clientId).then(() => {
       if (disposed || !window.naver?.maps) return;
       const maps = window.naver.maps; const center = new maps.LatLng(location.lat, location.lng);
@@ -312,10 +353,10 @@ function NaverPlaceMap({ location, title, places, active }: { location: Property
       const colors = Object.fromEntries(NEARBY_CATEGORIES.map((category) => [category.label, category.color]));
       places.slice(0, 28).forEach((place) => { const position = new maps.LatLng(place.lat, place.lng); overlays.push(new maps.Marker({ position, map, title: `${place.subCategory} · ${place.name} · ${place.distance}m`, icon: { content: `<div class="nearby-place-pin" style="--pin:${colors[place.category] || "#526173"}"><i></i><b>${escapeMapHtml(place.subCategory || place.category)} · ${escapeMapHtml(place.name)}</b><span>${place.distance}m</span></div>`, anchor: new maps.Point(12, 12) }, zIndex: Math.max(10, 70 - Math.round(place.distance / 30)) })); });
       setMapError("");
-    }).catch((error) => { if (!disposed) setMapError(error instanceof Error ? error.message : "지도를 표시하지 못했습니다."); });
-    return () => { disposed = true; overlays.forEach((overlay) => overlay.setMap(null)); map?.destroy?.(); };
-  }, [active, location.lat, location.lng, places, retry, title]);
-  return <div className="naver-map-frame"><div ref={hostRef} className="naver-map-canvas" role="img" aria-label={`${title}와 주변 생활시설 네이버 지도`} />{mapError && <div className="naver-map-error"><b>지도를 불러오지 못했습니다.</b><span>{mapError}</span><button type="button" onClick={() => { setMapError(""); setRetry((value) => value + 1); }}>다시 불러오기</button></div>}</div>;
+    }).catch((error) => { if (!disposed) setMapError(safeMapMessage(error)); });
+    return () => { disposed = true; window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); overlays.forEach((overlay) => overlay.setMap(null)); map?.destroy?.(); };
+  }, [active, location.lat, location.lng, places, title]);
+  return <div className="naver-map-frame">{mapError ? <MapFallback lat={location.lat} lng={location.lng} title={title} message={mapError} /> : <div ref={hostRef} className="naver-map-canvas" role="img" aria-label={`${title}와 주변 생활시설 네이버 지도`} />}</div>;
 }
 
 function escapeMapHtml(value: string) {
@@ -550,9 +591,10 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   onSelectProperty: (key: string) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const [mapError, setMapError] = useState(""); const [retry, setRetry] = useState(0);
+  const [mapError, setMapError] = useState("");
   const stageTitle = focus === "national" ? "대한민국 16개 시·도" : focus === "sido" ? selectedSido : focus === "detail" ? propertyName || "선택 단지" : focus === "buildings" ? `${activeRegion.sido} ${activeRegion.sigungu} · ${selectedDong === "all" ? legalDongName(selectedBoundaryDong) : selectedDong}` : `${activeRegion.sido} ${activeRegion.sigungu}${selectedBoundaryDong ? ` · ${selectedBoundaryDong}` : ""}`;
   const stageHint = focus === "national" ? "시·도 경계를 눌러 다음 단계로 들어가세요." : focus === "sido" ? "시·군·구 경계를 눌러 읍·면·동 지도로 확대하세요." : focus === "detail" ? "선택한 단지의 검증된 실제 주소 좌표입니다." : focus === "buildings" ? buildingsLoading ? "선택한 동의 실제 거래 건물 좌표를 확인하고 있습니다." : buildingsError ? buildingsError : `실거래가 있는 건물 ${buildingLocations.length}곳을 표시했습니다. 핀을 누르면 단지를 선택합니다.` : selectedBoundaryDong ? `${legalDongName(selectedBoundaryDong)} 실거래 조건과 연동했습니다.` : "읍·면·동 경계를 누르면 실거래 건물 지도로 확대됩니다.";
+  const fallbackLocation = propertyLocation || buildingLocations[0] || SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -563,9 +605,16 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     const markers: NaverMarkerInstance[] = [];
     const listeners: NaverEventListener[] = [];
     if (!host || !active || (focus !== "buildings" && focus !== "detail")) return;
+    const handleAuthFailure = () => {
+      if (disposed) return;
+      map?.destroy?.();
+      host.replaceChildren();
+      setMapError(safeMapMessage(new Error("NAVER_MAP_AUTH_FAILED")));
+    };
+    window.addEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure);
     if (!clientId) {
       const timer = window.setTimeout(() => setMapError("네이버 지도 클라이언트 ID가 연결되지 않았습니다."), 0);
-      return () => window.clearTimeout(timer);
+      return () => { window.clearTimeout(timer); window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); };
     }
 
     const readGeoJson = async (url: string) => {
@@ -627,21 +676,20 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       }
 
       setMapError("");
-    }).catch((error) => { if (!disposed && (!(error instanceof Error) || error.name !== "AbortError")) setMapError(error instanceof Error ? error.message : "지도를 표시하지 못했습니다."); });
+    }).catch((error) => { if (!disposed && (!(error instanceof Error) || error.name !== "AbortError")) setMapError(safeMapMessage(error)); });
 
     return () => {
-      disposed = true; controller.abort(); listeners.forEach((listener) => window.naver?.maps.Event.removeListener(listener)); markers.forEach((marker) => marker.setMap(null)); map?.destroy?.();
+      disposed = true; controller.abort(); window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); listeners.forEach((listener) => window.naver?.maps.Event.removeListener(listener)); markers.forEach((marker) => marker.setMap(null)); map?.destroy?.();
     };
-  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, focus, markets, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyLocation, propertyName, propertyType, retry, selectedBoundaryDong, selectedDong, selectedSido]);
+  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, focus, markets, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyLocation, propertyName, propertyType, selectedBoundaryDong, selectedDong, selectedSido]);
 
   if (focus === "national" || focus === "sido" || focus === "district") return <AdministrativeMarketMap key={`${focus}-${selectedSido}-${activeRegion.code}`} focus={focus} active={active} markets={markets} selectedSido={selectedSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongStats={dongStats} dongMetric={dongMetric} onDongMetricChange={onDongMetricChange} onSelectSido={onSelectSido} onSelectRegion={onSelectRegion} onSelectDong={onSelectDong} onOpenBuildings={onOpenBuildings} />;
 
   return <div className="naver-market-map">
-    <div ref={hostRef} className="naver-market-canvas" aria-label={`${stageTitle} 네이버 지도`} />
+    {mapError ? <MapFallback lat={fallbackLocation.lat} lng={fallbackLocation.lng} title={stageTitle} message={mapError} /> : <div ref={hostRef} className="naver-market-canvas" aria-label={`${stageTitle} 네이버 지도`} />}
     <KoreaFocusLocator active={active} selectedSido={selectedSido} />
     <div className="map-stage-card"><span>{focus === "buildings" ? "BUILDINGS" : "PROPERTY"}</span><b>{stageTitle}</b><small>{stageHint}</small></div>
     {focus === "buildings" && <div className={`building-map-legend kind-${propertyType}`}><i /><span>현재 표시</span><b>{PROPERTY_MAP_META[propertyType].label}</b><small>가격을 누르면 단지 선택</small></div>}
-    {mapError && <div className="naver-market-error" role="status"><b>지도를 불러오지 못했습니다.</b><span>{mapError}</span><button type="button" onClick={() => { setMapError(""); setRetry((value) => value + 1); }}>다시 불러오기</button></div>}
   </div>;
 }
 
