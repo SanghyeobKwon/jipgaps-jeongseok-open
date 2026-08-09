@@ -22,6 +22,7 @@ type Trade = {
   name: string;
   propertyKey: string;
   dong: string;
+  buildingDong: string;
   jibun: string;
   buildYear: number | null;
   propertyType: PropertyType;
@@ -112,6 +113,7 @@ function normalize(row: RawFields, type: PropertyType, index: number): Trade {
   const month = String(row.dealMonth || "").padStart(2, "0");
   const day = String(row.dealDay || "").padStart(2, "0");
   const dong = row.umdNm || "";
+  const buildingDong = row.aptDong || "";
   const jibun = row.jibun || "";
   const suppliedName = row.aptNm || row.mhouseNm || row.offiNm || "";
   const usage = row.buildingUse || row.buildingType || row.houseType || "건물";
@@ -127,6 +129,7 @@ function normalize(row: RawFields, type: PropertyType, index: number): Trade {
     name,
     propertyKey,
     dong,
+    buildingDong,
     jibun,
     buildYear: row.buildYear ? numeric(row.buildYear) : null,
     propertyType: type,
@@ -151,7 +154,7 @@ export async function GET(request: Request) {
     let trades = rows.map((row, index) => normalize(row, type, index)).filter((trade) => trade.amount > 0 && trade.date.length === 10);
     if (query) {
       trades = trades.filter((trade) => {
-        const haystack = `${trade.name} ${trade.dong} ${trade.jibun}`.toLocaleLowerCase("ko");
+        const haystack = `${trade.name} ${trade.dong} ${trade.buildingDong} ${trade.jibun}`.toLocaleLowerCase("ko");
         return exact ? trade.propertyKey.toLocaleLowerCase("ko") === query : haystack.includes(query);
       });
     }

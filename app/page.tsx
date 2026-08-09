@@ -5,21 +5,25 @@ import regions from "./data/regions.json";
 
 type PropertyType = "apt" | "rowhouse" | "house" | "officetel" | "commercial" | "factory";
 type Region = { code: string; sido: string; sigungu: string };
-type Trade = { id: string; date: string; amount: number; area: number; floor: number | null; name: string; propertyKey: string; dong: string; jibun: string; buildYear: number | null; dealingType: string; cancelled: boolean };
+type Trade = { id: string; date: string; amount: number; area: number; floor: number | null; name: string; propertyKey: string; dong: string; buildingDong: string; jibun: string; buildYear: number | null; dealingType: string; cancelled: boolean };
 type Property = { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; areas: number[] };
 type ChartPoint = { month: string; price: number; average: number; volume: number };
 type OverviewMarket = { short: string; sido: string; code: string; count: number; median: number; change: number };
 type PolicyItem = { date: string; tone: string; label: string; scope: string; title: string; summary: string; url: string };
 
-const SIDO_ORDER = ["서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도", "충청북도", "충청남도", "전라북도", "전라남도", "경상북도", "경상남도", "제주특별자치도"];
+const SIDO_ORDER = ["서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도", "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도"];
+const SEOUL_PRIORITY = ["강남구", "서초구", "송파구", "용산구", "성동구", "마포구", "영등포구", "강동구", "양천구", "광진구", "동작구", "종로구", "중구", "서대문구", "강서구", "관악구", "동대문구", "성북구", "은평구", "노원구", "구로구", "금천구", "중랑구", "도봉구", "강북구"];
 function normalizeRegion(region: Region): Region {
   let sigungu = region.sigungu.replace(/^서울시/, "");
   if (region.code.startsWith("4128") && !sigungu.startsWith("고양시")) sigungu = `고양시 ${sigungu}`;
   if (region.code.startsWith("4146") && !sigungu.startsWith("용인시")) sigungu = `용인시 ${sigungu}`;
   sigungu = sigungu.replace(/시(?=[가-힣]+구$)/, "시 ");
-  return { ...region, sigungu };
+  return { ...region, sido: region.sido === "전라북도" ? "전북특별자치도" : region.sido, sigungu };
 }
 const REGIONS = (regions as Region[]).map(normalizeRegion);
+function sortRegions(a: Region, b: Region) { if (a.sido === "서울특별시" && b.sido === "서울특별시") return SEOUL_PRIORITY.indexOf(a.sigungu) - SEOUL_PRIORITY.indexOf(b.sigungu); return Number(a.code) - Number(b.code); }
+function areaBucket(area: number) { return area > 0 ? Math.round(area / 3.3058) : 0; }
+function dongLabel(value: string) { return value ? (value.endsWith("동") ? value : `${value}동`) : ""; }
 
 const PROPERTY_TYPES: { key: PropertyType; label: string }[] = [
   { key: "apt", label: "아파트" }, { key: "rowhouse", label: "연립·다세대" },
@@ -89,12 +93,13 @@ export default function Home() {
   const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState("");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
-  const [selectedDong, setSelectedDong] = useState("all");
+  const [selectedDong, setSelectedDong] = useState("all"); const [selectedBuildingDong, setSelectedBuildingDong] = useState(""); const [selectedAreaBucket, setSelectedAreaBucket] = useState<number | null>(null); const [selectedVariantKey, setSelectedVariantKey] = useState("");
   const [area, setArea] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
   const [markets, setMarkets] = useState<OverviewMarket[]>([]); const [marketMonth, setMarketMonth] = useState("");
   const [buildingSort, setBuildingSort] = useState<"volume" | "price" | "rise" | "fall">("volume"); const [minVolume, setMinVolume] = useState(0); const [marketSort, setMarketSort] = useState<"volume" | "price" | "rise" | "fall">("volume");
   const [policyItems, setPolicyItems] = useState<readonly PolicyItem[]>(POLICIES); const [policyUpdated, setPolicyUpdated] = useState("");
   const [activeSection, setActiveSection] = useState("national"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
+  const [selectedMapSido, setSelectedMapSido] = useState("서울특별시");
   const activeRegion = REGIONS.find((item) => item.code === regionCode) || REGIONS[0];
 
   useEffect(() => {
@@ -115,7 +120,7 @@ export default function Home() {
   }, [activeSection]);
 
   useEffect(() => {
-    const controller = new AbortController(); setLoading(true); setError(""); setSelectedKey(""); setArea("all");
+    const controller = new AbortController(); setLoading(true); setError(""); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all");
     const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 6)), query: submittedQuery });
     fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { setTrades(data.trades); setProperties(data.properties); if (data.properties.length === 1) setSelectedKey(data.properties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") setError(reason.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -132,7 +137,7 @@ export default function Home() {
   }, []);
 
   const scopedTrades = useMemo(() => selectedDong === "all" ? trades : trades.filter((trade) => trade.dong === selectedDong), [trades, selectedDong]);
-  const propertyTrades = useMemo(() => selectedKey ? scopedTrades.filter((trade) => trade.propertyKey === selectedKey) : scopedTrades, [scopedTrades, selectedKey]);
+  const propertyTrades = useMemo(() => selectedKey ? scopedTrades.filter((trade) => trade.propertyKey === selectedKey && (!selectedBuildingDong || trade.buildingDong === selectedBuildingDong) && (selectedAreaBucket === null || areaBucket(trade.area) === selectedAreaBucket)) : scopedTrades, [scopedTrades, selectedKey, selectedBuildingDong, selectedAreaBucket]);
   const areas = useMemo(() => [...new Set(propertyTrades.map((trade) => Math.round(trade.area * 10) / 10).filter(Boolean))].sort((a, b) => a - b), [propertyTrades]);
   const filteredTrades = useMemo(() => propertyTrades.filter((trade) => area === "all" || Math.abs(trade.area - Number(area)) < .15), [propertyTrades, area]);
   const chartPoints = useMemo(() => {
@@ -140,23 +145,28 @@ export default function Home() {
     const base = [...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([month, values]) => ({ month, price: median(values), volume: values.length }));
     return base.map((point, index) => ({ ...point, average: median(base.slice(Math.max(0, index - 2), index + 1).map((item) => item.price)) })).slice(-period);
   }, [filteredTrades, unit, period]);
-  const latest = chartPoints.at(-1)?.price || 0; const previous = chartPoints.at(-2)?.price || latest; const change = previous ? (latest / previous - 1) * 100 : 0;
+  const latest = chartPoints.at(-1)?.price || 0; const previous = chartPoints.at(-2)?.price || latest; const chartChangeComparable = (chartPoints.at(-1)?.volume || 0) >= 2 && (chartPoints.at(-2)?.volume || 0) >= 2; const change = chartChangeComparable && previous ? (latest / previous - 1) * 100 : 0;
   const high = chartPoints.length ? Math.max(...chartPoints.map((point) => point.price)) : 0; const low = chartPoints.length ? Math.min(...chartPoints.map((point) => point.price)) : 0;
-  const selectedProperty = properties.find((property) => property.key === selectedKey); const displayName = selectedProperty?.name || (submittedQuery ? `${submittedQuery} 검색 결과` : `${activeRegion.sigungu} 전체`);
   const latestMonth = scopedTrades.at(-1)?.date.slice(0, 7) || "";
   const latestQuarterMonths = [0, -1, -2].map((offset) => shiftMonth(latestMonth, offset)); const previousQuarterMonths = [-3, -4, -5].map((offset) => shiftMonth(latestMonth, offset));
-  const propertyRows = useMemo(() => properties.filter((property) => selectedDong === "all" || property.dong === selectedDong).map((property) => {
-    const rows = scopedTrades.filter((trade) => trade.propertyKey === property.key); const quarterValues = rows.filter((trade) => latestQuarterMonths.includes(trade.date.slice(0, 7))).map((trade) => trade.amount); const previousValues = rows.filter((trade) => previousQuarterMonths.includes(trade.date.slice(0, 7))).map((trade) => trade.amount);
-    const current = quarterValues.length ? median(quarterValues) : property.lastAmount; const before = previousValues.length ? median(previousValues) : current;
-    return { ...property, current, change: before ? (current / before - 1) * 100 : 0, quarterCount: quarterValues.length };
-  }).sort((a, b) => b.quarterCount - a.quarterCount || b.count - a.count), [properties, scopedTrades, selectedDong, latestQuarterMonths.join("|"), previousQuarterMonths.join("|")]);
+  const propertyRows = useMemo(() => {
+    const groups = new Map<string, Trade[]>();
+    scopedTrades.forEach((trade) => { const bucket = areaBucket(trade.area); const key = `${trade.propertyKey}|${trade.buildingDong || "-"}|${bucket}`; groups.set(key, [...(groups.get(key) || []), trade]); });
+    return [...groups].map(([key, rows]) => {
+      const sample = rows.at(-1)!; const quarterRows = rows.filter((trade) => latestQuarterMonths.includes(trade.date.slice(0, 7))); const previousRows = rows.filter((trade) => previousQuarterMonths.includes(trade.date.slice(0, 7)));
+      const quarterValues = quarterRows.map((trade) => trade.amount); const previousValues = previousRows.map((trade) => trade.amount); const current = quarterValues.length ? median(quarterValues) : sample.amount; const before = previousValues.length ? median(previousValues) : 0;
+      const comparable = quarterValues.length >= 2 && previousValues.length >= 2; return { key, propertyKey: sample.propertyKey, name: sample.name, dong: sample.dong, jibun: sample.jibun, buildingDong: sample.buildingDong, areaBucket: areaBucket(sample.area), areaMedian: median(rows.map((trade) => trade.area).filter(Boolean)), count: rows.length, current, change: comparable && before ? (current / before - 1) * 100 : null, quarterCount: quarterValues.length };
+    }).sort((a, b) => b.quarterCount - a.quarterCount || b.count - a.count);
+  }, [scopedTrades, latestQuarterMonths.join("|"), previousQuarterMonths.join("|")]);
+  const selectedProperty = properties.find((property) => property.key === selectedKey); const selectedVariant = propertyRows.find((property) => property.key === selectedVariantKey); const variantSuffix = selectedVariant ? `${dongLabel(selectedVariant.buildingDong)}${selectedVariant.buildingDong ? " · " : ""}전용 ${selectedVariant.areaBucket}평` : ""; const displayName = selectedProperty ? `${selectedProperty.name}${variantSuffix ? ` · ${variantSuffix}` : ""}` : (submittedQuery ? `${submittedQuery} 검색 결과` : `${activeRegion.sigungu} 전체`);
   const latestMonthTrades = scopedTrades.filter((trade) => trade.date.startsWith(latestMonth));
-  const risingCount = propertyRows.filter((property) => property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change < 0).length;
-  const visibleProperties = useMemo(() => propertyRows.filter((property) => property.quarterCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? b.change - a.change : buildingSort === "fall" ? a.change - b.change : b.quarterCount - a.quarterCount), [propertyRows, buildingSort, minVolume]);
+  const risingCount = propertyRows.filter((property) => property.change !== null && property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change !== null && property.change < 0).length;
+  const visibleProperties = useMemo(() => propertyRows.filter((property) => property.quarterCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? (b.change ?? -Infinity) - (a.change ?? -Infinity) : buildingSort === "fall" ? (a.change ?? Infinity) - (b.change ?? Infinity) : b.quarterCount - a.quarterCount), [propertyRows, buildingSort, minVolume]);
   const sortedMarkets = useMemo(() => [...markets].sort((a, b) => marketSort === "price" ? b.median - a.median : marketSort === "rise" ? b.change - a.change : marketSort === "fall" ? a.change - b.change : b.count - a.count), [markets, marketSort]);
   const nationalDeals = markets.reduce((sum, market) => sum + market.count, 0); const activeMarkets = markets.filter((market) => market.median > 0); const nationalMedian = activeMarkets.length ? median(activeMarkets.map((market) => market.median)) : 0; const nationalChange = nationalDeals ? markets.reduce((sum, market) => sum + market.change * market.count, 0) / nationalDeals : 0;
   const sidoOptions = useMemo(() => SIDO_ORDER.filter((sido) => REGIONS.some((region) => region.sido === sido)), []);
-  const sigunguOptions = useMemo(() => REGIONS.filter((region) => region.sido === activeRegion.sido).sort((a, b) => Number(a.code) - Number(b.code)), [activeRegion.sido]);
+  const sigunguOptions = useMemo(() => REGIONS.filter((region) => region.sido === activeRegion.sido).sort(sortRegions), [activeRegion.sido]);
+  const mapDistricts = useMemo(() => REGIONS.filter((region) => region.sido === selectedMapSido).sort(sortRegions), [selectedMapSido]);
   const dongOptions = useMemo(() => [...new Set(trades.map((trade) => trade.dong).filter(Boolean))].sort(), [trades]);
   const targetTrade = filteredTrades.at(-1); const targetArea = area === "all" ? targetTrade?.area || 0 : Number(area);
   const subjectPerPy = filteredTrades.filter((trade) => trade.area > 0 && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15)).slice(-20).map((trade) => trade.amount / (trade.area / 3.3058));
@@ -165,19 +175,19 @@ export default function Home() {
   const peerRows = latestPeers.length >= 5 ? latestPeers : fallbackPeers.slice(-200); const peerPerPy = peerRows.map((trade) => trade.amount / (trade.area / 3.3058));
   const subjectPyeongPrice = subjectPerPy.length ? median(subjectPerPy) : 0; const peerPyeongPrice = peerPerPy.length ? median(peerPerPy) : 0; const valuationGap = peerPyeongPrice ? (subjectPyeongPrice / peerPyeongPrice - 1) * 100 : 0;
   const fairPrice = targetArea && peerPyeongPrice ? peerPyeongPrice * (targetArea / 3.3058) : 0; const valuationScore = peerPyeongPrice ? Math.max(0, Math.min(100, Math.round(100 - Math.abs(valuationGap) * 2))) : 0; const valuationLabel = valuationGap <= -5 ? "저평가 구간" : valuationGap >= 5 ? "고평가 구간" : "적정가격 구간";
-  const chooseRegion = (region: Region) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedDong("all"); setSelectedKey(""); setSubmittedQuery(""); setQuery(""); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const selectSido = (sido: string) => { const next = REGIONS.filter((region) => region.sido === sido).sort((a, b) => Number(a.code) - Number(b.code))[0]; if (next) chooseRegion(next); };
+  const chooseRegion = (region: Region) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedDong("all"); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setSubmittedQuery(""); setQuery(""); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const selectSido = (sido: string) => { const next = REGIONS.filter((region) => region.sido === sido).sort(sortRegions)[0]; if (next) chooseRegion(next); };
   const selectSigungu = (code: string) => { const next = REGIONS.find((region) => region.code === code); if (next) chooseRegion(next); };
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = REGIONS.find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); setSubmittedQuery(query.trim()); };
 
   return <main className="terminal-shell">
     <header className="topbar"><a href="#top" className="brand"><span>집값</span>의 정석 <em>HOME</em></a><nav ref={navRef}>{NAV_ITEMS.map((item) => <a key={item.id} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={() => setActiveSection(item.id)}>{item.label}</a>)}<i className="nav-indicator" style={{ left: navIndicator.left, width: navIndicator.width }} /></nav><div className="live"><i /> 국토교통부 실거래가 연동</div></header>
     <section className="command" id="top">
-      <div className="type-tabs">{PROPERTY_TYPES.map((item) => <button key={item.key} className={type === item.key ? "active" : ""} onClick={() => { setType(item.key); setSelectedKey(""); }}>{item.label}</button>)}</div>
+      <div className="type-tabs">{PROPERTY_TYPES.map((item) => <button key={item.key} className={type === item.key ? "active" : ""} onClick={() => { setType(item.key); setSelectedKey(""); setSelectedVariantKey(""); }}>{item.label}</button>)}</div>
       <form className="search-console" onSubmit={submitSearch}>
         <label><span>시·도</span><select value={activeRegion.sido} onChange={(event) => selectSido(event.target.value)} aria-label="시도 선택">{sidoOptions.map((sido) => <option key={sido} value={sido}>{sido}</option>)}</select></label>
         <label><span>시·군·구</span><select value={regionCode} onChange={(event) => selectSigungu(event.target.value)} aria-label="시군구 선택">{sigunguOptions.map((region) => <option key={region.code} value={region.code}>{region.sigungu}</option>)}</select></label>
-        <label><span>읍·면·동</span><select value={selectedDong} onChange={(event) => { setSelectedDong(event.target.value); setSelectedKey(""); setArea("all"); }} aria-label="읍면동 선택"><option value="all">전체 읍·면·동</option>{dongOptions.map((dong) => <option key={dong} value={dong}>{dong}</option>)}</select></label>
+        <label><span>읍·면·동</span><select value={selectedDong} onChange={(event) => { setSelectedDong(event.target.value); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); }} aria-label="읍면동 선택"><option value="all">전체 읍·면·동</option>{dongOptions.map((dong) => <option key={dong} value={dong}>{dong}</option>)}</select></label>
         <label className="property-search"><span>단지·건물명 · 비워두면 전체</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 행당대림, 서울숲리버뷰" aria-label="단지 또는 건물명" /></label>
         <button type="submit">시장 조회 <b>↗</b></button>
       </form>
@@ -196,22 +206,22 @@ export default function Home() {
 
     <section className="market-browser" id="chart">
       <aside className="watchlist">
-        <div className="watch-head"><div><p>QUARTERLY BUILDING WATCHLIST</p><h2>{activeRegion.sigungu} 최근 3개월 순위</h2></div><span>{visibleProperties.length}/{properties.length}</span></div>
+        <div className="watch-head"><div><p>AREA-SPECIFIC WATCHLIST</p><h2>{activeRegion.sigungu} 동·평형별 3개월 순위</h2></div><span>{visibleProperties.length}/{propertyRows.length}</span></div>
         <div className="watch-filters"><select value={buildingSort} onChange={(event) => setBuildingSort(event.target.value as typeof buildingSort)} aria-label="건물 목록 정렬"><option value="volume">3개월 거래량순</option><option value="price">3개월 중위가순</option><option value="rise">직전 분기 대비 상승순</option><option value="fall">직전 분기 대비 하락순</option></select><select value={minVolume} onChange={(event) => setMinVolume(Number(event.target.value))} aria-label="최소 거래량"><option value="0">거래량 전체</option><option value="1">3개월 1건 이상</option><option value="3">3개월 3건 이상</option><option value="5">3개월 5건 이상</option></select></div>
         <div className="watch-columns"><span>건물 / 단지</span><span>최근가</span></div>
-        {loading ? <div className="watch-state">전체 실거래 목록을 불러오는 중…</div> : error ? <div className="watch-state error">{error}</div> : visibleProperties.length ? <div className="watch-scroll">{visibleProperties.map((property, index) => <button key={property.key} className={selectedKey === property.key ? "selected" : ""} onClick={() => { setSelectedKey(property.key); setArea("all"); }}>
-          <i className={`building-icon tone-${index % 5}`}>{property.name.slice(0, 1)}</i><div><b>{property.name}</b><small>{property.dong} {property.jibun || "주소 일부 비공개"} · {property.areas.slice(0, 2).join(" / ")}㎡</small></div><strong>{formatPrice(property.current)}<em className={property.change >= 0 ? "up" : "down"}>{property.change >= 0 ? "+" : ""}{property.change.toFixed(1)}% · 3개월 {property.quarterCount}건</em></strong>
+        {loading ? <div className="watch-state">전체 실거래 목록을 불러오는 중…</div> : error ? <div className="watch-state error">{error}</div> : visibleProperties.length ? <div className="watch-scroll">{visibleProperties.map((property, index) => <button key={property.key} className={selectedVariantKey === property.key ? "selected" : ""} onClick={() => { setSelectedKey(property.propertyKey); setSelectedBuildingDong(property.buildingDong); setSelectedAreaBucket(property.areaBucket); setSelectedVariantKey(property.key); setArea("all"); }}>
+          <i className={`building-icon tone-${index % 5}`}>{property.name.slice(0, 1)}</i><div><b>{property.name}</b><small>{property.dong} · {dongLabel(property.buildingDong) || "동 정보 없음"} · 전용 {property.areaBucket}평 ({property.areaMedian.toFixed(1)}㎡)</small></div><strong>{formatPrice(property.current)}{property.change === null ? <em className="sample-low">표본 부족 · 3개월 {property.quarterCount}건</em> : <em className={property.change >= 0 ? "up" : "down"}>{property.change >= 0 ? "+" : ""}{property.change.toFixed(1)}% · 3개월 {property.quarterCount}건</em>}</strong>
         </button>)}</div> : <div className="watch-state">이 조건의 신고 거래가 없습니다.<button onClick={() => { setQuery(""); setSubmittedQuery(""); }}>전체 목록 보기</button></div>}
       </aside>
 
       <div className="detail-terminal">
-        <div className="ticker-head"><div><p>{PROPERTY_TYPES.find((item) => item.key === type)?.label} / {activeRegion.sido} {activeRegion.sigungu}</p><h1>{displayName}</h1><span>{selectedProperty ? `${selectedProperty.dong} ${selectedProperty.jibun || "주소 일부 비공개"} · 조회기간 ${selectedProperty.count}건` : `목록에서 건물을 선택하거나 ${activeRegion.sigungu} 전체 흐름을 확인하세요`}</span></div><div className="ticker-price"><strong>{formatPrice(latest)}</strong><em className={change >= 0 ? "up" : "down"}>{change >= 0 ? "▲" : "▼"} {Math.abs(change).toFixed(2)}%</em><small>{unit === "py" ? "만원/평" : "월 중위가격"}</small></div></div>
+        <div className="ticker-head"><div><p>{PROPERTY_TYPES.find((item) => item.key === type)?.label} / {activeRegion.sido} {activeRegion.sigungu}</p><h1>{displayName}</h1><span>{selectedProperty ? `${selectedProperty.dong} ${selectedProperty.jibun || "주소 일부 비공개"} · 같은 동·전용평형만 비교` : `목록에서 동·평형을 선택하거나 ${activeRegion.sigungu} 전체 흐름을 확인하세요`}</span></div><div className="ticker-price"><strong>{formatPrice(latest)}</strong>{chartChangeComparable ? <em className={change >= 0 ? "up" : "down"}>{change >= 0 ? "▲" : "▼"} {Math.abs(change).toFixed(2)}%</em> : <em className="sample-low">표본 부족</em>}<small>{unit === "py" ? "만원/평" : "월 중위가격"}</small></div></div>
         <div className="chart-toolbar"><div className="period-switch">{PERIODS.map((item) => <button key={item.value} className={period === item.value ? "active" : ""} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div><div className="view-switch"><select value={area} onChange={(event) => setArea(event.target.value)} aria-label="전용면적 선택"><option value="all">전체 면적</option>{areas.map((value) => <option key={value} value={value}>전용 {value}㎡ ({(value / 3.3058).toFixed(1)}평)</option>)}</select><button className={unit === "price" ? "active" : ""} onClick={() => setUnit("price")}>실거래가</button><button className={unit === "py" ? "active" : ""} onClick={() => setUnit("py")}>평당가</button></div></div>
         <article className="chart-card">
           <div className="chart-legend"><span><i className="price-dot" />월 중위가격</span><span><i className="ma-dot" />3개월 이동평균</span><span><i className="volume-dot" />거래량</span><small>마우스를 움직여 월별 상세 확인</small></div>
           <div className="canvas-wrap">{loading ? <div className="state"><i /> 실거래 데이터를 불러오는 중입니다</div> : error ? <div className="state error"><b>데이터 연결 오류</b><span>{error}</span></div> : chartPoints.length ? <PriceChart points={chartPoints} unit={unit} /> : <div className="state"><b>선택 조건의 거래가 없습니다</b><span>왼쪽 목록에서 다른 건물을 선택하거나 전체 면적을 선택하세요.</span></div>}</div>
         </article>
-        <div className="stat-strip"><article><span>최근 월 중위가</span><strong>{formatPrice(latest)}</strong></article><article><span>기간 최고 / 최저</span><strong>{compactPrice(high)} <em>/</em> {compactPrice(low)}</strong></article><article><span>실거래 건수</span><strong>{filteredTrades.length.toLocaleString()}<em>건</em></strong></article><article><span>시장 신호</span><strong className={change >= 0 ? "up" : "down"}>{change > 2 ? "매수 우위" : change < -2 ? "조정 구간" : "보합 구간"}</strong></article></div>
+        <div className="stat-strip"><article><span>최근 월 중위가</span><strong>{formatPrice(latest)}</strong></article><article><span>기간 최고 / 최저</span><strong>{compactPrice(high)} <em>/</em> {compactPrice(low)}</strong></article><article><span>실거래 건수</span><strong>{filteredTrades.length.toLocaleString()}<em>건</em></strong></article><article><span>시장 신호</span><strong className={!chartChangeComparable ? "" : change >= 0 ? "up" : "down"}>{!chartChangeComparable ? "표본 부족" : change > 2 ? "매수 우위" : change < -2 ? "조정 구간" : "보합 구간"}</strong></article></div>
         <section className="valuation-panel">
           {selectedKey && targetTrade && peerPyeongPrice ? <>
             <div className="valuation-score"><p>AREA-ADJUSTED VALUE</p><strong>{valuationScore}<em>/100</em></strong><span className={valuationGap <= -5 ? "value-low" : valuationGap >= 5 ? "value-high" : "value-fair"}>{valuationLabel}</span></div>
@@ -227,10 +237,11 @@ export default function Home() {
 
     <section className="map-section" id="map">
       <div className="section-title wide"><div><p>KOREA MARKET MAP</p><h2>전국 실거래 온도 지도</h2><span>{marketMonth ? `${marketMonth.slice(0, 4)}년 ${Number(marketMonth.slice(4))}월` : "최근 월"} · 시도별 대표 권역 중위가격 변화</span></div><div className="map-controls"><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">거래량 많은순</option><option value="price">가격 높은순</option><option value="rise">상승률 높은순</option><option value="fall">하락률 높은순</option></select><div className="map-legend"><i className="cold"/>하락 <i className="flat"/>보합 <i className="hot"/>상승</div></div></div>
-      <div className="map-layout"><div className="korea-map">{markets.map((market) => <button key={market.code} className={`map-tile map-${market.short} ${market.change > 1 ? "hot" : market.change < -1 ? "cold" : "flat"}`} onClick={() => { const region = REGIONS.find((item) => item.code === market.code); if (region) chooseRegion(region); }}><b>{market.short}</b><span>{market.change >= 0 ? "+" : ""}{market.change.toFixed(1)}%</span><small>{market.count}건</small></button>)}</div>
-        <div className="map-ranking"><h3>전국 월간 흐름</h3><div className="ranking-labels"><span>순위</span><span>지역</span><span>중위가격</span><span>전월대비</span></div>{sortedMarkets.map((market, index) => <button key={market.code} onClick={() => { const region = REGIONS.find((item) => item.code === market.code); if (region) chooseRegion(region); }}><em>{String(index + 1).padStart(2,"0")}</em><b>{market.sido}<small>{market.count}건</small></b><span>{formatPrice(market.median)}</span><strong className={market.change >= 0 ? "up" : "down"}>{market.change >= 0 ? "+" : ""}{market.change.toFixed(2)}%</strong></button>)}</div>
+      <div className="map-layout"><div className="korea-map">{markets.map((market) => <button key={market.code} className={`map-tile map-${market.short} ${market.sido === selectedMapSido ? "selected" : ""} ${market.change > 1 ? "hot" : market.change < -1 ? "cold" : "flat"}`} onClick={() => setSelectedMapSido(market.sido)}><b>{market.short}</b><span>{market.change >= 0 ? "+" : ""}{market.change.toFixed(1)}%</span><small>지역 보기 ›</small></button>)}</div>
+        <div className="map-ranking"><h3>전국 월간 흐름</h3><div className="ranking-labels"><span>순위</span><span>지역</span><span>중위가격</span><span>전월대비</span></div>{sortedMarkets.map((market, index) => <button key={market.code} onClick={() => setSelectedMapSido(market.sido)}><em>{String(index + 1).padStart(2,"0")}</em><b>{market.sido}<small>{market.count}건</small></b><span>{formatPrice(market.median)}</span><strong className={market.change >= 0 ? "up" : "down"}>{market.change >= 0 ? "+" : ""}{market.change.toFixed(2)}%</strong></button>)}</div>
       </div>
-      <p className="map-note">지도 수치는 시·도 전체 통계가 아니라 각 시·도의 대표 권역에서 신고된 실거래 중위가격 변화입니다. 전국 방향을 빠르게 탐색하기 위한 온도계로 사용하세요.</p>
+      <div className="region-drilldown"><div><p>SELECT DISTRICT</p><h3>{selectedMapSido} 세부 지역</h3><span>원하는 지역을 누르면 해당 시·군·구의 단지·평형별 차트로 이동합니다.</span></div><div>{mapDistricts.map((region, index) => <button key={region.code} onClick={() => chooseRegion(region)}><em>{String(index + 1).padStart(2, "0")}</em>{region.sigungu}<span>›</span></button>)}</div></div>
+      <p className="map-note">지도 색상은 각 시·도의 대표 권역 흐름을 보여주는 온도계입니다. 시·도를 누른 뒤 아래의 세부 지역을 선택하면 해당 지역의 실제 단지와 평형별 거래로 이동합니다.</p>
     </section>
 
     <section className="trade-section" id="transactions"><div className="section-title wide"><div><p>RECENT CONTRACTS</p><h2>{displayName} 최근 실거래</h2></div><span>단위: 만원 · 최대 30건 표시</span></div><div className="trade-table"><div className="table-head"><span>계약일</span><span>건물명</span><span>전용면적</span><span>층</span><span>거래금액</span><span>평당가</span></div>{[...filteredTrades].reverse().slice(0, 30).map((trade) => <div className="table-row" key={trade.id}><span>{trade.date.replaceAll("-", ".")}</span><b>{trade.name}</b><span>{trade.area ? `${trade.area.toFixed(1)}㎡` : "-"}</span><span>{trade.floor === null ? "-" : `${trade.floor}층`}</span><strong>{formatPrice(trade.amount)}</strong><span>{trade.area ? `${Math.round(trade.amount / (trade.area / 3.3058)).toLocaleString()}만` : "-"}</span></div>)}</div></section>
