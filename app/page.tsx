@@ -17,6 +17,7 @@ type CommunityCategory = { id: string; number: string; label: string; descriptio
 type CommunityGuide = { id: string; category: string; board: string; tag: string; title: string; summary: string; evidence: string };
 type FieldFeature = { id: string; group: string; title: string; information: string; value: string; importance: 4 | 5; status: "live" | "beta" | "connect"; source: string };
 type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAddress: string };
+type NearbyPlace = { id: string; name: string; category: string; distance: number; walkingMinutes: number; lat: number; lng: number; detail: string };
 type MapFocus = "national" | "sido" | "district" | "detail";
 type GeoJsonFeature = { type: "Feature"; properties: Record<string, unknown>; geometry: Record<string, unknown> };
 type GeoJsonFeatureCollection = { type: "FeatureCollection"; features: GeoJsonFeature[] };
@@ -24,9 +25,10 @@ type NaverBounds = { getCenter: () => unknown };
 type NaverDataFeature = { getProperty: (key: string) => unknown; getBounds?: () => NaverBounds };
 type NaverDataLayer = { addGeoJson: (data: GeoJsonFeatureCollection) => NaverDataFeature[]; setStyle: (style: (feature: NaverDataFeature) => Record<string, unknown>) => void };
 type NaverMapInstance = { data: NaverDataLayer; destroy?: () => void; fitBounds?: (bounds: unknown, margin?: number | { top: number; right: number; bottom: number; left: number }) => void; setCenter?: (center: unknown) => void; setZoom?: (zoom: number) => void };
-type NaverMarkerInstance = { setMap: (map: NaverMapInstance | null) => void };
+type NaverOverlayInstance = { setMap: (map: NaverMapInstance | null) => void };
+type NaverMarkerInstance = NaverOverlayInstance;
 type NaverEventListener = unknown;
-type NaverMapsApi = { maps: { Map: new (element: HTMLElement, options: Record<string, unknown>) => NaverMapInstance; LatLng: new (lat: number, lng: number) => unknown; LatLngBounds: new (southWest: unknown, northEast: unknown) => NaverBounds; Point: new (x: number, y: number) => unknown; Marker: new (options: Record<string, unknown>) => NaverMarkerInstance; Position: { TOP_RIGHT: unknown; BOTTOM_LEFT: unknown }; Event: { addListener: (target: unknown, eventName: string, listener: (event: { feature?: NaverDataFeature }) => void) => NaverEventListener; removeListener: (listener: NaverEventListener) => void } } };
+type NaverMapsApi = { maps: { Map: new (element: HTMLElement, options: Record<string, unknown>) => NaverMapInstance; LatLng: new (lat: number, lng: number) => unknown; LatLngBounds: new (southWest: unknown, northEast: unknown) => NaverBounds; Point: new (x: number, y: number) => unknown; Marker: new (options: Record<string, unknown>) => NaverMarkerInstance; Circle: new (options: Record<string, unknown>) => NaverOverlayInstance; Position: { TOP_RIGHT: unknown; BOTTOM_LEFT: unknown }; Event: { addListener: (target: unknown, eventName: string, listener: (event: { feature?: NaverDataFeature }) => void) => NaverEventListener; removeListener: (listener: NaverEventListener) => void } } };
 
 declare global {
   interface Window { naver?: NaverMapsApi; __jipgapsNaverMap?: Promise<void> }
@@ -62,13 +64,6 @@ const SIDO_CENTERS: Record<string, { lat: number; lng: number; zoom: number }> =
   전북특별자치도: { lat: 35.7175, lng: 127.153, zoom: 9 }, 경상북도: { lat: 36.4919, lng: 128.8889, zoom: 8 }, 경상남도: { lat: 35.4606, lng: 128.2132, zoom: 9 }, 제주특별자치도: { lat: 33.489, lng: 126.4983, zoom: 9 },
 };
 const QUICK_REGIONS = [{ code: "11680", label: "강남구" }, { code: "11650", label: "서초구" }, { code: "11710", label: "송파구" }, { code: "11200", label: "성동구" }, { code: "41135", label: "분당구" }, { code: "26350", label: "해운대구" }];
-const FACILITY_SEARCHES = [
-  { id: "education", label: "교육", keyword: "학교 학원", description: "학교·학원가와 실제 통학 동선" },
-  { id: "transit", label: "교통", keyword: "지하철역 버스정류장", description: "대중교통 정류장과 환승 동선" },
-  { id: "health", label: "의료", keyword: "병원 약국", description: "병원·약국과 야간 이용 편의" },
-  { id: "shopping", label: "장보기", keyword: "마트 시장", description: "마트·시장과 일상 장보기 동선" },
-  { id: "leisure", label: "여가", keyword: "공원 도서관", description: "공원·도서관과 주말 생활권" },
-] as const;
 const FIELD_GROUPS = ["입지·동선", "주거환경", "동·세대", "비용·가격", "검증·비교"];
 const FIELD_SCORE_EXAMPLE = [
   { label: "교통", score: 92, grade: "매우 좋음" }, { label: "생활편의", score: 91, grade: "매우 좋음" },
@@ -237,20 +232,24 @@ function PriceChart({ points, unit }: { points: ChartPoint[]; unit: "price" | "p
   return <canvas ref={canvasRef} onPointerMove={(event) => { const rect = event.currentTarget.getBoundingClientRect(); const plotWidth = rect.width - 87; const index = Math.round(((event.clientX - rect.left - 15) / plotWidth) * (points.length - 1)); setHover(Math.max(0, Math.min(points.length - 1, index))); }} onPointerLeave={() => setHover(null)} aria-label="월별 실거래 중위가격과 거래량 차트" />;
 }
 
-function NaverPlaceMap({ location, title }: { location: PropertyLocation; title: string }) {
+function NaverPlaceMap({ location, title, places }: { location: PropertyLocation; title: string; places: NearbyPlace[] }) {
   const hostRef = useRef<HTMLDivElement>(null); const [mapError, setMapError] = useState("");
   useEffect(() => {
-    const host = hostRef.current; const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID; let disposed = false; let map: NaverMapInstance | null = null; const markers: NaverMarkerInstance[] = [];
+    const host = hostRef.current; const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID; let disposed = false; let map: NaverMapInstance | null = null; const overlays: NaverOverlayInstance[] = [];
     if (!host || !clientId) return;
     loadNaverMap(clientId).then(() => {
       if (disposed || !window.naver?.maps) return;
       const maps = window.naver.maps; const center = new maps.LatLng(location.lat, location.lng);
-      map = new maps.Map(host, { center, zoom: 16, minZoom: 11, zoomControl: true, scaleControl: false, mapDataControl: false });
-      markers.push(new maps.Marker({ position: center, map, title }));
+      map = new maps.Map(host, { center, zoom: 15, minZoom: 11, zoomControl: true, scaleControl: false, mapDataControl: false });
+      overlays.push(new maps.Circle({ map, center, radius: 1000, strokeColor: "#0071e3", strokeOpacity: .34, strokeWeight: 1, fillColor: "#0071e3", fillOpacity: .035 }));
+      overlays.push(new maps.Circle({ map, center, radius: 500, strokeColor: "#0071e3", strokeOpacity: .72, strokeWeight: 2, fillColor: "#0071e3", fillOpacity: .065 }));
+      overlays.push(new maps.Marker({ position: center, map, title, icon: { content: `<div class="nearby-home-pin"><b>${escapeMapHtml(title)}</b><span>선택 단지</span></div>`, anchor: new maps.Point(42, 42) }, zIndex: 100 }));
+      const colors: Record<string, string> = { "교통": "#7c3aed", "교육": "#2563eb", "의료": "#dc2626", "장보기": "#059669", "여가": "#d97706" };
+      places.slice(0, 24).forEach((place) => { const position = new maps.LatLng(place.lat, place.lng); overlays.push(new maps.Marker({ position, map, title: `${place.name} · ${place.distance}m`, icon: { content: `<div class="nearby-place-pin" style="--pin:${colors[place.category] || "#526173"}"><i></i><b>${escapeMapHtml(place.name)}</b><span>${place.distance}m</span></div>`, anchor: new maps.Point(12, 12) }, zIndex: Math.max(10, 70 - Math.round(place.distance / 30)) })); });
       setMapError("");
     }).catch((error) => { if (!disposed) setMapError(error instanceof Error ? error.message : "지도를 표시하지 못했습니다."); });
-    return () => { disposed = true; markers.forEach((marker) => marker.setMap(null)); map?.destroy?.(); };
-  }, [location.lat, location.lng, title]);
+    return () => { disposed = true; overlays.forEach((overlay) => overlay.setMap(null)); map?.destroy?.(); };
+  }, [location.lat, location.lng, places, title]);
   return <div className="naver-map-frame"><div ref={hostRef} className="naver-map-canvas" role="img" aria-label={`${title}와 주변 생활시설 네이버 지도`} />{mapError && <div className="naver-map-error"><b>지도 표시를 확인해주세요.</b><span>{mapError}</span></div>}</div>;
 }
 
@@ -435,6 +434,7 @@ export default function Home() {
   const [communityCategory, setCommunityCategory] = useState("living"); const [communityBoard, setCommunityBoard] = useState("전체");
   const [showStudyWriter, setShowStudyWriter] = useState(false); const [studyTitle, setStudyTitle] = useState(""); const [studyBody, setStudyBody] = useState(""); const [draftSaved, setDraftSaved] = useState(false);
   const [propertyLocation, setPropertyLocation] = useState<PropertyLocation | null>(null); const [locationLoading, setLocationLoading] = useState(false); const [locationError, setLocationError] = useState("");
+  const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]); const [nearbyLoading, setNearbyLoading] = useState(false); const [nearbyError, setNearbyError] = useState(""); const [nearbyCategory, setNearbyCategory] = useState("전체");
   const activeRegion = REGIONS.find((item) => item.code === regionCode) || REGIONS[0];
 
   useEffect(() => { const timer = window.setTimeout(() => { try { const stored = window.localStorage.getItem("jipgaps:saved-homes"); if (stored) setSavedHomes(JSON.parse(stored)); const draft = window.localStorage.getItem("jipgaps:study-draft"); if (draft) { const parsed = JSON.parse(draft); setStudyTitle(parsed.title || ""); setStudyBody(parsed.body || ""); } } catch { /* device storage is optional */ } }, 0); return () => window.clearTimeout(timer); }, []);
@@ -528,7 +528,16 @@ export default function Home() {
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [placePropertyKey, placeAddressQuery]);
+  useEffect(() => {
+    const controller = new AbortController(); const timer = window.setTimeout(() => {
+      if (!propertyLocation) { setNearbyPlaces([]); setNearbyError(""); return; }
+      setNearbyLoading(true); setNearbyError(""); setNearbyCategory("전체");
+      fetch(`/api/nearby?lat=${propertyLocation.lat}&lng=${propertyLocation.lng}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "주변 시설을 불러오지 못했습니다."); return data; }).then((data) => setNearbyPlaces(data.places || [])).catch((reason) => { if (reason.name !== "AbortError") setNearbyError(reason.message); }).finally(() => { if (!controller.signal.aborted) setNearbyLoading(false); });
+    }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [propertyLocation]);
   const latestQuarterTrades = scopedTrades.filter((trade) => latestQuarterMonths.includes(trade.date.slice(0, 7)));
+  const nearbyCategories = ["전체", ...[...new Set(nearbyPlaces.map((place) => place.category))]]; const visibleNearbyPlaces = nearbyCategory === "전체" ? nearbyPlaces : nearbyPlaces.filter((place) => place.category === nearbyCategory);
   const risingCount = propertyRows.filter((property) => property.change !== null && property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change !== null && property.change < 0).length;
   const visibleProperties = useMemo(() => propertyRows.filter((property) => property.quarterCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? (b.change ?? -Infinity) - (a.change ?? -Infinity) : buildingSort === "fall" ? (a.change ?? Infinity) - (b.change ?? Infinity) : b.quarterCount - a.quarterCount), [propertyRows, buildingSort, minVolume]);
   const sortedMarkets = useMemo(() => [...markets].sort((a, b) => marketSort === "price" ? b.median - a.median : marketSort === "rise" ? b.change - a.change : marketSort === "fall" ? a.change - b.change : b.count - a.count), [markets, marketSort]);
@@ -550,7 +559,6 @@ export default function Home() {
   const fieldGroupFeatures = FIELD_FEATURES.filter((feature) => feature.group === fieldGroup);
   const fieldMapQuery = `${activeRegion.sido} ${activeRegion.sigungu} ${selectedDong !== "all" ? selectedDong : ""} ${selectedProperty?.name || ""}`.replace(/\s+/g, " ").trim();
   const fieldMapUrl = `https://map.naver.com/p/search/${encodeURIComponent(fieldMapQuery)}`;
-  const lifestyleUrl = `https://map.naver.com/p/search/${encodeURIComponent(`${fieldMapQuery} ${lifestyleKeyword}`)}`;
   const commuteUrl = commuteDestination.trim() ? `https://map.naver.com/p/search/${encodeURIComponent(`${fieldMapQuery} ${commuteDestination.trim()} 길찾기`)}` : "";
   const chooseRegion = useCallback((region: Region, scrollToTop = true) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedMapSido(region.sido); setMapFocus("district"); setSelectedBoundaryDong(""); setSelectedDong("all"); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setSubmittedQuery(""); setQuery(""); if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" }); }, []);
   const chooseMapSido = useCallback((sido: string) => { setSelectedMapSido(sido); setMapFocus("sido"); setSelectedBoundaryDong(""); }, []);
@@ -624,12 +632,12 @@ export default function Home() {
           </> : <div className="valuation-empty"><p>AREA-ADJUSTED VALUE</p><strong>내가 살 집의 가격은 적정할까?</strong><span>왼쪽에서 집 후보를 선택하면 같은 지역의 유사 면적 거래와 비교해 저평가·적정·고평가 구간을 보여드립니다.</span></div>}
         </section>
         <section className="facility-panel">
-          <header><div><p>NAVER MAP LENS</p><h2>{selectedProperty ? `${selectedProperty.name} 주변 생활권` : "단지 주변을 실제 지도로 확인하세요"}</h2><span>{selectedProperty ? `${placeRegion} ${placePropertyDong} · 학교·교통·의료·장보기·여가를 지도에서 확인` : "왼쪽에서 동·평형 후보를 고르면 정확한 단지 좌표와 생활시설 검색이 열립니다."}</span></div>{selectedProperty && <div><b>5<small>개</small></b><span>생활 분야</span><em>네이버 지도 연동</em></div>}</header>
+          <header><div><p>NEARBY LIFE MAP</p><h2>{selectedProperty ? `${selectedProperty.name}에서 얼마나 가까울까?` : "집 하나를 고르면 주변 생활권이 자동으로 열립니다"}</h2><span>{selectedProperty ? `${placeRegion} ${placePropertyDong} · 500m·1km 반경 안의 교통·교육·의료·장보기·여가 시설` : "왼쪽 목록에서 집을 선택하면 별도 검색 없이 주변 시설과 거리를 계산합니다."}</span></div>{selectedProperty && <div><b>{nearbyPlaces.length}<small>곳</small></b><span>1.5km 안 시설</span><em>자동 거리 계산</em></div>}</header>
           {selectedProperty ? <div className="facility-layout">
-            <div className="facility-map">{locationLoading ? <div className="facility-state"><i />단지 좌표를 확인하고 있습니다.</div> : propertyLocation ? <><NaverPlaceMap location={propertyLocation} title={selectedProperty.name} /><span className="facility-address">{propertyLocation.roadAddress || propertyLocation.jibunAddress || placeAddressQuery}</span></> : <div className="facility-state error"><b>지도 위치를 표시하지 못했습니다.</b><span>{locationError || "네이버 지도 API 권한을 확인해주세요."}</span></div>}</div>
-            <div className="facility-groups">{FACILITY_SEARCHES.map((group) => { const searchText = `${placeRegion} ${placePropertyDong} ${placePropertyName} ${group.keyword}`; return <article key={group.id}><header><b>{group.label}</b><span>MAP</span></header><strong>{group.description}</strong><p>지도 라벨을 살펴보고 실제 이동 경로와 시간을 함께 확인하세요.</p><a href={`https://map.naver.com/p/search/${encodeURIComponent(searchText)}`} target="_blank" rel="noreferrer"><span>{group.keyword}</span><em>네이버 지도에서 찾기 ↗</em></a></article>; })}</div>
+            <div className="facility-map">{locationLoading ? <div className="facility-state"><i />단지 좌표를 확인하고 있습니다.</div> : propertyLocation ? <><NaverPlaceMap location={propertyLocation} title={selectedProperty.name} places={visibleNearbyPlaces} /><span className="facility-address">{propertyLocation.roadAddress || propertyLocation.jibunAddress || placeAddressQuery}</span><div className="radius-key"><span><i />500m 생활권</span><span><i />1km 생활권</span></div></> : <div className="facility-state error"><b>지도 위치를 표시하지 못했습니다.</b><span>{locationError || "네이버 지도 API 권한을 확인해주세요."}</span></div>}</div>
+            <div className="nearby-browser"><div className="nearby-tabs">{nearbyCategories.map((category) => <button key={category} className={nearbyCategory === category ? "active" : ""} onClick={() => setNearbyCategory(category)}>{category}<small>{category === "전체" ? nearbyPlaces.length : nearbyPlaces.filter((place) => place.category === category).length}</small></button>)}</div>{nearbyLoading ? <div className="nearby-state"><i />1.5km 안 생활시설을 찾고 있습니다.</div> : nearbyError ? <div className="nearby-state error"><b>주변 시설을 불러오지 못했습니다.</b><span>{nearbyError}</span></div> : visibleNearbyPlaces.length ? <div className="nearby-list">{visibleNearbyPlaces.map((place) => <article key={place.id}><em>{place.category}</em><div><b>{place.name}</b><span>{place.distance <= 500 ? "500m 생활권" : place.distance <= 1000 ? "1km 생활권" : "1.5km 생활권"}</span></div><strong>{place.distance.toLocaleString()}m<small>직선거리</small></strong><p>도보 약 {place.walkingMinutes}분<small>경로 보정 추정</small></p></article>)}</div> : <div className="nearby-state"><b>이 범위에서 등록된 시설이 없습니다.</b><span>다른 분류를 선택하거나 지도의 최신 등록 상태를 확인해주세요.</span></div>}</div>
           </div> : <div className="facility-empty"><span>01</span><b>단지 선택</b><i>→</i><span>02</span><b>정확한 주소 좌표 확인</b><i>→</i><span>03</span><b>주변 생활시설 비교</b></div>}
-          <p className="facility-note">단지 위치는 네이버 Maps Geocoding으로 확인합니다. 시설명·거리·통학구역은 자동 추정하지 않으며, 분야별 링크에서 최신 지도 라벨과 실제 이동 동선을 다시 확인하세요.</p>
+          <p className="facility-note">단지 좌표와 배경 지도는 네이버 Maps, 주변 시설은 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap 기여자</a> 데이터를 사용합니다. 거리는 두 좌표 사이의 직선거리이며, 도보 시간은 경로 굴곡을 20% 반영한 참고 추정값입니다. 횡단보도·경사·출입구를 반영한 실제 길찾기 시간과는 다를 수 있습니다.</p>
         </section>
       </div>
     </section>
@@ -642,9 +650,10 @@ export default function Home() {
         <div className="field-feature-list">{fieldGroupFeatures.map((feature) => <button key={feature.id} className={fieldFeatureId === feature.id ? "active" : ""} onClick={() => setFieldFeatureId(feature.id)}><div><b>{feature.title}</b><span>{feature.information}</span></div><em className={feature.status}>{feature.status === "live" ? "사용 가능" : feature.status === "beta" ? "베타" : "연결 예정"}</em><i className="importance-meter" aria-label={`중요도 5점 중 ${feature.importance}점`}>{[1,2,3,4,5].map((point) => <span key={point} className={point <= feature.importance ? "on" : ""} />)}</i></button>)}</div>
         <article className="field-workspace">
           <header><span className={activeFieldFeature.status}>{activeFieldFeature.status === "live" ? "LIVE" : activeFieldFeature.status === "beta" ? "BETA" : "DATA CONNECT"}</span><small>{activeFieldFeature.source}</small><h3>{activeFieldFeature.title}</h3><p>{activeFieldFeature.value}</p></header>
-          {(activeFieldFeature.id === "region" || activeFieldFeature.id === "walk") && <div className="field-action-panel"><b>{fieldMapQuery}</b><p>실제 지도에서 상권과 역·단지 동선을 확인합니다. 도보 시간은 경로를 선택한 뒤 최신 길찾기 결과로 검증하세요.</p><a href={fieldMapUrl} target="_blank" rel="noreferrer">네이버 지도에서 임장 시작 ↗</a></div>}
+          {activeFieldFeature.id === "region" && <div className="field-action-panel"><b>{fieldMapQuery}</b><p>단지를 선택하면 1.5km 안의 교통·교육·의료·장보기·여가 시설과 거리를 자동으로 계산합니다.</p><button onClick={() => changeView("chart")}>자동 생활권 지도 보기 →</button></div>}
+          {activeFieldFeature.id === "walk" && <div className="field-action-panel"><b>{fieldMapQuery}</b><p>실제 보행 경로는 횡단보도와 출입구를 반영한 최신 길찾기 결과로 최종 확인합니다.</p><a href={fieldMapUrl} target="_blank" rel="noreferrer">실제 도보 경로 확인 ↗</a></div>}
           {activeFieldFeature.id === "commute" && <div className="field-action-panel"><label><span>회사·학교·자주 가는 곳</span><input value={commuteDestination} onChange={(event) => setCommuteDestination(event.target.value)} placeholder="예: 광화문역" /></label>{commuteUrl ? <a href={commuteUrl} target="_blank" rel="noreferrer">Door-to-Door 경로 확인 ↗</a> : <button disabled>목적지를 입력해주세요</button>}<small>출발지는 현재 선택한 단지 또는 지역입니다.</small></div>}
-          {activeFieldFeature.id === "lifestyle" && <div className="field-action-panel"><div className="lifestyle-chips">{["마트","병원","학교","헬스장","카페","공원"].map((keyword) => <button key={keyword} className={lifestyleKeyword === keyword ? "active" : ""} onClick={() => setLifestyleKeyword(keyword)}>{keyword}</button>)}</div><b>{fieldMapQuery} 주변 {lifestyleKeyword}</b><a href={lifestyleUrl} target="_blank" rel="noreferrer">생활권 지도에서 확인 ↗</a></div>}
+          {activeFieldFeature.id === "lifestyle" && <div className="field-action-panel"><div className="lifestyle-chips">{["마트","병원","학교","헬스장","카페","공원"].map((keyword) => <button key={keyword} className={lifestyleKeyword === keyword ? "active" : ""} onClick={() => setLifestyleKeyword(keyword)}>{keyword}</button>)}</div><b>{fieldMapQuery} 주변 {lifestyleKeyword}</b><button onClick={() => changeView("chart")}>자동 생활권 지도 보기 →</button></div>}
           {activeFieldFeature.id === "price" && <div className="field-facts"><div><span>최근 3개월 거래</span><strong>{latestQuarterTrades.length.toLocaleString()}건</strong></div><div><span>분기 중위가격</span><strong>{formatPrice(median(latestQuarterTrades.map((trade) => trade.amount)))}</strong></div><div><span>유사 면적 대비</span><strong>{selectedKey && peerPyeongPrice ? `${valuationGap >= 0 ? "+" : ""}${valuationGap.toFixed(1)}%` : "단지 선택 필요"}</strong></div><a href="#chart" onClick={(event) => { event.preventDefault(); changeView("chart"); }}>상세 가격 차트 보기 →</a></div>}
           {activeFieldFeature.id === "report" && <div className="field-report"><h4>현재 실거래 자동 요약</h4><ul><li>{activeRegion.sigungu}에서 최근 3개월 신고 거래 {latestQuarterTrades.length.toLocaleString()}건을 확인했습니다.</li><li>{propertyRows.length ? `동·평형 조건 ${propertyRows.length.toLocaleString()}개를 같은 기준으로 비교할 수 있습니다.` : "현재 조건은 비교 가능한 동·평형 표본이 부족합니다."}</li><li>{selectedKey && peerPyeongPrice ? `선택 후보는 유사 면적 지역 중위보다 ${Math.abs(valuationGap).toFixed(1)}% ${valuationGap > 0 ? "높습니다." : "낮습니다."}` : "단지를 선택하면 유사 면적 실거래와 가격 차이를 계산합니다."}</li></ul><small>생성형 문장이 아니라 현재 화면의 실거래 계산값을 요약합니다.</small></div>}
           {activeFieldFeature.id === "compare" && <div className="field-compare">{savedHomes.length ? savedHomes.slice(0,3).map((home) => <div key={home.id}><b>{home.name}</b><span>{home.region} · {home.area}평</span><strong>{home.score}점</strong></div>) : <p>가격 차트에서 관심 후보를 담으면 최대 3개 단지를 한눈에 비교할 수 있습니다.</p>}<a href="#chart" onClick={(event) => { event.preventDefault(); changeView("chart"); }}>비교 후보 고르기 →</a></div>}
