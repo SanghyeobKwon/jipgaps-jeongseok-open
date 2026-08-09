@@ -18,6 +18,7 @@ type CommunityGuide = { id: string; category: string; board: string; tag: string
 type FieldFeature = { id: string; group: string; title: string; information: string; value: string; importance: 4 | 5; status: "live" | "beta" | "connect"; source: string };
 type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAddress: string };
 type NearbyPlace = { id: string; name: string; category: string; distance: number; walkingMinutes: number; lat: number; lng: number; detail: string };
+const NEARBY_CATEGORIES = ["교통", "교육", "의료", "장보기", "여가", "생활"] as const;
 type MapFocus = "national" | "sido" | "district" | "detail";
 type GeoJsonFeature = { type: "Feature"; properties: Record<string, unknown>; geometry: Record<string, unknown> };
 type GeoJsonFeatureCollection = { type: "FeatureCollection"; features: GeoJsonFeature[] };
@@ -532,12 +533,14 @@ export default function Home() {
     const controller = new AbortController(); const timer = window.setTimeout(() => {
       if (!propertyLocation) { setNearbyPlaces([]); setNearbyError(""); return; }
       setNearbyLoading(true); setNearbyError(""); setNearbyCategory("전체");
-      fetch(`/api/nearby?lat=${propertyLocation.lat}&lng=${propertyLocation.lng}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "주변 시설을 불러오지 못했습니다."); return data; }).then((data) => setNearbyPlaces(data.places || [])).catch((reason) => { if (reason.name !== "AbortError") setNearbyError(reason.message); }).finally(() => { if (!controller.signal.aborted) setNearbyLoading(false); });
+      const nearbyArea = `${placeRegion} ${placePropertyDong}`.trim();
+      fetch(`/api/nearby?lat=${propertyLocation.lat}&lng=${propertyLocation.lng}&area=${encodeURIComponent(nearbyArea)}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "주변 시설을 불러오지 못했습니다."); return data; }).then((data) => setNearbyPlaces(data.places || [])).catch((reason) => { if (reason.name !== "AbortError") setNearbyError(reason.message); }).finally(() => { if (!controller.signal.aborted) setNearbyLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [propertyLocation]);
+  }, [propertyLocation, placeRegion, placePropertyDong]);
   const latestQuarterTrades = scopedTrades.filter((trade) => latestQuarterMonths.includes(trade.date.slice(0, 7)));
-  const nearbyCategories = ["전체", ...[...new Set(nearbyPlaces.map((place) => place.category))]]; const visibleNearbyPlaces = nearbyCategory === "전체" ? nearbyPlaces : nearbyPlaces.filter((place) => place.category === nearbyCategory);
+  const nearbyCategories = ["전체", ...NEARBY_CATEGORIES]; const visibleNearbyPlaces = nearbyCategory === "전체" ? nearbyPlaces : nearbyPlaces.filter((place) => place.category === nearbyCategory);
+  const nearbyWithin500 = nearbyPlaces.filter((place) => place.distance <= 500).length;
   const risingCount = propertyRows.filter((property) => property.change !== null && property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change !== null && property.change < 0).length;
   const visibleProperties = useMemo(() => propertyRows.filter((property) => property.quarterCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? (b.change ?? -Infinity) - (a.change ?? -Infinity) : buildingSort === "fall" ? (a.change ?? Infinity) - (b.change ?? Infinity) : b.quarterCount - a.quarterCount), [propertyRows, buildingSort, minVolume]);
   const sortedMarkets = useMemo(() => [...markets].sort((a, b) => marketSort === "price" ? b.median - a.median : marketSort === "rise" ? b.change - a.change : marketSort === "fall" ? a.change - b.change : b.count - a.count), [markets, marketSort]);
@@ -633,11 +636,11 @@ export default function Home() {
         </section>
         <section className="facility-panel">
           <header><div><p>NEARBY LIFE MAP</p><h2>{selectedProperty ? `${selectedProperty.name}에서 얼마나 가까울까?` : "집 하나를 고르면 주변 생활권이 자동으로 열립니다"}</h2><span>{selectedProperty ? `${placeRegion} ${placePropertyDong} · 500m·1km 반경 안의 교통·교육·의료·장보기·여가 시설` : "왼쪽 목록에서 집을 선택하면 별도 검색 없이 주변 시설과 거리를 계산합니다."}</span></div>{selectedProperty && <div><b>{nearbyPlaces.length}<small>곳</small></b><span>1km 안 시설</span><em>자동 거리 계산</em></div>}</header>
-          {selectedProperty ? <div className="facility-layout">
+          {selectedProperty ? <><div className="facility-radar-summary" aria-label="생활권 반경별 편의시설 집계"><div className="radar-totals"><span><b>{nearbyWithin500}</b><small>500m 안</small></span><span><b>{nearbyPlaces.length}</b><small>1km 안</small></span></div><div className="radar-category-counts">{NEARBY_CATEGORIES.map((category) => { const inside500 = nearbyPlaces.filter((place) => place.category === category && place.distance <= 500).length; const inside1000 = nearbyPlaces.filter((place) => place.category === category).length; return <button key={category} className={nearbyCategory === category ? "active" : ""} onClick={() => setNearbyCategory(category)}><span>{category}</span><b>{inside500}<small> / {inside1000}</small></b><em>500m / 1km</em></button>; })}</div></div><div className="facility-layout">
             <div className="facility-map">{locationLoading ? <div className="facility-state"><i />단지 좌표를 확인하고 있습니다.</div> : propertyLocation ? <><NaverPlaceMap location={propertyLocation} title={selectedProperty.name} places={visibleNearbyPlaces} /><span className="facility-address">{propertyLocation.roadAddress || propertyLocation.jibunAddress || placeAddressQuery}</span><div className="radius-key"><span><i />500m 생활권</span><span><i />1km 생활권</span></div></> : <div className="facility-state error"><b>지도 위치를 표시하지 못했습니다.</b><span>{locationError || "네이버 지도 API 권한을 확인해주세요."}</span></div>}</div>
             <div className="nearby-browser"><div className="nearby-tabs">{nearbyCategories.map((category) => <button key={category} className={nearbyCategory === category ? "active" : ""} onClick={() => setNearbyCategory(category)}>{category}<small>{category === "전체" ? nearbyPlaces.length : nearbyPlaces.filter((place) => place.category === category).length}</small></button>)}</div>{nearbyLoading ? <div className="nearby-state"><i />1km 안 생활시설을 찾고 있습니다.</div> : nearbyError ? <div className="nearby-state error"><b>주변 시설을 불러오지 못했습니다.</b><span>{nearbyError}</span></div> : visibleNearbyPlaces.length ? <div className="nearby-list">{visibleNearbyPlaces.map((place) => <article key={place.id}><em>{place.category}</em><div><b>{place.name}</b><span>{place.distance <= 500 ? "500m 생활권" : "1km 생활권"}</span></div><strong>{place.distance.toLocaleString()}m<small>직선거리</small></strong><p>도보 약 {place.walkingMinutes}분<small>경로 보정 추정</small></p></article>)}</div> : <div className="nearby-state"><b>이 범위에서 등록된 시설이 없습니다.</b><span>다른 분류를 선택하거나 지도의 최신 등록 상태를 확인해주세요.</span></div>}</div>
-          </div> : <div className="facility-empty"><span>01</span><b>단지 선택</b><i>→</i><span>02</span><b>정확한 주소 좌표 확인</b><i>→</i><span>03</span><b>주변 생활시설 비교</b></div>}
-          <p className="facility-note">단지 좌표와 배경 지도는 네이버 Maps, 주변 시설은 <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap 기여자</a> 데이터를 사용합니다. 거리는 두 좌표 사이의 직선거리이며, 도보 시간은 경로 굴곡을 20% 반영한 참고 추정값입니다. 횡단보도·경사·출입구를 반영한 실제 길찾기 시간과는 다를 수 있습니다.</p>
+          </div></> : <div className="facility-empty"><span>01</span><b>단지 선택</b><i>→</i><span>02</span><b>정확한 주소 좌표 확인</b><i>→</i><span>03</span><b>주변 생활시설 비교</b></div>}
+          <p className="facility-note">단지 좌표와 배경 지도는 네이버 Maps, 주변 시설은 NAVER API HUB 지역 검색을 사용합니다. 카테고리별 상위 검색 결과를 좌표 거리로 재분류한 집계이며, 거리는 두 좌표 사이의 직선거리입니다. 도보 시간은 경로 굴곡을 20% 반영한 참고 추정값으로 실제 길찾기 시간과 다를 수 있습니다.</p>
         </section>
       </div>
     </section>
