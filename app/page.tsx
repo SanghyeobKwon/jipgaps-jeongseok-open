@@ -187,20 +187,20 @@ function PriceChart({ points, unit }: { points: ChartPoint[]; unit: "price" | "p
       const xAt = (index: number) => points.length === 1 ? pad.left + plotW / 2 : pad.left + plotW * index / (points.length - 1);
       const yAt = (value: number) => pad.top + (max - value) / (max - min) * plotH;
       ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace"; ctx.textAlign = "left";
-      for (let i = 0; i < 5; i++) { const y = pad.top + plotH * i / 4; ctx.strokeStyle = "#263142"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.fillStyle = "#7f8b9c"; ctx.fillText(compactPrice(max - (max - min) * i / 4), width - pad.right + 10, y + 4); }
+      for (let i = 0; i < 5; i++) { const y = pad.top + plotH * i / 4; ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.fillStyle = "#667085"; ctx.fillText(compactPrice(max - (max - min) * i / 4), width - pad.right + 10, y + 4); }
       const labelStep = Math.max(1, Math.ceil(points.length / 7));
-      points.forEach((point, index) => { if (index % labelStep === 0 || index === points.length - 1) { const x = xAt(index); ctx.strokeStyle = "#202b3a"; ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, height - pad.bottom); ctx.stroke(); ctx.fillStyle = "#697589"; ctx.textAlign = "center"; ctx.fillText(monthLabel(point.month), x, height - 8); } });
+      points.forEach((point, index) => { if (index % labelStep === 0 || index === points.length - 1) { const x = xAt(index); ctx.strokeStyle = "#eef0f3"; ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, height - pad.bottom); ctx.stroke(); ctx.fillStyle = "#667085"; ctx.textAlign = "center"; ctx.fillText(monthLabel(point.month), x, height - 8); } });
       const maxVolume = Math.max(...points.map((point) => point.volume), 1); const barW = Math.max(3, Math.min(18, plotW / points.length * .58));
-      points.forEach((point, index) => { const x = xAt(index); const h = point.volume / maxVolume * volumeH; ctx.fillStyle = index && point.price < points[index - 1].price ? "#27678a" : "#5b3c3f"; ctx.fillRect(x - barW / 2, height - pad.bottom - h, barW, h); });
+      points.forEach((point, index) => { const x = xAt(index); const h = point.volume / maxVolume * volumeH; ctx.fillStyle = index && point.price < points[index - 1].price ? "#8ec5ff" : "#b8d9ff"; ctx.fillRect(x - barW / 2, height - pad.bottom - h, barW, h); });
       const renderLine = (field: "price" | "average", color: string, widthLine: number) => { ctx.beginPath(); points.forEach((point, index) => { const x = xAt(index); const y = yAt(point[field]); if (index) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.strokeStyle = color; ctx.lineWidth = widthLine; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.stroke(); };
-      renderLine("average", "#7a8ba6", 1.5); renderLine("price", "#ff7452", 2.3);
+      renderLine("average", "#8b95a5", 1.5); renderLine("price", "#0071e3", 2.3);
       const active = hover ?? points.length - 1; const point = points[active]; const x = xAt(active); const y = yAt(point.price);
       ctx.setLineDash([4, 4]); ctx.strokeStyle = "#9aa8ba88"; ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, height - pad.bottom); ctx.stroke(); ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = "#ff7452"; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#101722"; ctx.lineWidth = 2; ctx.stroke();
-      const tag = compactPrice(point.price); ctx.fillStyle = "#ff7452"; ctx.fillRect(width - pad.right + 4, y - 11, 64, 22); ctx.fillStyle = "#fff"; ctx.font = "700 11px ui-monospace"; ctx.textAlign = "center"; ctx.fillText(tag, width - pad.right + 36, y + 4);
+      ctx.fillStyle = "#0071e3"; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.stroke();
+      const tag = compactPrice(point.price); ctx.fillStyle = "#0071e3"; ctx.fillRect(width - pad.right + 4, y - 11, 64, 22); ctx.fillStyle = "#fff"; ctx.font = "700 11px ui-monospace"; ctx.textAlign = "center"; ctx.fillText(tag, width - pad.right + 36, y + 4);
       const boxW = 166; const boxX = Math.min(width - pad.right - boxW - 8, Math.max(pad.left + 8, x + (x > width / 2 ? -boxW - 14 : 14))); const boxY = pad.top + 8;
-      ctx.fillStyle = "#182231ee"; ctx.strokeStyle = "#344156"; ctx.lineWidth = 1; ctx.fillRect(boxX, boxY, boxW, 66); ctx.strokeRect(boxX, boxY, boxW, 66);
-      ctx.textAlign = "left"; ctx.fillStyle = "#8c99aa"; ctx.font = "10px sans-serif"; ctx.fillText(`${point.month} · 거래 ${point.volume}건`, boxX + 11, boxY + 17); ctx.fillStyle = "#fff"; ctx.font = "700 13px sans-serif"; ctx.fillText(formatPrice(point.price), boxX + 11, boxY + 38); ctx.fillStyle = "#8493a8"; ctx.font = "10px sans-serif"; ctx.fillText(`3개월 이동평균 ${formatPrice(point.average)}`, boxX + 11, boxY + 56);
+      ctx.fillStyle = "#fffffff5"; ctx.strokeStyle = "#dfe3e8"; ctx.lineWidth = 1; ctx.fillRect(boxX, boxY, boxW, 66); ctx.strokeRect(boxX, boxY, boxW, 66);
+      ctx.textAlign = "left"; ctx.fillStyle = "#667085"; ctx.font = "10px sans-serif"; ctx.fillText(`${point.month} · 거래 ${point.volume}건`, boxX + 11, boxY + 17); ctx.fillStyle = "#1d1d1f"; ctx.font = "700 13px sans-serif"; ctx.fillText(formatPrice(point.price), boxX + 11, boxY + 38); ctx.fillStyle = "#667085"; ctx.font = "10px sans-serif"; ctx.fillText(`3개월 이동평균 ${formatPrice(point.average)}`, boxX + 11, boxY + 56);
     };
     draw(); const observer = new ResizeObserver(draw); observer.observe(host); return () => observer.disconnect();
   }, [points, hover, unit]);
@@ -317,7 +317,7 @@ function NaverMarketMap({ markets, focus, selectedSido, activeRegion, selectedDo
         const boundaries = await readGeoJson("/data/boundaries/sido.json");
         if (disposed || !map) return;
         map.data.addGeoJson(boundaries);
-        map.data.setStyle((feature) => { const selected = String(feature.getProperty("name") || "") === selectedSido; return { fillColor: selected ? "#ff6f4f" : "#203a55", fillOpacity: selected ? 0.3 : 0.11, strokeColor: selected ? "#ff8d72" : "#6382a3", strokeWeight: selected ? 3 : 1.4, strokeOpacity: 0.95, clickable: true }; });
+        map.data.setStyle((feature) => { const selected = String(feature.getProperty("name") || "") === selectedSido; return { fillColor: selected ? "#0071e3" : "#8ec5ff", fillOpacity: selected ? 0.34 : 0.14, strokeColor: selected ? "#0071e3" : "#6d91b8", strokeWeight: selected ? 3 : 1.4, strokeOpacity: 0.95, clickable: true }; });
         listeners.push(maps.Event.addListener(map.data, "click", (event) => { const name = String(event.feature?.getProperty("name") || ""); if (name) onSelectSido(name); }));
         markets.forEach((market) => makeMarketMarker(market, market.sido === selectedSido));
         fitCollection(boundaries);
@@ -340,7 +340,7 @@ function NaverMarketMap({ markets, focus, selectedSido, activeRegion, selectedDo
         const features = map.data.addGeoJson(districts);
         map.data.setStyle((feature) => {
           const code = String(feature.getProperty("code") || ""); const selected = activeRegion.sido === selectedSido && code === activeRegion.code;
-          return { fillColor: selected ? "#ff6f4f" : "#263e59", fillOpacity: selected ? 0.34 : 0.13, strokeColor: selected ? "#ff6f4f" : "#4f6e8e", strokeWeight: selected ? 3 : 1.25, strokeOpacity: 0.9, clickable: true };
+          return { fillColor: selected ? "#0071e3" : "#b8d9ff", fillOpacity: selected ? 0.34 : 0.16, strokeColor: selected ? "#0071e3" : "#7194b8", strokeWeight: selected ? 3 : 1.25, strokeOpacity: 0.9, clickable: true };
         });
         listeners.push(maps.Event.addListener(map.data, "click", (event) => {
           const code = String(event.feature?.getProperty("code") || ""); const region = REGIONS.find((item) => item.code === code); if (region) onSelectRegion(region);
@@ -358,7 +358,7 @@ function NaverMarketMap({ markets, focus, selectedSido, activeRegion, selectedDo
         map.data.setStyle((feature) => {
           const name = String(feature.getProperty("name") || "");
           const selected = selectedBoundaryDong ? name === selectedBoundaryDong : selectedDong !== "all" && legalDongName(name) === selectedDong;
-          return { fillColor: selected ? "#ff6f4f" : "#24415f", fillOpacity: selected ? 0.42 : 0.12, strokeColor: selected ? "#ff8d72" : "#6281a2", strokeWeight: selected ? 2.5 : 1.1, strokeOpacity: 0.88, clickable: true };
+          return { fillColor: selected ? "#0071e3" : "#cfe6ff", fillOpacity: selected ? 0.42 : 0.18, strokeColor: selected ? "#0071e3" : "#7596b8", strokeWeight: selected ? 2.5 : 1.1, strokeOpacity: 0.88, clickable: true };
         });
         dongFeatures.forEach((feature) => {
           const name = String(feature.getProperty("name") || ""); const center = feature.getBounds?.().getCenter(); if (!name || !center || !map) return;
