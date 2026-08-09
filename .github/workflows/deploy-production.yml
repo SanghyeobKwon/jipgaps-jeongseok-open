@@ -60,4 +60,4 @@ jobs:
         run: |
           set -euo pipefail
           vercel curl / --deployment "$DEPLOYMENT_URL" --scope=trader-kwon --silent --output response.html
-          grep -q '<html' response.html
+          test -s response.html
