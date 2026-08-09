@@ -107,6 +107,14 @@ const FIELD_LEVELS = [
   { id: "unit", label: "동·호수 임장", summary: "동·층·방향에 따른 차이 분석", example: "101동·15층·전용 84㎡", group: "동·세대", featureId: "building", status: "베타" },
   { id: "life", label: "생활 임장", summary: "실제 하루 동선을 시뮬레이션", example: "출근·귀가·장보기·주차·산책·학교·병원", group: "입지·동선", featureId: "lifestyle", status: "일부 사용 가능" },
 ];
+const TIME_SLOTS = [
+  { hour: "06", label: "오전 06:00", phase: "하루 시작", title: "첫 이동과 이른 아침 생활환경", tone: "dawn", checks: [{ label: "첫차·버스", detail: "이른 출근에 필요한 첫차와 배차 간격" }, { label: "보행 조명", detail: "해 뜨기 전 골목과 역까지의 밝기" }, { label: "산책 동선", detail: "공원·하천·아침 운동 경로의 접근성" }, { label: "생활 소음", detail: "배송·청소·등교 준비 시간대의 소음" }] },
+  { hour: "09", label: "오전 09:00", phase: "출근·통학", title: "출근길과 학교 앞이 가장 바쁜 시간", tone: "rush", checks: [{ label: "출근 혼잡", detail: "역·정류장·주요 도로로 몰리는 이동" }, { label: "통학 동선", detail: "학교 앞 횡단보도와 학생 이동 경로" }, { label: "차량 진출입", detail: "단지 출입구와 간선도로 합류 구간" }, { label: "상가 영업", detail: "아침 식사·카페·생활 상권의 운영 상태" }] },
+  { hour: "12", label: "오후 12:00", phase: "낮 생활권", title: "상권과 보행환경을 선명하게 보는 시간", tone: "noon", checks: [{ label: "생활 상권", detail: "마트·병원·은행·식당의 실제 접근성" }, { label: "보행 쾌적성", detail: "그늘·경사·보도 폭과 횡단 대기" }, { label: "공사 소음", detail: "주변 공사장과 낮 시간 작업 소음" }, { label: "공원 이용", detail: "공원·광장·휴식공간의 이용 밀도" }] },
+  { hour: "18", label: "오후 18:00", phase: "퇴근·하교", title: "퇴근 동선과 저녁 생활이 겹치는 시간", tone: "evening", checks: [{ label: "퇴근 혼잡", detail: "역 출구·버스 환승·주요 도로 정체" }, { label: "학원가 이동", detail: "학생 이동과 학원 차량 정차 구간" }, { label: "주차 진입", detail: "입주 차량 집중과 단지 출입구 대기" }, { label: "저녁 상권", detail: "장보기·외식·배달 수요가 모이는 위치" }] },
+  { hour: "22", label: "오후 22:00", phase: "야간 귀가", title: "밤길 안전과 소음의 성격이 드러나는 시간", tone: "night", checks: [{ label: "귀가 동선", detail: "역에서 단지까지 가로등과 보행 시야" }, { label: "야간 상권", detail: "음식점·주점·편의점 주변 유동" }, { label: "생활 소음", detail: "도로·상가·야외 공간의 밤 소음" }, { label: "주차 상태", detail: "늦은 귀가 시 빈자리와 이중주차 가능성" }] },
+  { hour: "01", label: "오전 01:00", phase: "심야", title: "늦은 귀가의 마지막 이동 조건", tone: "late", checks: [{ label: "심야 교통", detail: "막차 이후 버스·택시 이용 가능성" }, { label: "보행 안전", detail: "인적이 적은 골목과 비상 대피 지점" }, { label: "24시간 시설", detail: "편의점·약국·응급의료 접근성" }, { label: "심야 소음", detail: "유흥 상권·간선도로·오토바이 소음" }] },
+];
 const FIELD_SCORE_EXAMPLE = [
   { label: "교통", score: 92, grade: "매우 좋음" }, { label: "생활편의", score: 91, grade: "매우 좋음" },
   { label: "학군", score: 85, grade: "좋음" }, { label: "일조", score: 84, grade: "좋음" },
@@ -554,7 +562,7 @@ export default function Home() {
   const [activeSection, setActiveSection] = useState("home"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
   const [selectedMapSido, setSelectedMapSido] = useState("서울특별시"); const [mapFocus, setMapFocus] = useState<MapFocus>("district"); const [selectedBoundaryDong, setSelectedBoundaryDong] = useState(""); const [boundaryDongOptions, setBoundaryDongOptions] = useState<string[]>([]); const [mapPickerDong, setMapPickerDong] = useState(""); const [dongMetric, setDongMetric] = useState<DongMetric>("price");
   const [savedHomes, setSavedHomes] = useState<SavedHome[]>([]);
-  const [fieldGroup, setFieldGroup] = useState(FIELD_GROUPS[0]); const [fieldFeatureId, setFieldFeatureId] = useState("region");
+  const [fieldGroup, setFieldGroup] = useState(FIELD_GROUPS[0]); const [fieldFeatureId, setFieldFeatureId] = useState("region"); const [timeSlotIndex, setTimeSlotIndex] = useState(3);
   const [commuteDestination, setCommuteDestination] = useState(""); const [lifestyleKeyword, setLifestyleKeyword] = useState("마트");
   const [researchCategory, setResearchCategory] = useState("price"); const [researchTool, setResearchTool] = useState("recent-fall");
   const [communityCategory, setCommunityCategory] = useState("living"); const [communityBoard, setCommunityBoard] = useState("전체");
@@ -728,6 +736,7 @@ export default function Home() {
   const selectedOpportunity = scoredCandidates.find((candidate) => candidate.key === selectedVariantKey); const isSaved = selectedOpportunity ? savedHomes.some((home) => home.id === `${regionCode}|${selectedOpportunity.key}`) : false;
   const activeFieldFeature = FIELD_FEATURES.find((feature) => feature.id === fieldFeatureId) || FIELD_FEATURES[0];
   const fieldGroupFeatures = FIELD_FEATURES.filter((feature) => feature.group === fieldGroup);
+  const activeTimeSlot = TIME_SLOTS[timeSlotIndex];
   const fieldMapQuery = `${activeRegion.sido} ${activeRegion.sigungu} ${selectedDong !== "all" ? selectedDong : ""} ${selectedProperty?.name || ""}`.replace(/\s+/g, " ").trim();
   const fieldMapUrl = `https://map.naver.com/p/search/${encodeURIComponent(fieldMapQuery)}`;
   const commuteUrl = commuteDestination.trim() ? `https://map.naver.com/p/search/${encodeURIComponent(`${fieldMapQuery} ${commuteDestination.trim()} 길찾기`)}` : "";
@@ -838,12 +847,18 @@ export default function Home() {
           <header><span className={activeFieldFeature.status}>{activeFieldFeature.status === "live" ? "LIVE" : activeFieldFeature.status === "beta" ? "BETA" : "DATA CONNECT"}</span><small>{activeFieldFeature.source}</small><h3>{activeFieldFeature.title}</h3><p>{activeFieldFeature.value}</p></header>
           {activeFieldFeature.id === "region" && <div className="field-action-panel"><b>{fieldMapQuery}</b><p>단지를 선택하면 1km 안의 교통·교육·의료·장보기·여가 시설과 거리를 자동으로 계산합니다.</p><button onClick={() => changeView("chart")}>자동 생활권 지도 보기 →</button></div>}
           {activeFieldFeature.id === "walk" && <div className="field-action-panel"><b>{fieldMapQuery}</b><p>실제 보행 경로는 횡단보도와 출입구를 반영한 최신 길찾기 결과로 최종 확인합니다.</p><a href={fieldMapUrl} target="_blank" rel="noreferrer">실제 도보 경로 확인 ↗</a></div>}
+          {activeFieldFeature.id === "time" && <div className={`field-time-panel tone-${activeTimeSlot.tone}`}>
+            <header><div><span>선택 시간</span><b>{activeTimeSlot.label}</b></div><small>{fieldMapQuery}</small></header>
+            <div className="field-time-slider"><input type="range" min="0" max={TIME_SLOTS.length - 1} step="1" value={timeSlotIndex} onChange={(event) => setTimeSlotIndex(Number(event.target.value))} aria-label={`동네 분위기 시간 선택, 현재 ${activeTimeSlot.label}`} /><div>{TIME_SLOTS.map((slot, index) => <button type="button" key={slot.hour} className={timeSlotIndex === index ? "active" : ""} aria-pressed={timeSlotIndex === index} onClick={() => setTimeSlotIndex(index)}>{slot.hour}시</button>)}</div></div>
+            <div className="field-time-result" aria-live="polite"><div><span>{activeTimeSlot.phase}</span><h4>{activeTimeSlot.title}</h4><p>선택한 시간에 현장에서 우선 확인할 항목입니다.</p></div><ul>{activeTimeSlot.checks.map((check) => <li key={check.label}><b>{check.label}</b><span>{check.detail}</span></li>)}</ul></div>
+            <footer><div><span>실측 데이터 연결 전</span><p>현재는 시간대별 현장 확인 기준을 제공합니다. 교통량·유동인구·소음 수치는 공식 원천이 연결된 뒤 표시합니다.</p></div><a href={fieldMapUrl} target="_blank" rel="noreferrer">현재 지도에서 현장 확인</a></footer>
+          </div>}
           {activeFieldFeature.id === "commute" && <div className="field-action-panel"><label><span>회사·학교·자주 가는 곳</span><input value={commuteDestination} onChange={(event) => setCommuteDestination(event.target.value)} placeholder="예: 광화문역" /></label>{commuteUrl ? <a href={commuteUrl} target="_blank" rel="noreferrer">Door-to-Door 경로 확인 ↗</a> : <button disabled>목적지를 입력해주세요</button>}<small>출발지는 현재 선택한 단지 또는 지역입니다.</small></div>}
           {activeFieldFeature.id === "lifestyle" && <div className="field-action-panel"><div className="lifestyle-chips">{["마트","병원","학교","헬스장","카페","공원"].map((keyword) => <button key={keyword} className={lifestyleKeyword === keyword ? "active" : ""} onClick={() => setLifestyleKeyword(keyword)}>{keyword}</button>)}</div><b>{fieldMapQuery} 주변 {lifestyleKeyword}</b><button onClick={() => changeView("chart")}>자동 생활권 지도 보기 →</button></div>}
           {activeFieldFeature.id === "price" && <div className="field-facts"><div><span>최근 3개월 거래</span><strong>{latestQuarterTrades.length.toLocaleString()}건</strong></div><div><span>분기 중위가격</span><strong>{formatPrice(median(latestQuarterTrades.map((trade) => trade.amount)))}</strong></div><div><span>유사 면적 대비</span><strong>{selectedKey && peerPyeongPrice ? `${valuationGap >= 0 ? "+" : ""}${valuationGap.toFixed(1)}%` : "단지 선택 필요"}</strong></div><a href="#chart" onClick={(event) => { event.preventDefault(); changeView("chart"); }}>상세 가격 차트 보기 →</a></div>}
           {activeFieldFeature.id === "report" && <div className="field-report"><h4>현재 실거래 자동 요약</h4><ul><li>{activeRegion.sigungu}에서 최근 3개월 신고 거래 {latestQuarterTrades.length.toLocaleString()}건을 확인했습니다.</li><li>{propertyRows.length ? `동·평형 조건 ${propertyRows.length.toLocaleString()}개를 같은 기준으로 비교할 수 있습니다.` : "현재 조건은 비교 가능한 동·평형 표본이 부족합니다."}</li><li>{selectedKey && peerPyeongPrice ? `선택 후보는 유사 면적 지역 중위보다 ${Math.abs(valuationGap).toFixed(1)}% ${valuationGap > 0 ? "높습니다." : "낮습니다."}` : "단지를 선택하면 유사 면적 실거래와 가격 차이를 계산합니다."}</li></ul><small>생성형 문장이 아니라 현재 화면의 실거래 계산값을 요약합니다.</small></div>}
           {activeFieldFeature.id === "compare" && <div className="field-compare">{savedHomes.length ? savedHomes.slice(0,3).map((home) => <div key={home.id}><b>{home.name}</b><span>{home.region} · {home.area}평</span><strong>{home.score}점</strong></div>) : <p>가격 차트에서 관심 후보를 담으면 최대 3개 단지를 한눈에 비교할 수 있습니다.</p>}<a href="#chart" onClick={(event) => { event.preventDefault(); changeView("chart"); }}>비교 후보 고르기 →</a></div>}
-          {!(["region","walk","commute","lifestyle","price","report","compare"].includes(activeFieldFeature.id)) && <div className="field-connect"><span>{activeFieldFeature.information}</span><strong>{activeFieldFeature.source} 연결이 필요합니다.</strong><p>현장·센서·공식 원천이 확보되기 전에는 그럴듯한 추정 점수를 표시하지 않습니다. 데이터 출처와 갱신일을 확인한 뒤 같은 화면에 연결합니다.</p><div><i />원천 검증 <i />주소·동 매칭 <i />사용자 교차 확인</div></div>}
+          {!(["region","walk","time","commute","lifestyle","price","report","compare"].includes(activeFieldFeature.id)) && <div className="field-connect"><span>{activeFieldFeature.information}</span><strong>{activeFieldFeature.source} 연결이 필요합니다.</strong><p>현장·센서·공식 원천이 확보되기 전에는 그럴듯한 추정 점수를 표시하지 않습니다. 데이터 출처와 갱신일을 확인한 뒤 같은 화면에 연결합니다.</p><div><i />원천 검증 <i />주소·동 매칭 <i />사용자 교차 확인</div></div>}
         </article>
       </div>
       <section className="field-scorecard" aria-label="온라인 임장 평가 예시">
