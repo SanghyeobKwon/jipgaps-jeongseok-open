@@ -15,13 +15,14 @@ type SavedHome = { id: string; name: string; region: string; area: number; price
 const SIDO_ORDER = ["서울특별시", "부산광역시", "대구광역시", "인천광역시", "광주광역시", "대전광역시", "울산광역시", "세종특별자치시", "경기도", "강원특별자치도", "충청북도", "충청남도", "전북특별자치도", "전라남도", "경상북도", "경상남도", "제주특별자치도"];
 const SEOUL_PRIORITY = ["강남구", "서초구", "송파구", "용산구", "성동구", "마포구", "영등포구", "강동구", "양천구", "광진구", "동작구", "종로구", "중구", "서대문구", "강서구", "관악구", "동대문구", "성북구", "은평구", "노원구", "구로구", "금천구", "중랑구", "도봉구", "강북구"];
 function normalizeRegion(region: Region): Region {
-  let sigungu = region.sigungu.replace(/^서울시/, "");
+  let sigungu = region.sigungu.trim().replace(/\s+/g, " ");
+  if (region.sido === "서울특별시") sigungu = sigungu.replace(/^(?:(?:서울특별시|서울시)\s*)+/, "");
   if (region.code.startsWith("4128") && !sigungu.startsWith("고양시")) sigungu = `고양시 ${sigungu}`;
   if (region.code.startsWith("4146") && !sigungu.startsWith("용인시")) sigungu = `용인시 ${sigungu}`;
   sigungu = sigungu.replace(/시(?=[가-힣]+구$)/, "시 ");
   return { ...region, sido: region.sido === "전라북도" ? "전북특별자치도" : region.sido, sigungu };
 }
-const REGIONS = (regions as Region[]).map(normalizeRegion);
+const REGIONS = [...new Map((regions as Region[]).map(normalizeRegion).map((region) => [region.code, region])).values()];
 function sortRegions(a: Region, b: Region) { if (a.sido === "서울특별시" && b.sido === "서울특별시") return SEOUL_PRIORITY.indexOf(a.sigungu) - SEOUL_PRIORITY.indexOf(b.sigungu); return Number(a.code) - Number(b.code); }
 function areaBucket(area: number) { return area > 0 ? Math.round(area / 3.3058) : 0; }
 function dongLabel(value: string) { return value ? (value.endsWith("동") ? value : `${value}동`) : ""; }
