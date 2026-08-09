@@ -115,6 +115,12 @@ const TIME_SLOTS = [
   { hour: "22", label: "오후 22:00", phase: "야간 귀가", title: "밤길 안전과 소음의 성격이 드러나는 시간", tone: "night", checks: [{ label: "귀가 동선", detail: "역에서 단지까지 가로등과 보행 시야" }, { label: "야간 상권", detail: "음식점·주점·편의점 주변 유동" }, { label: "생활 소음", detail: "도로·상가·야외 공간의 밤 소음" }, { label: "주차 상태", detail: "늦은 귀가 시 빈자리와 이중주차 가능성" }] },
   { hour: "01", label: "오전 01:00", phase: "심야", title: "늦은 귀가의 마지막 이동 조건", tone: "late", checks: [{ label: "심야 교통", detail: "막차 이후 버스·택시 이용 가능성" }, { label: "보행 안전", detail: "인적이 적은 골목과 비상 대피 지점" }, { label: "24시간 시설", detail: "편의점·약국·응급의료 접근성" }, { label: "심야 소음", detail: "유흥 상권·간선도로·오토바이 소음" }] },
 ];
+const NOISE_SOURCES = [
+  { id: "car", label: "자동차", detail: "간선도로·교차로" }, { id: "bus", label: "버스", detail: "정류장·차고지" },
+  { id: "subway", label: "지하철", detail: "역 출입구·지상 구간" }, { id: "rail", label: "철도", detail: "선로·건널목" },
+  { id: "aircraft", label: "항공기", detail: "비행 경로" }, { id: "retail", label: "상가", detail: "음식점·주점·배달" },
+  { id: "school", label: "학교", detail: "등·하교·운동장" }, { id: "construction", label: "공사장", detail: "공사 시간·중장비" },
+];
 const FIELD_SCORE_EXAMPLE = [
   { label: "교통", score: 92, grade: "매우 좋음" }, { label: "생활편의", score: 91, grade: "매우 좋음" },
   { label: "학군", score: 85, grade: "좋음" }, { label: "일조", score: 84, grade: "좋음" },
@@ -562,7 +568,7 @@ export default function Home() {
   const [activeSection, setActiveSection] = useState("home"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
   const [selectedMapSido, setSelectedMapSido] = useState("서울특별시"); const [mapFocus, setMapFocus] = useState<MapFocus>("district"); const [selectedBoundaryDong, setSelectedBoundaryDong] = useState(""); const [boundaryDongOptions, setBoundaryDongOptions] = useState<string[]>([]); const [mapPickerDong, setMapPickerDong] = useState(""); const [dongMetric, setDongMetric] = useState<DongMetric>("price");
   const [savedHomes, setSavedHomes] = useState<SavedHome[]>([]);
-  const [fieldGroup, setFieldGroup] = useState(FIELD_GROUPS[0]); const [fieldFeatureId, setFieldFeatureId] = useState("region"); const [timeSlotIndex, setTimeSlotIndex] = useState(3);
+  const [fieldGroup, setFieldGroup] = useState(FIELD_GROUPS[0]); const [fieldFeatureId, setFieldFeatureId] = useState("region"); const [timeSlotIndex, setTimeSlotIndex] = useState(3); const [noiseSources, setNoiseSources] = useState(() => NOISE_SOURCES.map((source) => source.id));
   const [commuteDestination, setCommuteDestination] = useState(""); const [lifestyleKeyword, setLifestyleKeyword] = useState("마트");
   const [researchCategory, setResearchCategory] = useState("price"); const [researchTool, setResearchTool] = useState("recent-fall");
   const [communityCategory, setCommunityCategory] = useState("living"); const [communityBoard, setCommunityBoard] = useState("전체");
@@ -853,12 +859,19 @@ export default function Home() {
             <div className="field-time-result" aria-live="polite"><div><span>{activeTimeSlot.phase}</span><h4>{activeTimeSlot.title}</h4><p>선택한 시간에 현장에서 우선 확인할 항목입니다.</p></div><ul>{activeTimeSlot.checks.map((check) => <li key={check.label}><b>{check.label}</b><span>{check.detail}</span></li>)}</ul></div>
             <footer><div><span>실측 데이터 연결 전</span><p>현재는 시간대별 현장 확인 기준을 제공합니다. 교통량·유동인구·소음 수치는 공식 원천이 연결된 뒤 표시합니다.</p></div><a href={fieldMapUrl} target="_blank" rel="noreferrer">현재 지도에서 현장 확인</a></footer>
           </div>}
+          {activeFieldFeature.id === "noise" && <div className="field-noise-panel">
+            <header><div><span>NOISE MAP</span><h4>소음원을 나눠 보고, 시간대별로 비교합니다.</h4><p>같은 단지도 도로·철도·상가·학교처럼 소음원이 다르면 체감이 달라집니다.</p></div><button type="button" onClick={() => setNoiseSources(NOISE_SOURCES.map((source) => source.id))}>전체 소음원 선택</button></header>
+            <div className="noise-source-picker" aria-label="표시할 소음원">{NOISE_SOURCES.map((source) => { const active = noiseSources.includes(source.id); return <button type="button" key={source.id} className={active ? "active" : ""} aria-pressed={active} onClick={() => setNoiseSources((current) => active ? current.filter((id) => id !== source.id) : [...current, source.id])}><b>{source.label}</b><small>{source.detail}</small></button>; })}</div>
+            <div className="noise-layer-status"><div><span>선택된 레이어</span><b>{noiseSources.length}개 소음원</b><p>{noiseSources.length ? "선택한 소음원을 기준으로 이 위치의 측정망·공간 데이터를 결합합니다." : "지도에 표시할 소음원을 하나 이상 선택하세요."}</p></div><a href={fieldMapUrl} target="_blank" rel="noreferrer">주변 위치 확인</a></div>
+            <div className="noise-time-table"><div className="noise-time-head"><span>시간</span><span>예상 소음</span><span>표시 기준</span></div>{["07시", "12시", "18시", "23시"].map((hour) => <div key={hour}><b>{hour}</b><strong>연결 대기</strong><span>{noiseSources.length ? "측정망·도로·철도·시설 데이터 결합" : "소음원 선택 필요"}</span></div>)}</div>
+            <footer><span>실제 dB는 아직 표시하지 않습니다.</span><p>환경소음 측정망, 도로·철도·항공 경로, 공사 정보가 연결되면 선택한 소음원과 시간대별 dB·주의 구간을 같은 표와 지도에 표시합니다.</p></footer>
+          </div>}
           {activeFieldFeature.id === "commute" && <div className="field-action-panel"><label><span>회사·학교·자주 가는 곳</span><input value={commuteDestination} onChange={(event) => setCommuteDestination(event.target.value)} placeholder="예: 광화문역" /></label>{commuteUrl ? <a href={commuteUrl} target="_blank" rel="noreferrer">Door-to-Door 경로 확인 ↗</a> : <button disabled>목적지를 입력해주세요</button>}<small>출발지는 현재 선택한 단지 또는 지역입니다.</small></div>}
           {activeFieldFeature.id === "lifestyle" && <div className="field-action-panel"><div className="lifestyle-chips">{["마트","병원","학교","헬스장","카페","공원"].map((keyword) => <button key={keyword} className={lifestyleKeyword === keyword ? "active" : ""} onClick={() => setLifestyleKeyword(keyword)}>{keyword}</button>)}</div><b>{fieldMapQuery} 주변 {lifestyleKeyword}</b><button onClick={() => changeView("chart")}>자동 생활권 지도 보기 →</button></div>}
           {activeFieldFeature.id === "price" && <div className="field-facts"><div><span>최근 3개월 거래</span><strong>{latestQuarterTrades.length.toLocaleString()}건</strong></div><div><span>분기 중위가격</span><strong>{formatPrice(median(latestQuarterTrades.map((trade) => trade.amount)))}</strong></div><div><span>유사 면적 대비</span><strong>{selectedKey && peerPyeongPrice ? `${valuationGap >= 0 ? "+" : ""}${valuationGap.toFixed(1)}%` : "단지 선택 필요"}</strong></div><a href="#chart" onClick={(event) => { event.preventDefault(); changeView("chart"); }}>상세 가격 차트 보기 →</a></div>}
           {activeFieldFeature.id === "report" && <div className="field-report"><h4>현재 실거래 자동 요약</h4><ul><li>{activeRegion.sigungu}에서 최근 3개월 신고 거래 {latestQuarterTrades.length.toLocaleString()}건을 확인했습니다.</li><li>{propertyRows.length ? `동·평형 조건 ${propertyRows.length.toLocaleString()}개를 같은 기준으로 비교할 수 있습니다.` : "현재 조건은 비교 가능한 동·평형 표본이 부족합니다."}</li><li>{selectedKey && peerPyeongPrice ? `선택 후보는 유사 면적 지역 중위보다 ${Math.abs(valuationGap).toFixed(1)}% ${valuationGap > 0 ? "높습니다." : "낮습니다."}` : "단지를 선택하면 유사 면적 실거래와 가격 차이를 계산합니다."}</li></ul><small>생성형 문장이 아니라 현재 화면의 실거래 계산값을 요약합니다.</small></div>}
           {activeFieldFeature.id === "compare" && <div className="field-compare">{savedHomes.length ? savedHomes.slice(0,3).map((home) => <div key={home.id}><b>{home.name}</b><span>{home.region} · {home.area}평</span><strong>{home.score}점</strong></div>) : <p>가격 차트에서 관심 후보를 담으면 최대 3개 단지를 한눈에 비교할 수 있습니다.</p>}<a href="#chart" onClick={(event) => { event.preventDefault(); changeView("chart"); }}>비교 후보 고르기 →</a></div>}
-          {!(["region","walk","time","commute","lifestyle","price","report","compare"].includes(activeFieldFeature.id)) && <div className="field-connect"><span>{activeFieldFeature.information}</span><strong>{activeFieldFeature.source} 연결이 필요합니다.</strong><p>현장·센서·공식 원천이 확보되기 전에는 그럴듯한 추정 점수를 표시하지 않습니다. 데이터 출처와 갱신일을 확인한 뒤 같은 화면에 연결합니다.</p><div><i />원천 검증 <i />주소·동 매칭 <i />사용자 교차 확인</div></div>}
+          {!(["region","walk","time","noise","commute","lifestyle","price","report","compare"].includes(activeFieldFeature.id)) && <div className="field-connect"><span>{activeFieldFeature.information}</span><strong>{activeFieldFeature.source} 연결이 필요합니다.</strong><p>현장·센서·공식 원천이 확보되기 전에는 그럴듯한 추정 점수를 표시하지 않습니다. 데이터 출처와 갱신일을 확인한 뒤 같은 화면에 연결합니다.</p><div><i />원천 검증 <i />주소·동 매칭 <i />사용자 교차 확인</div></div>}
         </article>
       </div>
       <section className="field-scorecard" aria-label="온라인 임장 평가 예시">
