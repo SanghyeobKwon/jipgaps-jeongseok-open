@@ -18,6 +18,14 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
+function normalizeCoordinate(value?: string) {
+  const coordinate = Number(value);
+  if (!Number.isFinite(coordinate)) return Number.NaN;
+
+  // NAVER local search coordinates can be returned as WGS84 values scaled by 10,000,000.
+  return Math.abs(coordinate) > 180 ? coordinate / 10_000_000 : coordinate;
+}
+
 function stripHtml(value = "") { return value.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").trim(); }
 
 async function searchLocal(area: string, category: string, keyword: string, clientId: string, clientSecret: string) {
@@ -38,7 +46,7 @@ export async function GET(request: Request) {
     const tasks = SEARCH_GROUPS.flatMap((group) => group.keywords.map((keyword) => searchLocal(area, group.category, keyword, clientId, clientSecret)));
     const results = (await Promise.allSettled(tasks)).flatMap((result) => result.status === "fulfilled" ? result.value : []); const seen = new Set<string>();
     const places: NearbyPlace[] = results.flatMap((item) => {
-      const placeLat = Number(item.mapy); const placeLng = Number(item.mapx); const name = stripHtml(item.title); if (!name || !Number.isFinite(placeLat) || !Number.isFinite(placeLng)) return [];
+      const placeLat = normalizeCoordinate(item.mapy); const placeLng = normalizeCoordinate(item.mapx); const name = stripHtml(item.title); if (!name || !Number.isFinite(placeLat) || !Number.isFinite(placeLng)) return [];
       const distance = Math.round(haversine(lat, lng, placeLat, placeLng)); const key = `${name}|${placeLat.toFixed(5)}|${placeLng.toFixed(5)}`; if (distance > 1000 || seen.has(key)) return []; seen.add(key);
       return [{ id: key, name, category: item.group, distance, walkingMinutes: Math.max(1, Math.round(distance * 1.2 / 75)), lat: placeLat, lng: placeLng, detail: item.category || item.roadAddress || item.address || "" }];
     }).sort((a, b) => a.distance - b.distance);
