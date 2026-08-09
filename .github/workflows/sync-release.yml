@@ -1,0 +1,42 @@
+name: Sync production mirror
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-mirror
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out shared main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure release deploy key
+        shell: bash
+        env:
+          RELEASE_DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$RELEASE_DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 github.com > ~/.ssh/known_hosts
+
+      - name: Synchronize release main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add release git@github.com:SanghyeobKwon/jipgaps-jeongseok-open.git
+          git fetch release main
+          expected="$(git rev-parse release/main)"
+          git push --force-with-lease="refs/heads/main:${expected}" release "${GITHUB_SHA}:refs/heads/main"
