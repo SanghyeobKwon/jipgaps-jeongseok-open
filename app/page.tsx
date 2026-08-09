@@ -135,7 +135,7 @@ export default function Home() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`/api/overview?type=${type}`, { signal: controller.signal }).then((response) => response.json()).then((data) => { if (data.markets) { setMarkets(data.markets); setMarketMonth(data.month); } }).catch(() => undefined);
+    fetch(`/api/overview?type=${type}&basis=quarter-v1`, { signal: controller.signal }).then((response) => response.json()).then((data) => { if (data.markets) { setMarkets(data.markets); setMarketMonth(data.month); } }).catch(() => undefined);
     return () => controller.abort();
   }, [type]);
 
@@ -218,7 +218,7 @@ export default function Home() {
     <section className="national-overview" id="national"><div><p>NATIONAL BUYING TEMPERATURE</p><h1>전국 매수 온도판</h1><span>대표 권역의 최근 분기 흐름을 같은 기준으로 비교합니다.</span></div><article><span>최근 분기 표본 거래</span><strong>{nationalDeals.toLocaleString()}<em>건</em></strong><small>{marketMonth || "최근 3개월"} 집계</small></article><article><span>전국 중위가격</span><strong>{formatPrice(nationalMedian)}</strong><small>17개 대표 권역 중위값</small></article><article><span>직전 분기 대비</span><strong className={nationalChange >= 0 ? "up" : "down"}>{nationalChange >= 0 ? "+" : ""}{nationalChange.toFixed(2)}%</strong><small>거래량 가중 변화율</small></article><a href="#map">전국 기회 찾기 ↓</a></section>
 
     <section className="monthly-board" id="market">
-      <div className="month-intro"><p>QUARTERLY MARKET BRIEF</p><h1>{activeRegion.sigungu} 최근 3개월</h1><span>{PROPERTY_TYPES.find((item) => item.key === type)?.label} 실거래 신고 기준 · {latestQuarterMonths[0] || "-"} ~ {latestQuarterMonths[2] || "-"}</span></div>
+      <div className="month-intro"><p>QUARTERLY MARKET BRIEF</p><h1>{activeRegion.sigungu} 최근 3개월</h1><span>{PROPERTY_TYPES.find((item) => item.key === type)?.label} 실거래 신고 기준 · {latestQuarterMonths[2] || "-"} ~ {latestQuarterMonths[0] || "-"}</span></div>
       <article><span>분기 거래</span><strong>{latestQuarterTrades.length.toLocaleString()}<em>건</em></strong><small>전체 {trades.length.toLocaleString()}건 조회</small></article>
       <article><span>거래 건물</span><strong>{new Set(latestQuarterTrades.map((trade) => trade.propertyKey)).size.toLocaleString()}<em>곳</em></strong><small>최근 3개월 거래 건물</small></article>
       <article><span>상승 / 하락</span><strong className="split"><b>{risingCount}</b><i>/</i><em>{fallingCount}</em></strong><small>최근 3개월과 직전 3개월 비교</small></article>
