@@ -56,9 +56,9 @@ type DongMetric = "price" | "py" | "volume";
 type DongMarketStat = { count: number; median: number; perPy: number };
 type GeoJsonFeature = { type: "Feature"; properties: Record<string, unknown>; geometry: Record<string, unknown> };
 type GeoJsonFeatureCollection = { type: "FeatureCollection"; features: GeoJsonFeature[] };
-type KakaoLatLng = unknown;
+type KakaoLatLng = { getLat?: () => number; getLng?: () => number };
 type KakaoBounds = { extend: (latLng: KakaoLatLng) => void };
-type KakaoMapInstance = { setBounds: (bounds: KakaoBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number) => void; setCenter?: (latLng: KakaoLatLng) => void; getLevel: () => number; setLevel: (level: number) => void; addControl?: (control: unknown, position: unknown) => void; relayout?: () => void };
+type KakaoMapInstance = { setBounds: (bounds: KakaoBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number) => void; setCenter?: (latLng: KakaoLatLng) => void; getCenter?: () => KakaoLatLng; getLevel: () => number; setLevel: (level: number) => void; addControl?: (control: unknown, position: unknown) => void; relayout?: () => void };
 type KakaoOverlayInstance = { setMap: (map: KakaoMapInstance | null) => void };
 type KakaoEventListener = { target: unknown; eventName: string; listener: (...args: unknown[]) => void };
 type KakaoMapsApi = { maps: {
@@ -400,13 +400,35 @@ function escapeMapHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] || character);
 }
 
-function classifyMapPrice(price: number, prices: number[]) {
+type MapPriceBand = { id: string; className: string; label: string; min: number | null; max: number | null };
+
+function buildMapPriceBands(prices: number[]): MapPriceBand[] {
   const sorted = prices.filter((value) => value > 0).sort((a, b) => a - b);
-  if (sorted.length < 3) return "price-mid";
-  const low = sorted[Math.floor((sorted.length - 1) / 3)];
-  const high = sorted[Math.ceil((sorted.length - 1) * 2 / 3)];
-  if (high <= low) return "price-mid";
-  return price <= low ? "price-low" : price >= high ? "price-high" : "price-mid";
+  if (!sorted.length) return [];
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
+  const percentileEdges = [.2, .4, .6, .8].map((percentile) => sorted[Math.floor((sorted.length - 1) * percentile)]);
+  const edges = new Set(percentileEdges).size === percentileEdges.length || max <= min
+    ? percentileEdges
+    : [1, 2, 3, 4].map((step) => Math.round(min + ((max - min) * step) / 5));
+  return [
+    { id: "level-1", className: "price-level-1", label: "1단계", min: null, max: edges[0] },
+    { id: "level-2", className: "price-level-2", label: "2단계", min: edges[0], max: edges[1] },
+    { id: "level-3", className: "price-level-3", label: "3단계", min: edges[1], max: edges[2] },
+    { id: "level-4", className: "price-level-4", label: "4단계", min: edges[2], max: edges[3] },
+    { id: "level-5", className: "price-level-5", label: "5단계", min: edges[3], max: null },
+  ];
+}
+
+function classifyMapPrice(price: number, bands: MapPriceBand[]) {
+  return bands.find((band) => (band.min === null || price > band.min) && (band.max === null || price <= band.max))?.className || "price-level-3";
+}
+
+function formatMapPriceBand(band: MapPriceBand) {
+  if (band.min === null && band.max !== null) return `≤ ${formatPrice(band.max)}`;
+  if (band.min !== null && band.max === null) return `> ${formatPrice(band.min)}`;
+  if (band.min !== null && band.max !== null) return `${formatPrice(band.min)}–${formatPrice(band.max)}`;
+  return "범위 확인 중";
 }
 
 function straightLineDistance(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -677,11 +699,14 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   onSelectProperty: (key: string) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const cameraRef = useRef<{ context: string; lat: number; lng: number; level: number } | null>(null);
   const [mapError, setMapError] = useState("");
   const stageTitle = focus === "national" ? "대한민국 16개 시·도" : focus === "sido" ? selectedSido : focus === "buildings" ? `${activeRegion.sido} ${activeRegion.sigungu} · ${selectedDong === "all" ? legalDongName(selectedBoundaryDong) : selectedDong}` : `${activeRegion.sido} ${activeRegion.sigungu}${selectedBoundaryDong ? ` · ${selectedBoundaryDong}` : ""}`;
   const stageHint = focus === "national" ? "시·도 경계를 눌러 다음 단계로 들어가세요." : focus === "sido" ? "시·군·구 경계를 눌러 읍·면·동 지도로 확대하세요." : focus === "buildings" ? buildingsLoading ? "선택한 동과 인접 동의 최근 실거래 건물 좌표를 확인하고 있습니다." : buildingsError ? buildingsError : "건물 아이콘을 누르면 해당 건물의 가격만 열립니다. 다른 건물은 지도에 계속 남습니다." : selectedBoundaryDong ? `${legalDongName(selectedBoundaryDong)} 실거래 조건과 연동했습니다.` : "읍·면·동 경계를 누르면 실거래 건물 지도로 확대됩니다.";
   const fallbackLocation = buildingLocations[0] || SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
   const visibleMapPrices = useMemo(() => buildingLocations.map((building) => building.lastAmount).filter((price) => price > 0), [buildingLocations]);
+  const visibleMapPriceBands = useMemo(() => buildMapPriceBands(visibleMapPrices), [visibleMapPrices]);
+  const cameraContext = `${activeRegion.code}:${selectedBoundaryDong || selectedDong}:${propertyType}`;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -689,6 +714,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     const controller = new AbortController();
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
+    let mapInstance: KakaoMapInstance | null = null;
     const overlays: KakaoOverlayInstance[] = [];
     const listeners: KakaoEventListener[] = [];
     if (!host || !active || focus !== "buildings") return;
@@ -707,8 +733,10 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       if (disposed || !window.kakao?.maps) return;
       const maps = window.kakao.maps;
       const province = SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
-      const initial = province;
-      const map = new maps.Map(host, { center: new maps.LatLng(initial.lat, initial.lng), level: kakaoLevelForZoom(initial.zoom) });
+      const preservedCamera = cameraRef.current?.context === cameraContext ? cameraRef.current : null;
+      const initial = preservedCamera || province;
+      const map = new maps.Map(host, { center: new maps.LatLng(initial.lat, initial.lng), level: preservedCamera?.level ?? kakaoLevelForZoom(province.zoom) });
+      mapInstance = map;
       map.addControl?.(new maps.ZoomControl(), maps.ControlPosition.TOPRIGHT);
       resizeObserver = new ResizeObserver(() => {
         map.relayout?.();
@@ -749,10 +777,13 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
           const selected = selectedBoundaryDong ? name === targetDong : legalDongName(name) === selectedDong;
           return selected || nearbyBoundarySet.has(name);
         });
-        if (visibleDongs.length) fitCollection({ type: "FeatureCollection", features: visibleDongs });
+        if (preservedCamera) {
+          map.setCenter?.(new maps.LatLng(preservedCamera.lat, preservedCamera.lng));
+          map.setLevel(preservedCamera.level);
+        } else if (visibleDongs.length) fitCollection({ type: "FeatureCollection", features: visibleDongs });
         else fitCollection(dongs);
         buildingLocations.forEach((building) => {
-          const heat = classifyMapPrice(building.lastAmount, visibleMapPrices);
+          const heat = classifyMapPrice(building.lastAmount, visibleMapPriceBands);
           const isSelected = building.key === selectedPropertyKey;
           const button = document.createElement("button");
           button.type = "button"; button.className = `naver-building-pin ${isSelected ? "detail-pin is-active" : "icon-pin"} ${heat} kind-${building.propertyType} scope-${building.scope}`; button.setAttribute("aria-pressed", String(isSelected)); button.setAttribute("aria-label", isSelected ? `${building.dong} ${building.name}, 선택됨, 최근 실거래 ${formatPrice(building.lastAmount)}, ${building.count}건` : `${building.dong} ${building.name} ${PROPERTY_MAP_META[building.propertyType].short}, 가격 확인`); button.title = isSelected ? `${building.name}\n${PROPERTY_MAP_META[building.propertyType].short} · 최근 실거래 ${formatPrice(building.lastAmount)} · 최근 3개월 ${building.count}건` : `${building.name}\n눌러서 최근 실거래 가격 확인`; button.innerHTML = isSelected ? `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i><span class="property-marker-copy"><small>${escapeMapHtml(PROPERTY_MAP_META[building.propertyType].short)} · 최근 실거래</small><strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><em>${escapeMapHtml(building.name)} · ${building.count}건</em></span>` : `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i>`; button.addEventListener("click", () => onSelectProperty(building.key));
@@ -766,9 +797,13 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     }).catch((error) => { if (!disposed && (!(error instanceof Error) || error.name !== "AbortError")) setMapError(safeMapMessage(error)); });
 
     return () => {
+      const center = mapInstance?.getCenter?.();
+      const lat = center?.getLat?.();
+      const lng = center?.getLng?.();
+      if (typeof lat === "number" && typeof lng === "number" && mapInstance) cameraRef.current = { context: cameraContext, lat, lng, level: mapInstance.getLevel() };
       disposed = true; controller.abort(); resizeObserver?.disconnect(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); host.replaceChildren();
     };
-  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, focus, markets, nearbyBoundaryDongs, nearbyLegalDongs, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyType, selectedBoundaryDong, selectedDong, selectedPropertyKey, selectedSido, visibleMapPrices]);
+  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, cameraContext, focus, markets, nearbyBoundaryDongs, nearbyLegalDongs, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyType, selectedBoundaryDong, selectedDong, selectedPropertyKey, selectedSido, visibleMapPriceBands]);
 
   if (focus === "national" || focus === "sido" || focus === "district") return <AdministrativeMarketMap key={`${focus}-${selectedSido}-${activeRegion.code}`} focus={focus} active={active} markets={markets} selectedSido={selectedSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongStats={dongStats} dongMetric={dongMetric} onDongMetricChange={onDongMetricChange} onSelectSido={onSelectSido} onSelectRegion={onSelectRegion} onSelectDong={onSelectDong} onOpenBuildings={onOpenBuildings} />;
 
@@ -776,7 +811,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     {mapError ? <MapFallback lat={fallbackLocation.lat} lng={fallbackLocation.lng} title={stageTitle} message={mapError} /> : <div ref={hostRef} className="naver-market-canvas" aria-label={`${stageTitle} 카카오 지도`} />}
     <KoreaFocusLocator active={active} selectedSido={selectedSido} />
     <div className="map-stage-card"><span>{focus === "buildings" ? "BUILDINGS" : "PROPERTY"}</span><b>{stageTitle}</b><small>{stageHint}</small></div>
-    {focus === "buildings" && <div className="building-map-legend"><div className="building-legend-type"><PropertyTypeIcon type={propertyType} /><span><small>주택 유형</small><b>{PROPERTY_MAP_META[propertyType].label}</b></span></div><div className="building-legend-heat" aria-label="현재 화면 건물 가격 구간"><span><i className="price-low" />낮은 가격대</span><span><i className="price-mid" />중간 가격대</span><span><i className="price-high" />높은 가격대</span></div><small>아이콘 색은 가격 구간 · 클릭한 건물만 실제 가격 표시 · 연한 아이콘은 주변 동</small></div>}
+    {focus === "buildings" && <div className="building-map-legend"><div className="building-legend-type"><PropertyTypeIcon type={propertyType} /><span><small>주택 유형</small><b>{PROPERTY_MAP_META[propertyType].label}</b></span></div>{visibleMapPriceBands.length ? <div className="building-legend-heat" aria-label="현재 화면 건물 가격 5단계"><header><b>현재 화면 가격대</b><small>표시된 실거래를 5구간으로 분류</small></header>{visibleMapPriceBands.map((band) => { const range = formatMapPriceBand(band); return <span key={band.id} aria-label={`${band.label} ${range}`}><i className={band.className} /><b>{band.label}</b><small title={range}>{range}</small></span>; })}</div> : <p className="building-legend-empty">가격 구간을 계산할 거래 건물이 없습니다.</p>}<small>색은 현재 화면의 최근 실거래 분포 기준 · 건물을 바꿔도 지도 중심과 줌을 유지합니다.</small></div>}
   </div>;
 }
 

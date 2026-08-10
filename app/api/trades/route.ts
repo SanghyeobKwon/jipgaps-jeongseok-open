@@ -31,7 +31,7 @@ type Trade = {
 };
 
 function serviceKey() {
-  const value = process.env.MOLIT_SERVICE_KEY;
+  const value = process.env.MOLIT_SERVICE_KEY || process.env.REB_API_KEY;
   if (!value) throw new Error("국토교통부 API 키가 설정되지 않았습니다.");
   try {
     return decodeURIComponent(value);
