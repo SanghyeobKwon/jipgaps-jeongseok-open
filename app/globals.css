@@ -1480,3 +1480,42 @@ html[data-theme="dark"] .level-district .district-active-outline path{stroke:#67
   .level-district .district-context text{font-size:12px!important}
   .level-district .neighbor-dong-labels text{font-size:10px!important}
 }
+
+/* Unified analysis workspace: one selector, chart below the shortlist, one life-map control row. */
+@media(min-width:901px){
+  .terminal-shell[data-view="chart"]>#price-analysis.market-browser{grid-template-columns:minmax(390px,.76fr) minmax(0,1.24fr)!important;align-items:start}
+}
+.watchlist{display:flex;min-height:0;flex-direction:column}
+.watchlist .watch-scroll{height:410px!important;flex:0 0 auto}
+.watch-chart{min-width:0;border-top:1px solid var(--atlas-line,#d9e1eb);background:var(--atlas-surface,#fff)}
+.watch-chart .chart-toolbar{padding:8px!important;display:grid!important;gap:7px;border-bottom:1px solid var(--atlas-line,#d9e1eb)!important}
+.watch-chart .period-switch,.watch-chart .view-switch{min-width:0;display:flex;overflow-x:auto;scrollbar-width:thin}
+.watch-chart .period-switch button,.watch-chart .view-switch button{flex:0 0 auto;min-height:40px!important;padding-inline:9px!important}
+.watch-chart .view-switch select{min-width:138px;min-height:40px!important}
+.watch-chart .chart-card{border:0!important;background:var(--atlas-surface,#fff)!important}
+.watch-chart .chart-legend{min-height:42px;padding:8px 10px!important;gap:8px!important;flex-wrap:wrap}
+.watch-chart .canvas-wrap{height:278px!important;min-height:278px!important}
+.detail-terminal>.ticker-head{order:1}.detail-terminal>.price-location-panel{order:2}.detail-terminal>.stat-strip{order:3}.detail-terminal>.facility-panel{order:4}.detail-terminal>.valuation-panel{order:5}
+.facility-result-tabs{margin:0 0 14px;padding:0!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;border:0!important;gap:7px!important}
+.facility-result-tabs button{min-height:58px!important;padding:8px 10px!important}
+.unified-map-picker>.field-selector-layout{border-radius:16px;background:var(--atlas-soft,#f3f6fa)}
+.unified-map-picker .field-selector-layout>.administrative-market-map,.unified-map-picker .field-selector-layout>.naver-market-map{border-radius:12px!important}
+.field-region-redirect{margin-top:18px;padding:18px 20px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;border:1px solid var(--atlas-line,#d9e1eb);border-radius:14px;background:var(--atlas-soft,#f3f6fa);color:var(--atlas-blue,#0878ee)}
+.field-region-redirect b{display:block;color:var(--atlas-ink,#182230);font-size:14px;letter-spacing:-.02em}
+.field-region-redirect p{margin:4px 0 0;color:var(--atlas-muted,#667085);font-size:11px;line-height:1.5}
+.field-region-redirect button{min-height:44px;padding:0 14px;border:1px solid var(--atlas-blue,#0878ee);border-radius:10px;background:var(--atlas-surface,#fff);color:var(--atlas-blue,#0878ee);font-size:11px;font-weight:800;white-space:nowrap}
+
+@media(max-width:900px){
+  .watchlist .watch-scroll{height:330px!important}
+  .watch-chart .canvas-wrap{height:300px!important;min-height:300px!important}
+  .facility-result-tabs{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+@media(max-width:760px){
+  .watch-chart .chart-toolbar{padding:7px!important}
+  .watch-chart .canvas-wrap{height:260px!important;min-height:260px!important}
+  .facility-result-tabs{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .facility-result-tabs button{min-height:56px!important}
+  .unified-map-picker .field-selector-layout{padding:8px!important}
+  .field-region-redirect{grid-template-columns:auto minmax(0,1fr);padding:15px}
+  .field-region-redirect button{grid-column:1/-1;width:100%}
+}
