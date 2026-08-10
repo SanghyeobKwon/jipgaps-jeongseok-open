@@ -53,7 +53,7 @@ type GeoJsonFeature = { type: "Feature"; properties: Record<string, unknown>; ge
 type GeoJsonFeatureCollection = { type: "FeatureCollection"; features: GeoJsonFeature[] };
 type KakaoLatLng = unknown;
 type KakaoBounds = { extend: (latLng: KakaoLatLng) => void };
-type KakaoMapInstance = { setBounds: (bounds: KakaoBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number) => void; getLevel: () => number; setLevel: (level: number) => void; addControl?: (control: unknown, position: unknown) => void; relayout?: () => void };
+type KakaoMapInstance = { setBounds: (bounds: KakaoBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number) => void; setCenter?: (latLng: KakaoLatLng) => void; getLevel: () => number; setLevel: (level: number) => void; addControl?: (control: unknown, position: unknown) => void; relayout?: () => void };
 type KakaoOverlayInstance = { setMap: (map: KakaoMapInstance | null) => void };
 type KakaoEventListener = { target: unknown; eventName: string; listener: (...args: unknown[]) => void };
 type KakaoMapsApi = { maps: {
@@ -635,6 +635,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     const appKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY;
     const controller = new AbortController();
     let disposed = false;
+    let resizeObserver: ResizeObserver | null = null;
     const overlays: KakaoOverlayInstance[] = [];
     const listeners: KakaoEventListener[] = [];
     if (!host || !active || (focus !== "buildings" && focus !== "detail")) return;
@@ -656,6 +657,11 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       const initial = focus === "detail" && propertyLocation ? { lat: propertyLocation.lat, lng: propertyLocation.lng, zoom: 17 } : province;
       const map = new maps.Map(host, { center: new maps.LatLng(initial.lat, initial.lng), level: kakaoLevelForZoom(initial.zoom) });
       map.addControl?.(new maps.ZoomControl(), maps.ControlPosition.TOPRIGHT);
+      resizeObserver = new ResizeObserver(() => {
+        map.relayout?.();
+        if (focus === "detail" && propertyLocation) map.setCenter?.(new maps.LatLng(propertyLocation.lat, propertyLocation.lng));
+      });
+      resizeObserver.observe(host);
 
       const addListener = (target: unknown, eventName: string, listener: (...args: unknown[]) => void) => {
         maps.event.addListener(target, eventName, listener); listeners.push({ target, eventName, listener });
@@ -717,7 +723,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     }).catch((error) => { if (!disposed && (!(error instanceof Error) || error.name !== "AbortError")) setMapError(safeMapMessage(error)); });
 
     return () => {
-      disposed = true; controller.abort(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); host.replaceChildren();
+      disposed = true; controller.abort(); resizeObserver?.disconnect(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); host.replaceChildren();
     };
   }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, focus, markets, nearbyBoundaryDongs, nearbyLegalDongs, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyLocation, propertyName, propertyType, selectedBoundaryDong, selectedDong, selectedSido]);
 
