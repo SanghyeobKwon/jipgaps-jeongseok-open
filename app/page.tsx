@@ -668,7 +668,11 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       };
       if (focus === "detail" && propertyLocation) {
         const position = new maps.LatLng(propertyLocation.lat, propertyLocation.lng);
-        overlays.push(new maps.CustomOverlay({ position, map, content: `<div class="naver-property-pin" title="${escapeMapHtml(propertyName || "선택 단지")}"><i></i><span>${escapeMapHtml(propertyName || "선택 단지")}</span></div>`, xAnchor: .5, yAnchor: 1, zIndex: 100 }));
+        const selectedBuilding = buildingLocations.find((building) => building.name === propertyName);
+        const detailLabel = selectedBuilding
+          ? `<div class="naver-building-pin detail-pin kind-${selectedBuilding.propertyType} scope-selected" title="${escapeMapHtml(selectedBuilding.name)}"><small>최근 실거래</small><strong>${escapeMapHtml(formatPrice(selectedBuilding.lastAmount))}</strong><span>${escapeMapHtml(selectedBuilding.name)} · ${selectedBuilding.count}건</span></div>`
+          : `<div class="naver-building-pin detail-pin scope-selected" title="${escapeMapHtml(propertyName || "선택 건물")}"><small>선택 건물</small><strong>${escapeMapHtml(propertyName || "위치 확인")}</strong><span>실거래 상세를 확인하세요</span></div>`;
+        overlays.push(new maps.CustomOverlay({ position, map, content: detailLabel, xAnchor: .5, yAnchor: 1, zIndex: 100 }));
         setMapError("");
         return;
       }
@@ -702,8 +706,8 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
         else fitCollection(dongs);
         buildingLocations.forEach((building) => {
           const button = document.createElement("button");
-          button.type = "button"; button.className = `naver-building-pin kind-${building.propertyType} scope-${building.scope}`; button.setAttribute("aria-label", `${building.dong} ${building.name} ${formatPrice(building.lastAmount)}`); button.innerHTML = `<strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><span>${escapeMapHtml(building.scope === "selected" ? selectedDong : building.dong)} · ${building.count}건</span>`; button.addEventListener("click", () => onSelectProperty(building.key));
-          overlays.push(new maps.CustomOverlay({ position: new maps.LatLng(building.lat, building.lng), map, content: button, xAnchor: .18, yAnchor: 1, zIndex: (building.scope === "selected" ? 90 : 40) + Math.min(building.count, 50) }));
+          button.type = "button"; button.className = `naver-building-pin kind-${building.propertyType} scope-${building.scope}`; button.setAttribute("aria-label", `${building.dong} ${building.name} 최근 실거래 ${formatPrice(building.lastAmount)}, ${building.count}건`); button.title = `${building.name}\n최근 실거래 ${formatPrice(building.lastAmount)} · 최근 3개월 ${building.count}건`; button.innerHTML = `<small>최근 실거래</small><strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><span>${escapeMapHtml(building.name)}</span>`; button.addEventListener("click", () => onSelectProperty(building.key));
+          overlays.push(new maps.CustomOverlay({ position: new maps.LatLng(building.lat, building.lng), map, content: button, xAnchor: .5, yAnchor: 1, zIndex: (building.scope === "selected" ? 90 : 40) + Math.min(building.count, 50) }));
         });
         setMapError("");
         return;
@@ -920,7 +924,7 @@ export default function Home() {
   useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      if (mapFocus !== "buildings" || selectedDong === "all" || !buildingCandidates.length) {
+      if ((mapFocus !== "buildings" && mapFocus !== "detail") || selectedDong === "all" || !buildingCandidates.length) {
         setBuildingLocations([]); setBuildingsError(""); setBuildingsLoading(false); return;
       }
       setBuildingsLoading(true); setBuildingsError("");
@@ -1151,9 +1155,9 @@ export default function Home() {
         <button type="button" disabled={!mapPickerDong || !mapDongChoices.includes(mapPickerDong)} onClick={() => chooseMapDong(mapPickerDong)}>{mapPickerDong ? `${mapPickerDong} 선택` : "동을 선택하세요"}</button>
       </div>
       <div className="map-layout"><KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "map"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} nearbyBoundaryDongs={nearbyBoundaryDongs} nearbyLegalDongs={nearbyLegalDongs} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} propertyLocation={propertyLocation} propertyName={selectedProperty?.name || ""} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />
-        <aside className="map-ranking" aria-label={mapFocus === "buildings" ? "선택 동과 주변 동의 최근 실거래 건물" : "선택 지역 요약과 전국 비교"}>
-          {mapFocus === "buildings" ? <>
-            <div className="map-inspector-scope"><span>선택 동과 주변 생활권</span><h3>{mapLocationTitle}</h3><p>{nearbyLegalDongs.length ? `${nearbyLegalDongs.slice(0, 4).join(" · ")}${nearbyLegalDongs.length > 4 ? ` 외 ${nearbyLegalDongs.length - 4}곳` : ""}의 거래 건물도 함께 봅니다.` : "선택 동의 최근 실거래 건물을 지도에 표시합니다."}</p></div>
+        <aside className="map-ranking" aria-label={mapFocus === "buildings" || mapFocus === "detail" ? "선택 동과 주변 동의 최근 실거래 건물" : "선택 지역 요약과 전국 비교"}>
+          {mapFocus === "buildings" || mapFocus === "detail" ? <>
+            <div className="map-inspector-scope"><span>{mapFocus === "detail" ? "선택 건물 위치와 가격" : "선택 동과 주변 생활권"}</span><h3>{mapFocus === "detail" && selectedProperty ? selectedProperty.name : mapLocationTitle}</h3><p>{mapFocus === "detail" && selectedProperty ? `${selectedProperty.dong} ${selectedProperty.jibun || "지번 확인 중"} · 최근 실거래 ${formatPrice(selectedProperty.lastAmount)} · ${selectedProperty.count}건` : nearbyLegalDongs.length ? `${nearbyLegalDongs.slice(0, 4).join(" · ")}${nearbyLegalDongs.length > 4 ? ` 외 ${nearbyLegalDongs.length - 4}곳` : ""}의 거래 건물도 함께 봅니다.` : "선택 동의 최근 실거래 건물을 지도에 표시합니다."}</p></div>
             <div className="map-market-summary"><div><span>{selectedDong} 건물</span><strong>{selectedMapBuildingCount}곳</strong></div><div><span>주변 동 건물</span><strong>{nearbyMapBuildingCount}곳</strong></div><div><span>표시 건물 중위가</span><strong>{mapBuildingMedian ? formatPrice(mapBuildingMedian) : buildingsLoading ? "확인 중" : buildingsError ? "좌표 확인 불가" : "데이터 없음"}</strong></div></div>
             <div className="map-ranking-head"><div><b>지도에 표시된 거래 건물</b><span>선택 동을 먼저, 인접 동을 다음에 보여줍니다.</span></div></div>
             <div className="ranking-labels building-labels"><span>구분</span><span>건물</span><span>최근 거래가</span><span>거래</span></div>

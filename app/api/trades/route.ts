@@ -151,7 +151,7 @@ export async function GET(request: Request) {
     const exact = params.get("exact") === "1";
 
     const rows = await fetchInBatches(type, lawd, monthIds(months));
-    let trades = rows.map((row, index) => normalize(row, type, index)).filter((trade) => trade.amount > 0 && trade.date.length === 10);
+    let trades = rows.map((row, index) => normalize(row, type, index)).filter((trade) => trade.amount > 0 && trade.date.length === 10 && !trade.cancelled);
     if (query) {
       trades = trades.filter((trade) => {
         const haystack = `${trade.name} ${trade.dong} ${trade.buildingDong} ${trade.jibun}`.toLocaleLowerCase("ko");
