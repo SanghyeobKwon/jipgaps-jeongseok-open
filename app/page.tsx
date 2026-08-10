@@ -677,7 +677,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
     const extent = geoJsonExtent(data);
     if (!extent) return undefined;
     if (focus === "sido" && selectedSido === "서울특별시") return expandGeoExtent(extent, .3, .24);
-    if (focus === "district") return expandGeoExtent(extent, .2, .17);
+    if (focus === "district") return expandGeoExtent(extent, .08, .08);
     return undefined;
   }, [data, focus, selectedSido]);
   const boundaries = useMemo(() => data ? projectAdministrativeBoundaries(data, 760, 560, mapExtent) : [], [data, mapExtent]);
@@ -815,6 +815,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
     let mapInstance: KakaoMapInstance | null = null;
+    let cameraReady = false;
     const overlays: KakaoOverlayInstance[] = [];
     const listeners: KakaoEventListener[] = [];
     if (!host || !active || focus !== "buildings") return;
@@ -846,11 +847,17 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       const addListener = (target: unknown, eventName: string, listener: (...args: unknown[]) => void) => {
         maps.event.addListener(target, eventName, listener); listeners.push({ target, eventName, listener });
       };
-      const fitCollection = (data: GeoJsonFeatureCollection) => {
+      const fitCollection = (data: GeoJsonFeatureCollection, maximumLevel = 5) => {
         const extent = geoJsonExtent(data); if (!extent) return;
         const bounds = new maps.LatLngBounds();
         bounds.extend(new maps.LatLng(extent.minLat, extent.minLng)); bounds.extend(new maps.LatLng(extent.maxLat, extent.maxLng));
         map.setBounds(bounds, 76, 34, 34, 34);
+        if (map.getLevel() > maximumLevel) map.setLevel(maximumLevel);
+      };
+      const focusCollection = (data: GeoJsonFeatureCollection, level = 4) => {
+        const extent = geoJsonExtent(data); if (!extent) return;
+        map.setCenter?.(new maps.LatLng((extent.minLat + extent.maxLat) / 2, (extent.minLng + extent.maxLng) / 2));
+        map.setLevel(level);
       };
       if (focus === "buildings") {
         const dongs = await readGeoJson(`/data/boundaries/emd/${activeRegion.code}.json`);
@@ -877,11 +884,17 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
           const selected = selectedBoundaryDong ? name === targetDong : legalDongName(name) === selectedDong;
           return selected || nearbyBoundarySet.has(name);
         });
+        const selectedDongs = visibleDongs.filter((feature) => {
+          const name = String(feature.properties.name || "");
+          return selectedBoundaryDong ? name === targetDong : legalDongName(name) === selectedDong;
+        });
         if (preservedCamera) {
           map.setCenter?.(new maps.LatLng(preservedCamera.lat, preservedCamera.lng));
           map.setLevel(preservedCamera.level);
-        } else if (visibleDongs.length) fitCollection({ type: "FeatureCollection", features: visibleDongs });
-        else fitCollection(dongs);
+        } else if (selectedDongs.length) focusCollection({ type: "FeatureCollection", features: selectedDongs }, 4);
+        else if (visibleDongs.length) fitCollection({ type: "FeatureCollection", features: visibleDongs }, 6);
+        else fitCollection(dongs, 7);
+        cameraReady = true;
         buildingLocations.forEach((building) => {
           const heat = classifyMapPrice(building.lastAmount, visibleMapPriceBands);
           const isSelected = building.key === selectedPropertyKey;
@@ -900,7 +913,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       const center = mapInstance?.getCenter?.();
       const lat = center?.getLat?.();
       const lng = center?.getLng?.();
-      if (typeof lat === "number" && typeof lng === "number" && mapInstance) cameraRef.current = { context: cameraContext, lat, lng, level: mapInstance.getLevel() };
+      if (cameraReady && typeof lat === "number" && typeof lng === "number" && mapInstance) cameraRef.current = { context: cameraContext, lat, lng, level: mapInstance.getLevel() };
       disposed = true; controller.abort(); resizeObserver?.disconnect(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); host.replaceChildren();
     };
   }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, cameraContext, focus, markets, nearbyBoundaryDongs, nearbyLegalDongs, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyType, selectedBoundaryDong, selectedDong, selectedPropertyKey, selectedSido, visibleMapPriceBands]);
