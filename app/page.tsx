@@ -820,6 +820,7 @@ export default function Home() {
   const navRef = useRef<HTMLElement>(null);
   const fieldSelectorRef = useRef<HTMLDivElement>(null);
   const fieldWorkspaceRef = useRef<HTMLElement>(null);
+  const fieldInlineMapRef = useRef<HTMLDivElement>(null);
   const themeInteractedRef = useRef(false);
   const spacePlanInputRef = useRef<HTMLInputElement>(null);
   const spaceFurnitureSequenceRef = useRef(0);
@@ -1138,7 +1139,24 @@ export default function Home() {
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
     if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const chooseFieldFeature = (featureId: string) => { const feature = FIELD_FEATURES.find((item) => item.id === featureId); if (!feature) return; setFieldGroup(feature.group); setFieldFeatureId(feature.id); changeAnalysisMode("field", feature.id, false); };
+  const scrollToFieldContent = (target: HTMLElement | null, block: ScrollLogicalPosition = "start") => {
+    if (!target) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block });
+  };
+  const chooseFieldFeature = (featureId: string) => {
+    const feature = FIELD_FEATURES.find((item) => item.id === featureId);
+    if (!feature) return;
+    setFieldGroup(feature.group);
+    setFieldFeatureId(feature.id);
+    changeAnalysisMode("field", feature.id, false);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => scrollToFieldContent(fieldWorkspaceRef.current)));
+  };
+  const toggleFieldMap = () => {
+    const nextOpen = !showFieldMap;
+    setShowFieldMap(nextOpen);
+    if (nextOpen) window.requestAnimationFrame(() => window.requestAnimationFrame(() => scrollToFieldContent(fieldInlineMapRef.current, "nearest")));
+  };
   const changeView = (view: string) => {
     if (view === "field") { changeAnalysisMode("field"); return; }
     if (view === "chart") { changeAnalysisMode("price"); return; }
@@ -1304,8 +1322,8 @@ export default function Home() {
       <div className="field-context"><span>분석 위치</span><b>{fieldMapQuery}</b><small>상단 지역·단지 선택과 자동 동기화됩니다.</small></div>
       <div className="field-shell">
         <nav className="field-groups" aria-label="온라인 임장 분류">{FIELD_GROUPS.map((group) => <button key={group} className={fieldGroup === group ? "active" : ""} onClick={() => chooseFieldFeature(FIELD_FEATURES.find((feature) => feature.group === group)?.id || "region")}><span>{group}</span><b>{FIELD_FEATURES.filter((feature) => feature.group === group).length}</b></button>)}</nav>
-        <div className="field-feature-list">{fieldGroupFeatures.map((feature) => <button key={feature.id} className={fieldFeatureId === feature.id ? "active" : ""} onClick={() => chooseFieldFeature(feature.id)}><div><b>{feature.title}</b><span>{feature.information}</span></div><em className={feature.status}>{feature.status === "live" ? "사용 가능" : feature.status === "beta" ? "베타" : "연결 예정"}</em><i className="importance-meter" aria-label={`중요도 5점 중 ${feature.importance}점`}>{[1,2,3,4,5].map((point) => <span key={point} className={point <= feature.importance ? "on" : ""} />)}</i></button>)}</div>
-        <article ref={fieldWorkspaceRef} className="field-workspace">
+        <div className="field-feature-list">{fieldGroupFeatures.map((feature) => <button key={feature.id} className={fieldFeatureId === feature.id ? "active" : ""} aria-pressed={fieldFeatureId === feature.id} aria-controls="field-analysis-panel" onClick={() => chooseFieldFeature(feature.id)}><div><b>{feature.title}</b><span>{feature.information}</span></div><em className={feature.status}>{feature.status === "live" ? "사용 가능" : feature.status === "beta" ? "베타" : "연결 예정"}</em><i className="importance-meter" aria-label={`중요도 5점 중 ${feature.importance}점`}>{[1,2,3,4,5].map((point) => <span key={point} className={point <= feature.importance ? "on" : ""} />)}</i></button>)}</div>
+        <article key={fieldFeatureId} id="field-analysis-panel" ref={fieldWorkspaceRef} className="field-workspace field-workspace-slide" aria-live="polite">
           <header><span className={activeFieldFeature.status}>{activeFieldFeature.status === "live" ? "LIVE" : activeFieldFeature.status === "beta" ? "BETA" : "DATA CONNECT"}</span><small>{activeFieldFeature.source}</small><h3>{activeFieldFeature.title}</h3><p>{activeFieldFeature.value}</p></header>
           {activeFieldFeature.id === "space" && <div className="field-space-planner">
             <div className="space-planner-heading"><div><h4>평면도를 보고, 내 가구가 들어가는지 확인하세요.</h4><p>특정 매물과 연결하지 않아도 평면도 이미지와 실제 방 치수만 있으면 공간을 검토할 수 있습니다.</p></div><div><Ruler size={20} strokeWidth={1.8} aria-hidden="true" /><span><b>{spaceAreaNumber > 0 ? `${spaceAreaNumber.toFixed(1)}㎡` : "면적 입력 전"}</b><small>{spaceAreaNumber > 0 ? `${(spaceAreaNumber / 3.3058).toFixed(1)}평 · 전용면적` : "계약서·도면 기준"}</small></span></div></div>
@@ -1324,8 +1342,8 @@ export default function Home() {
             {!selectedProperty ? <div className="field-selection-needed"><b>먼저 지도에서 동과 건물을 선택해주세요.</b><p>정확한 건물 좌표가 있어야 주변 시설이 다른 동과 섞이지 않습니다.</p><button type="button" onClick={() => fieldSelectorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>임장 지도에서 건물 선택</button></div> : nearbyLoading || locationLoading ? <div className="field-data-state"><i />생활권 시설을 집계하고 있습니다.</div> : nearbyError || locationError ? <div className="field-data-state error"><b>생활권을 불러오지 못했습니다.</b><span>{nearbyError || locationError}</span></div> : <>
               <div className="field-lifestyle-filter"><span>내 생활 기준</span><div>{["마트","병원","학교","헬스장","공원"].map((keyword) => <button type="button" key={keyword} className={lifestyleKeyword === keyword ? "active" : ""} aria-pressed={lifestyleKeyword === keyword} onClick={() => setLifestyleKeyword(keyword)}>{keyword}</button>)}</div><p><b>{lifestyleKeyword} {lifestylePlaces.length}곳</b>{lifestylePlaces[0] ? ` · 가장 가까운 ${lifestylePlaces[0].name} ${lifestylePlaces[0].distance.toLocaleString()}m` : " · 1km 안에서 확인되지 않음"}</p></div>
               <div className="field-life-chart" aria-label={`${fieldAreaTitle} 1km 생활시설 분포`}>{fieldCategorySummaries.map((category) => { const CategoryIcon = category.icon; return <div key={category.label} style={{ "--facility-color": category.color } as React.CSSProperties}><i><CategoryIcon size={17} strokeWidth={1.9} aria-hidden="true" /></i><span><b>{category.label}</b><small>{category.nearest ? `가장 가까운 ${category.nearest.name} · ${category.nearest.distance.toLocaleString()}m` : "확인 시설 없음"}</small></span><em><i style={{ width: `${Math.max(3, category.count / maxFieldCategoryCount * 100)}%` }} /></em><strong>{category.count}<small>곳</small></strong><p>{category.within500m}곳<small>500m 안</small></p></div>; })}</div>
-              <div className="field-map-option"><div><b>위치가 궁금할 때만 지도를 여세요.</b><p>요약 차트에서 후보를 좁힌 뒤 500m·1km 반경과 실제 시설 위치를 확인할 수 있습니다.</p></div><button type="button" aria-expanded={showFieldMap} onClick={() => setShowFieldMap((current) => !current)}>{showFieldMap ? "생활권 지도 닫기" : "필요할 때 지도 보기"}</button></div>
-              {showFieldMap && propertyLocation && <div className="field-inline-map"><KakaoPlaceMap location={propertyLocation} title={selectedProperty.name} places={nearbyPlaces} active={activeSection === "chart" && analysisMode === "field" && fieldFeatureId === "region"} /><div className="radius-key"><span><i />500m 생활권</span><span><i />1km 생활권</span></div></div>}
+              <div className="field-map-option"><div><b>위치가 궁금할 때만 지도를 여세요.</b><p>요약 차트에서 후보를 좁힌 뒤 500m·1km 반경과 실제 시설 위치를 확인할 수 있습니다.</p></div><button type="button" aria-expanded={showFieldMap} aria-controls="field-inline-map" onClick={toggleFieldMap}>{showFieldMap ? "생활권 지도 닫기" : "필요할 때 지도 보기"}</button></div>
+              {showFieldMap && propertyLocation && <div ref={fieldInlineMapRef} id="field-inline-map" className="field-inline-map"><KakaoPlaceMap location={propertyLocation} title={selectedProperty.name} places={nearbyPlaces} active={activeSection === "chart" && analysisMode === "field" && fieldFeatureId === "region"} /><div className="radius-key"><span><i />500m 생활권</span><span><i />1km 생활권</span></div></div>}
               <p className="field-estimate-note">시설 수와 거리는 카카오 장소 검색·직선거리 기준입니다. 등록 누락과 실제 출입구 위치에 따라 체감 접근성은 달라질 수 있습니다.</p>
             </>}
           </div>}
