@@ -702,3 +702,129 @@ body{font-size:16px;line-height:1.55;letter-spacing:0;text-rendering:optimizeLeg
 @media(max-width:760px){.mobile-primary-nav a{font-size:12px!important}.detail-terminal .ticker-head{display:grid!important;grid-template-columns:minmax(0,1fr)!important;align-items:start!important;gap:12px;padding-block:18px!important}.detail-terminal .ticker-price{display:flex;align-items:baseline;justify-content:flex-start;gap:8px 12px;flex-wrap:wrap;text-align:left}.detail-terminal .ticker-price :is(em,small){display:inline;margin:0}.detail-terminal .ticker-price button{flex-basis:100%;width:max-content;margin:0}.administrative-map-key,.administrative-map-key span,.dong-metric-tabs button{font-size:12px!important}.level-district .administrative-label-name,.level-sido .administrative-label-name{font-size:26px!important}.level-district .administrative-label.selected .administrative-label-name,.level-sido .administrative-label.selected .administrative-label-name{font-size:31px!important}}
 
 .analysis-mode-switch button b,.field-selector-path button b,.field-building-picker>ol b,.field-result-tabs button b{font-size:13px!important;line-height:1.4}.field-building-picker>ol li>span{font-size:12px!important}.field-selector-path button small,.field-building-picker>ol small,.field-result-tabs button small{font-size:12px!important;line-height:1.45}
+
+/* Unified product color language: blue owns action, neutrals own structure, semantic hues only carry meaning. */
+:root,[data-theme="light"]{
+  --surface-canvas:#f5f5f7;--surface-primary:#fff;--surface-secondary:#f8fafc;--surface-muted:#f1f4f7;--surface-hover:#edf5fd;--surface-selected:#eaf4ff;
+  --text-primary:#1d1d1f;--text-secondary:#526173;--text-muted:#667085;--border-subtle:#dfe3e8;--border-quiet:#edf0f3;
+  --action:#0071e3;--action-hover:#005ebd;--action-ink:#005ebd;--action-soft:#eef6ff;--action-soft-strong:#dbeeff;--action-border:#b9d7f6;
+  --positive:#087f5b;--positive-soft:#e8f7f1;--warning:#8a5a00;--warning-soft:#fff6df;--negative:#b9382b;--negative-soft:#fff0ed;
+  --market-up:#c24132;--market-down:#2477a7;--market-flat:#7b8794;
+  --bg:var(--surface-canvas);--panel:var(--surface-primary);--panel2:var(--surface-secondary);--line:var(--border-subtle);--muted:var(--text-muted);--text:var(--text-primary);--accent:var(--action);--blue:var(--market-down);--green:var(--positive);--cream:var(--text-primary)
+}
+[data-theme="dark"]{
+  --surface-canvas:#0b0f14;--surface-primary:#111820;--surface-secondary:#161e28;--surface-muted:#1b2531;--surface-hover:#202c39;--surface-selected:#173451;
+  --text-primary:#edf2f7;--text-secondary:#c3ccd6;--text-muted:#9aa7b5;--border-subtle:#2a3542;--border-quiet:#222c37;
+  --action:#4da3ff;--action-hover:#72b7ff;--action-ink:#72b7ff;--action-soft:#142d46;--action-soft-strong:#1b4164;--action-border:#32658f;
+  --positive:#36c997;--positive-soft:#123128;--warning:#e0b45a;--warning-soft:#302617;--negative:#ff806e;--negative-soft:#3b211f;
+  --market-up:#ff806e;--market-down:#63b3ff;--market-flat:#9aa7b5;
+  --bg:var(--surface-canvas);--panel:var(--surface-primary);--panel2:var(--surface-secondary);--line:var(--border-subtle);--muted:var(--text-muted);--text:var(--text-primary);--accent:var(--action);--blue:var(--market-down);--green:var(--positive);--cream:var(--text-primary)
+}
+*{scrollbar-color:var(--border-subtle) transparent}
+*::selection{background:var(--action-soft-strong);color:var(--text-primary)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline-color:var(--action)}
+.up{color:var(--market-up)!important}.down{color:var(--market-down)!important}
+
+html:not([data-theme="dark"]) .terminal-shell{background:linear-gradient(180deg,var(--surface-primary) 0,var(--surface-canvas) 620px)}
+html:not([data-theme="dark"]) .topbar{background:#fffffff0;border-color:var(--border-subtle);box-shadow:0 1px 0 var(--surface-primary)}
+html:not([data-theme="dark"]) :is(.finder-title small,.opportunity-head>b,.watch-head>span,.research-scope>em,.field-feature-list em.beta,.field-workspace>header>span.beta){background:var(--action-soft)!important;color:var(--action-ink)!important}
+html:not([data-theme="dark"]) :is(.live,.field-feature-list em.live,.field-workspace>header>span.live,.policy-card.positive>b i){background:var(--positive-soft)!important;color:var(--positive)!important}
+
+html:not([data-theme="dark"]) :is(.type-tabs button.active,.period-switch button.active,.view-switch button.active,.map-level-tabs button.active,.research-tool-grid button.active,.study-board-tabs button.active,.lifestyle-chips button.active,.map-sibling-selector button.active,.dong-metric-tabs button.active,.nearby-subtype-tabs button.active){
+  background:var(--action-soft)!important;border-color:var(--action-border)!important;color:var(--action-ink)!important;box-shadow:none!important
+}
+html:not([data-theme="dark"]) :is(.map-level-tabs button.active,.research-tool-grid button.active,.study-board-tabs button.active,.map-sibling-selector button.active,.dong-metric-tabs button.active,.nearby-subtype-tabs button.active) :is(em,small){color:var(--action-ink)!important}
+html:not([data-theme="dark"]) :is(.map-path button.active,.field-result-tabs button.active,.field-quick-tools button.active){background:var(--action)!important;border-color:var(--action)!important;color:#fff!important}
+html:not([data-theme="dark"]) :is(.analysis-mode-switch button.active,.field-selector-path button.active,.field-groups button.active,.field-feature-list>button.active,.research-axis>button.active,.study-categories>button.active,.building-list>button.active-building){
+  background:var(--surface-selected)!important;border-color:var(--action-border)!important;color:var(--text-primary)!important;box-shadow:none!important
+}
+html:not([data-theme="dark"]) :is(.research-axis>button.active,.study-categories>button.active) :is(em,i){color:var(--action)!important}
+html:not([data-theme="dark"]) .research-axis>button.active>i{background:var(--action)!important;color:#fff!important}
+
+html:not([data-theme="dark"]) .national-overview{background:var(--surface-primary)!important;border:1px solid var(--border-subtle)!important;box-shadow:none}
+html:not([data-theme="dark"]) .national-overview>div{background:var(--action-soft)}
+html:not([data-theme="dark"]) .national-overview>article{background:var(--surface-primary)}
+html:not([data-theme="dark"]) .national-overview>div,html:not([data-theme="dark"]) .national-overview>article{border-color:var(--border-subtle)!important}
+html:not([data-theme="dark"]) .national-overview :is(h1,strong){color:var(--text-primary)!important}
+html:not([data-theme="dark"]) .national-overview :is(span,small){color:var(--text-muted)!important}
+html:not([data-theme="dark"]) .national-overview>a{background:var(--action)!important;color:#fff!important}
+html:not([data-theme="dark"]) .national-overview>a:hover{background:var(--action-hover)!important}
+
+html:not([data-theme="dark"]) .field-context{background:var(--surface-secondary);border:1px solid var(--action-border);color:var(--text-primary)}
+html:not([data-theme="dark"]) .field-context :is(span,small){color:var(--text-muted)}
+html:not([data-theme="dark"]) :is(.field-action-panel,.field-connect,.field-report,.field-compare,.field-facts,.commute-result>footer,.space-planner-note){background:var(--surface-muted)}
+html:not([data-theme="dark"]) .field-scorecard>header>div:first-child>span{background:var(--warning-soft);color:var(--warning)}
+html:not([data-theme="dark"]) .field-scorecard>footer{background:var(--warning-soft);color:var(--warning)}
+html:not([data-theme="dark"]) .field-score-rows em.good{background:var(--positive-soft);color:var(--positive)}
+html:not([data-theme="dark"]) .field-score-rows em.caution{background:var(--negative-soft);color:var(--negative)}
+html:not([data-theme="dark"]) .space-plan-upload em{background:var(--action);color:#fff}
+
+html:not([data-theme="dark"]) .policy-card{border:1px solid var(--border-subtle)!important;box-shadow:none!important}
+html:not([data-theme="dark"]) .policy-card:hover{border-color:var(--action-border)!important;background:var(--surface-hover)!important;box-shadow:none!important}
+html:not([data-theme="dark"]) .policy-card>b i{background:var(--surface-muted)!important;color:var(--text-secondary)!important}
+html:not([data-theme="dark"]) .policy-card.positive>b i{background:var(--positive-soft)!important;color:var(--positive)!important}
+html:not([data-theme="dark"]) .policy-card.negative>b i{background:var(--negative-soft)!important;color:var(--negative)!important}
+html:not([data-theme="dark"]) :is(.map-note,.policy-method,.research-note){background:var(--action-soft)!important;color:var(--text-secondary)!important}
+
+html:not([data-theme="dark"]) .administrative-region.tone-hot:not(.selected) .administrative-region-surface{fill:#d27362!important}
+html:not([data-theme="dark"]) .administrative-region.tone-cold:not(.selected) .administrative-region-surface{fill:#5e91b7!important}
+html:not([data-theme="dark"]) .administrative-region.tone-flat:not(.selected) .administrative-region-surface{fill:#b7c2cd!important}
+html:not([data-theme="dark"]) .administrative-region.tone-neutral:not(.selected) .administrative-region-surface{fill:#dce5ec!important}
+html:not([data-theme="dark"]) .administrative-region.tone-price-high:not(.selected) .administrative-region-surface{fill:#4f8db8!important}
+html:not([data-theme="dark"]) .administrative-region.tone-price-mid:not(.selected) .administrative-region-surface{fill:#91b9d3!important}
+html:not([data-theme="dark"]) .administrative-region.tone-price-low:not(.selected) .administrative-region-surface{fill:#c8dce9!important}
+html:not([data-theme="dark"]) .administrative-map-key i.hot{background:#d27362!important}
+html:not([data-theme="dark"]) .administrative-map-key i.cold{background:#5e91b7!important}
+html:not([data-theme="dark"]) .administrative-map-key i.flat{background:#b7c2cd!important}
+html:not([data-theme="dark"]) .administrative-map-key i.price-high{background:#4f8db8!important}
+html:not([data-theme="dark"]) .administrative-map-key i.price-mid{background:#91b9d3!important}
+html:not([data-theme="dark"]) .administrative-map-key i.price-low{background:#c8dce9!important}
+
+html[data-theme="dark"] :is(.research-scope>em,.research-category-head span,.study-stage>header span,.study-topic-grid article>div:first-child span,.study-rules em,.map-stage-card>span){background:var(--action-soft)!important;color:var(--action)!important}
+html[data-theme="dark"] :is(.policy-card.positive>b i,.field-feature-list em.live,.field-workspace>header>span.live){background:var(--positive-soft)!important;color:var(--positive)!important}
+html[data-theme="dark"] .policy-card.negative>b i{background:var(--negative-soft)!important;color:var(--negative)!important}
+
+html:not([data-theme="dark"]) .type-tabs button{background:var(--surface-muted)!important;border-color:var(--border-quiet)!important;color:var(--text-secondary)!important}
+html:not([data-theme="dark"]) .type-tabs button:hover{background:var(--surface-hover)!important;border-color:var(--action-border)!important;color:var(--action-ink)!important}
+html:not([data-theme="dark"]) :is(.analysis-hub-copy>span,.national-overview>div p,.research-category-head span,.study-stage>header span,.study-topic-foot button,.study-rules em,.policy-section .section-title>a){color:var(--action-ink)!important}
+html:not([data-theme="dark"]) .research-tool-grid small.live{background:transparent!important;color:var(--positive)!important}
+html:not([data-theme="dark"]) .research-state.error{color:var(--negative)!important}
+html:not([data-theme="dark"]) .study-topic-grid article>div:first-child span{background:var(--action-soft)!important;color:var(--action-ink)!important}
+html:not([data-theme="dark"]) :is(.study-topic-grid article>div:first-child em,.study-topic-foot span,.study-rules span,.map-ranking .ranking-labels,.chart-legend small,.scope-note span,.monthly-board article strong>em){color:var(--text-muted)!important}
+html:not([data-theme="dark"]) .opportunity-empty :is(b,span){color:var(--text-secondary)!important}
+html:not([data-theme="dark"]) .policy-section .section-title>a{border-color:var(--action-border)!important}
+html:not([data-theme="dark"]) .facility-panel>header>div:first-child:last-child{min-width:0;padding:0;border:0;background:transparent;display:block}
+html:not([data-theme="dark"]) .facility-empty{border-color:var(--border-subtle);background:var(--surface-primary);color:var(--text-secondary)!important}
+html:not([data-theme="dark"]) .facility-empty span{color:var(--action-ink)!important}
+html:not([data-theme="dark"]) .facility-empty b{color:var(--text-secondary)!important}
+
+html[data-theme="dark"] .topbar nav a{color:var(--text-muted)!important}
+html[data-theme="dark"] :is(.search-console label span,.quick-regions,.scope-note,.scope-note span,.administrative-map-head small,.map-ranking .ranking-labels){color:var(--text-muted)!important}
+html[data-theme="dark"] :is(.research-axis>button.active,.study-categories>button.active){background:var(--surface-selected)!important;border-color:var(--action-border)!important;color:var(--text-primary)!important;box-shadow:none!important}
+html[data-theme="dark"] .research-axis>button.active>i{background:var(--action)!important;color:#07111b!important}
+html[data-theme="dark"] :is(.field-quick-tools,.field-level-path){background:var(--surface-secondary)!important;border-color:var(--border-subtle)!important;box-shadow:none!important}
+html[data-theme="dark"] :is(.field-quick-tools button,.field-level-path button){background:var(--surface-primary)!important;border-color:var(--border-subtle)!important;color:var(--text-secondary)!important}
+html[data-theme="dark"] :is(.field-quick-tools button.active,.field-level-path button.active){background:var(--surface-selected)!important;border-color:var(--action)!important;color:var(--text-primary)!important;box-shadow:none!important}
+html[data-theme="dark"] :is(.field-quick-tools button small,.field-level-path button span,.field-level-path button small){color:var(--text-muted)!important}
+html[data-theme="dark"] :is(.field-quick-tools button.active small,.field-level-path button.active em){color:var(--action-ink)!important}
+html[data-theme="dark"] :is(.dong-metric-tabs,.administrative-map-key){background:var(--surface-primary)!important;border-color:var(--border-subtle)!important;color:var(--text-secondary)!important;box-shadow:none!important}
+html[data-theme="dark"] .dong-metric-tabs button{background:transparent!important;color:var(--text-muted)!important}
+html[data-theme="dark"] .dong-metric-tabs button.active{background:var(--action)!important;color:#07111b!important}
+html[data-theme="dark"] .administrative-map-key span{color:var(--text-secondary)!important}
+html[data-theme="dark"] .field-scorecard>header>div:first-child>span,html[data-theme="dark"] .field-scorecard>footer{background:var(--warning-soft)!important;color:var(--warning)!important}
+
+/* Contrast safeguards for compact labels on tinted and dark surfaces. */
+html:not([data-theme="dark"]) .map-ranking .ranking-labels span{color:var(--text-secondary)!important}
+html:not([data-theme="dark"]) .facility-panel>header p{color:var(--action-ink)!important}
+html:not([data-theme="dark"]) .facility-panel>header>div:first-child>span{color:var(--text-secondary)!important}
+html:not([data-theme="dark"]) .sample-low{color:var(--text-secondary)!important}
+html:not([data-theme="dark"]) :is(.field-selector-path button>span,.field-level-path button.active em,.study-categories>button.active>em,.study-categories>button.active>i){color:var(--action-ink)!important}
+html:not([data-theme="dark"]) :is(.field-groups b,.field-feature-list em.connect){color:var(--text-secondary)!important}
+html:not([data-theme="dark"]) .research-axis>button>i{background:var(--surface-muted)!important;color:var(--text-secondary)!important}
+html:not([data-theme="dark"]) .research-axis>button.active>i{background:var(--action)!important;color:#fff!important}
+
+html[data-theme="dark"] :is(.screen-context span,.analysis-hub-copy>span,.field-selector-current span){color:var(--action-ink)!important}
+html[data-theme="dark"] :is(.analysis-mode-switch button small,.analysis-mode-switch button em,.field-property-selector>header p,.field-selector-current small,.field-selector-path button small,.field-building-picker>header small,.administrative-map-mode,.administrative-map-foot>span,.administrative-map-foot>small){color:var(--text-muted)!important}
+html[data-theme="dark"] :is(.field-property-selector>header h3,.field-selector-current b,.administrative-map-head b,.administrative-map-foot>b,.map-direct-picker>div b){color:var(--text-primary)!important}
+html[data-theme="dark"] .field-selector-path button>span{background:var(--surface-muted)!important;color:var(--text-secondary)!important}
+html[data-theme="dark"] .field-selector-path button.active>span{background:var(--action)!important;color:#07111b!important}
