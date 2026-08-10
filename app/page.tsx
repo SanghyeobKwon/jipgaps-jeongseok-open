@@ -1,6 +1,7 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- local floor-plan previews use browser-only object URLs */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Baby, Building2, BusFront, Drama, Dumbbell, Film, GraduationCap, HeartPulse, Hospital, Landmark, Library, Mail, MapPin, Monitor, Moon, Pill, School, ShoppingBasket, ShoppingCart, Stethoscope, Store, Sun, TrainFront, Trees, Trophy, WashingMachine, Waves, type LucideIcon } from "lucide-react";
+import { Archive, Baby, BedDouble, Building2, BusFront, CarFront, Drama, Dumbbell, Film, GraduationCap, HeartPulse, Hospital, ImagePlus, Landmark, Library, Mail, MapPin, Monitor, Moon, Move, Pill, Refrigerator, RotateCw, Ruler, School, ShoppingBasket, ShoppingCart, Sofa, Stethoscope, Store, Sun, Table2, TrainFront, Trash2, Trees, Trophy, Upload, WashingMachine, Waves, type LucideIcon } from "lucide-react";
 import regions from "./data/regions.json";
 
 type PropertyType = "apt" | "rowhouse" | "house" | "officetel" | "commercial" | "factory";
@@ -22,6 +23,10 @@ type FieldFeature = { id: string; group: string; title: string; information: str
 type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAddress: string };
 type PropertyMapLocation = PropertyLocation & { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; propertyType: PropertyType; scope: "selected" | "nearby" };
 type NearbyPlace = { id: string; name: string; category: string; subCategory: string; distance: number; walkingMinutes: number; lat: number; lng: number; detail: string };
+type CommuteEstimate = { destination: string; address: string; distance: number; walkingMinutes: number; drivingMinutes: number; transitMinutes: number };
+type FurnitureKind = "single-bed" | "queen-bed" | "sofa" | "dining" | "desk" | "wardrobe" | "fridge";
+type FurnitureCatalogItem = { kind: FurnitureKind; label: string; width: number; depth: number; icon: LucideIcon; color: string };
+type PlacedFurniture = { id: string; kind: FurnitureKind; x: number; y: number; rotated: boolean };
 type FacilityMeta = { label: string; description: string; color: string; icon: LucideIcon; subtypes: string[] };
 const NEARBY_CATEGORIES: FacilityMeta[] = [
   { label: "교통", description: "역·터미널", color: "#6d3ed1", icon: TrainFront, subtypes: ["지하철역", "기차역", "버스터미널"] },
@@ -105,6 +110,29 @@ const PROPERTY_MAP_META: Record<PropertyType, { label: string; short: string }> 
   commercial: { label: "상가·업무 건물", short: "상가·업무" },
   factory: { label: "공장·창고", short: "공장·창고" },
 };
+const FURNITURE_CATALOG: FurnitureCatalogItem[] = [
+  { kind: "single-bed", label: "싱글 침대", width: 110, depth: 200, icon: BedDouble, color: "#5178a8" },
+  { kind: "queen-bed", label: "퀸 침대", width: 150, depth: 200, icon: BedDouble, color: "#345f91" },
+  { kind: "sofa", label: "3인 소파", width: 210, depth: 90, icon: Sofa, color: "#8a634d" },
+  { kind: "dining", label: "4인 식탁", width: 120, depth: 75, icon: Table2, color: "#a57432" },
+  { kind: "desk", label: "책상", width: 120, depth: 60, icon: Monitor, color: "#4d6b78" },
+  { kind: "wardrobe", label: "옷장", width: 120, depth: 60, icon: Archive, color: "#75634f" },
+  { kind: "fridge", label: "냉장고", width: 91, depth: 75, icon: Refrigerator, color: "#5f7487" },
+];
+const PROPERTY_ICON_PATHS: Record<PropertyType, string> = {
+  apt: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1M10 21v-3h4v3"/>',
+  rowhouse: '<path d="m3 11 5-4 4 3 4-3 5 4v10H3Z"/><path d="M7 21v-6h3v6M15 21v-6h3v6"/>',
+  house: '<path d="m3 11 9-7 9 7v10H3Z"/><path d="M9 21v-7h6v7M7 12h2M15 12h2"/>',
+  officetel: '<path d="M6 21V4h12v17M9 8h2M13 8h2M9 12h2M13 12h2M9 16h2M13 16h2"/><path d="M3 21h18"/>',
+  commercial: '<path d="M4 10v11h16V10M3 10l2-6h14l2 6"/><path d="M3 10c0 2 3 2 3 0 0 2 3 2 3 0 0 2 3 2 3 0 0 2 3 2 3 0 0 2 3 2 3 0M8 21v-6h8v6"/>',
+  factory: '<path d="M3 21V9l6 4V9l6 4V5h4v16Z"/><path d="M7 17h2M12 17h2M17 17h2"/>',
+};
+function propertyMapIconMarkup(type: PropertyType) {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${PROPERTY_ICON_PATHS[type]}</svg>`;
+}
+function PropertyTypeIcon({ type }: { type: PropertyType }) {
+  return <span className={`property-type-icon type-${type}`} aria-hidden="true" dangerouslySetInnerHTML={{ __html: propertyMapIconMarkup(type) }} />;
+}
 const PERIODS = [{ label: "3개월", value: 3 }, { label: "6개월", value: 6 }, { label: "1년", value: 12 }, { label: "3년", value: 36 }, { label: "5년", value: 60 }];
 const NAV_ITEMS = [{ id: "home", label: "지도에서 찾기", mobileLabel: "찾기" }, { id: "chart", label: "상세 차트", mobileLabel: "차트" }, { id: "field", label: "온라인 임장", mobileLabel: "임장" }, { id: "research", label: "리서치", mobileLabel: "리서치" }, { id: "map", label: "전국 지도", mobileLabel: "전국" }, { id: "community", label: "커뮤니티", mobileLabel: "커뮤니티" }, { id: "policy", label: "정책", mobileLabel: "정책" }];
 const THEME_OPTIONS: { key: ThemePreference; label: string; icon: LucideIcon }[] = [
@@ -123,8 +151,8 @@ const FIELD_GROUPS = ["입지·동선", "주거환경", "동·세대", "비용·
 const FIELD_LEVELS = [
   { id: "region", label: "지역 임장", summary: "지역 자체를 분석", example: "강남구·성동구·분당·동탄", group: "입지·동선", featureId: "region", status: "사용 가능" },
   { id: "complex", label: "단지 임장", summary: "아파트 단지를 분석", example: "래미안·자이 등 개별 단지", group: "비용·가격", featureId: "price", status: "사용 가능" },
-  { id: "unit", label: "동·호수 임장", summary: "동·층·방향에 따른 차이 분석", example: "101동·15층·전용 84㎡", group: "동·세대", featureId: "building", status: "베타" },
-  { id: "life", label: "생활 임장", summary: "실제 하루 동선을 시뮬레이션", example: "출근·귀가·장보기·주차·산책·학교·병원", group: "입지·동선", featureId: "lifestyle", status: "일부 사용 가능" },
+  { id: "unit", label: "동·호수·공간 임장", summary: "동·층·방향과 내부 공간 분석", example: "101동·15층·전용 84㎡", group: "동·세대", featureId: "space", status: "베타" },
+  { id: "life", label: "생활 임장", summary: "개인 생활패턴을 지역 분석에 반영", example: "출근·귀가·장보기·산책·학교·병원", group: "입지·동선", featureId: "region", status: "지역 임장에 통합" },
 ];
 const TIME_SLOTS = [
   { hour: "06", label: "오전 06:00", phase: "하루 시작", title: "첫 이동과 이른 아침 생활환경", tone: "dawn", checks: [{ label: "첫차·버스", detail: "이른 출근에 필요한 첫차와 배차 간격" }, { label: "보행 조명", detail: "해 뜨기 전 골목과 역까지의 밝기" }, { label: "산책 동선", detail: "공원·하천·아침 운동 경로의 접근성" }, { label: "생활 소음", detail: "배송·청소·등교 준비 시간대의 소음" }] },
@@ -148,15 +176,15 @@ const FIELD_SCORE_EXAMPLE = [
   { label: "주차", score: 68, grade: "주의" },
 ];
 const FIELD_FEATURES: FieldFeature[] = [
-  { id: "region", group: "입지·동선", title: "지역 온라인 임장", information: "상권·교통·학교·병원·공원·유흥시설", value: "동네를 직접 돌지 않고 생활권을 먼저 파악", importance: 5, status: "live", source: "카카오맵·로컬 장소 검색" },
-  { id: "walk", group: "입지·동선", title: "도보 임장", information: "역에서 단지까지 실제 동선과 보행 환경", value: "지도 거리와 실제 체감거리 차이를 확인", importance: 5, status: "beta", source: "카카오맵 길찾기 연결" },
+  { id: "region", group: "입지·동선", title: "지역 온라인 임장", information: "교통·학교·병원·장보기·여가 생활권", value: "무엇을 누릴 수 있는지 요약 차트로 먼저 파악", importance: 5, status: "live", source: "카카오 로컬 장소 검색" },
+  { id: "walk", group: "입지·동선", title: "생활 동선 임장", information: "가까운 역·학교·병원까지 걷기·차량 예상시간", value: "매일 오가는 핵심 목적지의 체감 이동을 비교", importance: 5, status: "beta", source: "장소 직선거리 기반 예상" },
   { id: "time", group: "입지·동선", title: "시간대 분석", information: "출근·퇴근·야간 교통과 유동인구", value: "낮과 밤의 지역 분위기 차이를 확인", importance: 5, status: "connect", source: "시간대별 교통·유동인구 원천 필요" },
-  { id: "night", group: "입지·동선", title: "야간 임장", information: "가로등·골목·편의점·보행 동선", value: "밤의 생활환경과 귀가 동선을 확인", importance: 4, status: "connect", source: "공공 조도·현장 제보 데이터 필요" },
-  { id: "commute", group: "입지·동선", title: "Door-to-Door 출퇴근", information: "집에서 회사까지 실제 예상 경로", value: "직선거리 대신 매일 쓰는 생활시간을 비교", importance: 5, status: "live", source: "카카오맵 경로 검색" },
-  { id: "lifestyle", group: "입지·동선", title: "개인 생활권", information: "헬스장·마트·카페·병원·학교", value: "내 생활패턴에 맞는 입지를 평가", importance: 4, status: "live", source: "선택 지역 장소 검색" },
+  { id: "night", group: "입지·동선", title: "야간 임장", information: "막차 확인 상태·편의점·응급의료·밤길 점검", value: "늦은 귀가에 필요한 교통과 생활환경을 함께 확인", importance: 4, status: "beta", source: "카카오 장소 검색 · 막차 원천 연결 필요" },
+  { id: "commute", group: "입지·동선", title: "Door-to-Door 출퇴근", information: "목적지까지 도보·차량·대중교통 예상시간", value: "외부 지도 이동 없이 세 이동수단을 바로 비교", importance: 5, status: "beta", source: "주소 좌표·거리 기반 예상" },
   { id: "noise", group: "주거환경", title: "소음 지도", information: "도로·철도·상가·학교 소음", value: "조용한 지역과 동을 선택", importance: 5, status: "connect", source: "환경소음·현장 측정 데이터 필요" },
   { id: "parking", group: "주거환경", title: "시간대별 주차난", information: "혼잡·이중주차·동별 접근성", value: "실거주 주차 불편을 계약 전에 확인", importance: 5, status: "connect", source: "관리사무소·거주자 제보 필요" },
   { id: "environment", group: "주거환경", title: "냄새·환경 지도", information: "하수구·음식점·쓰레기·공장 악취", value: "온라인에서 놓치기 쉬운 환경을 확인", importance: 5, status: "connect", source: "환경 민원·인증 현장 제보 필요" },
+  { id: "space", group: "동·세대", title: "공간·가구 임장", information: "평면도·전용면적·방 치수·가구 배치", value: "A매물의 구조를 불러와 가구가 실제로 들어가는지 확인", importance: 5, status: "beta", source: "사용자 평면도·직접 입력 치수" },
   { id: "building", group: "동·세대", title: "동·층·방향 분석", information: "소음·도로거리·앞동거리", value: "같은 단지 안에서 더 나은 동을 판단", importance: 5, status: "beta", source: "실거래 동·층 정보 기반, 방향 데이터 보강 필요" },
   { id: "view", group: "동·세대", title: "세대별 조망", information: "앞동·산·공원·도로·하늘 개방도", value: "실제 창밖 환경을 계약 전에 예상", importance: 4, status: "connect", source: "3D 건물·세대 방향 데이터 필요" },
   { id: "sun", group: "동·세대", title: "계절별 일조", information: "시간·동·층·방향별 햇빛", value: "남향 표기보다 정밀하게 채광을 판단", importance: 4, status: "connect", source: "건물 3D·태양 궤적 계산 필요" },
@@ -370,6 +398,33 @@ function KakaoPlaceMap({ location, title, places, active }: { location: Property
 
 function escapeMapHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] || character);
+}
+
+function classifyMapPrice(price: number, prices: number[]) {
+  const sorted = prices.filter((value) => value > 0).sort((a, b) => a - b);
+  if (sorted.length < 3) return "price-mid";
+  const low = sorted[Math.floor((sorted.length - 1) / 3)];
+  const high = sorted[Math.ceil((sorted.length - 1) * 2 / 3)];
+  if (high <= low) return "price-mid";
+  return price <= low ? "price-low" : price >= high ? "price-high" : "price-mid";
+}
+
+function straightLineDistance(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const earthRadius = 6371000;
+  const radians = Math.PI / 180;
+  const dLat = (lat2 - lat1) * radians;
+  const dLng = (lng2 - lng1) * radians;
+  const value = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * radians) * Math.cos(lat2 * radians) * Math.sin(dLng / 2) ** 2;
+  return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+}
+
+function estimatedTravelMinutes(distance: number) {
+  const routeDistance = distance * 1.25;
+  return {
+    walkingMinutes: Math.max(1, Math.round(routeDistance / 75)),
+    drivingMinutes: Math.max(4, Math.round(routeDistance / 300) + 3),
+    transitMinutes: Math.max(8, Math.round(routeDistance / 230) + 8),
+  };
 }
 
 function legalDongName(value: string) {
@@ -629,6 +684,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   const nearbyLocationCount = buildingLocations.length - selectedLocationCount;
   const stageHint = focus === "national" ? "시·도 경계를 눌러 다음 단계로 들어가세요." : focus === "sido" ? "시·군·구 경계를 눌러 읍·면·동 지도로 확대하세요." : focus === "detail" ? "선택한 단지의 검증된 실제 주소 좌표입니다." : focus === "buildings" ? buildingsLoading ? "선택한 동과 인접 동의 최근 실거래 건물 좌표를 확인하고 있습니다." : buildingsError ? buildingsError : `${selectedDong} ${selectedLocationCount}곳 · 인접 ${nearbyLegalDongs.length}개 동 ${nearbyLocationCount}곳을 함께 표시합니다.` : selectedBoundaryDong ? `${legalDongName(selectedBoundaryDong)} 실거래 조건과 연동했습니다.` : "읍·면·동 경계를 누르면 실거래 건물 지도로 확대됩니다.";
   const fallbackLocation = propertyLocation || buildingLocations[0] || SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
+  const visibleMapPrices = useMemo(() => buildingLocations.map((building) => building.lastAmount).filter((price) => price > 0), [buildingLocations]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -675,9 +731,11 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       if (focus === "detail" && propertyLocation) {
         const position = new maps.LatLng(propertyLocation.lat, propertyLocation.lng);
         const selectedBuilding = buildingLocations.find((building) => building.name === propertyName);
+        const detailType = selectedBuilding?.propertyType || propertyType;
+        const detailHeat = selectedBuilding ? classifyMapPrice(selectedBuilding.lastAmount, visibleMapPrices) : "price-mid";
         const detailLabel = selectedBuilding
-          ? `<div class="naver-building-pin detail-pin kind-${selectedBuilding.propertyType} scope-selected" title="${escapeMapHtml(selectedBuilding.name)}"><small>최근 실거래</small><strong>${escapeMapHtml(formatPrice(selectedBuilding.lastAmount))}</strong><span>${escapeMapHtml(selectedBuilding.name)} · ${selectedBuilding.count}건</span></div>`
-          : `<div class="naver-building-pin detail-pin scope-selected" title="${escapeMapHtml(propertyName || "선택 건물")}"><small>선택 건물</small><strong>${escapeMapHtml(propertyName || "위치 확인")}</strong><span>실거래 상세를 확인하세요</span></div>`;
+          ? `<div class="naver-building-pin detail-pin ${detailHeat} kind-${detailType} scope-selected" title="${escapeMapHtml(selectedBuilding.name)}"><i class="property-marker-icon">${propertyMapIconMarkup(detailType)}</i><span class="property-marker-copy"><small>${escapeMapHtml(PROPERTY_MAP_META[detailType].short)} · 최근 실거래</small><strong>${escapeMapHtml(formatPrice(selectedBuilding.lastAmount))}</strong><em>${escapeMapHtml(selectedBuilding.name)} · ${selectedBuilding.count}건</em></span></div>`
+          : `<div class="naver-building-pin detail-pin price-mid kind-${detailType} scope-selected" title="${escapeMapHtml(propertyName || "선택 건물")}"><i class="property-marker-icon">${propertyMapIconMarkup(detailType)}</i><span class="property-marker-copy"><small>선택 건물</small><strong>${escapeMapHtml(propertyName || "위치 확인")}</strong><em>실거래 상세를 확인하세요</em></span></div>`;
         overlays.push(new maps.CustomOverlay({ position, map, content: detailLabel, xAnchor: .5, yAnchor: 1, zIndex: 100 }));
         setMapError("");
         return;
@@ -711,8 +769,9 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
         if (visibleDongs.length) fitCollection({ type: "FeatureCollection", features: visibleDongs });
         else fitCollection(dongs);
         buildingLocations.forEach((building) => {
+          const heat = classifyMapPrice(building.lastAmount, visibleMapPrices);
           const button = document.createElement("button");
-          button.type = "button"; button.className = `naver-building-pin kind-${building.propertyType} scope-${building.scope}`; button.setAttribute("aria-label", `${building.dong} ${building.name} 최근 실거래 ${formatPrice(building.lastAmount)}, ${building.count}건`); button.title = `${building.name}\n최근 실거래 ${formatPrice(building.lastAmount)} · 최근 3개월 ${building.count}건`; button.innerHTML = `<small>최근 실거래</small><strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><span>${escapeMapHtml(building.name)}</span>`; button.addEventListener("click", () => onSelectProperty(building.key));
+          button.type = "button"; button.className = `naver-building-pin ${heat} kind-${building.propertyType} scope-${building.scope}`; button.setAttribute("aria-label", `${building.dong} ${building.name} ${PROPERTY_MAP_META[building.propertyType].short}, 최근 실거래 ${formatPrice(building.lastAmount)}, ${building.count}건`); button.title = `${building.name}\n${PROPERTY_MAP_META[building.propertyType].short} · 최근 실거래 ${formatPrice(building.lastAmount)} · 최근 3개월 ${building.count}건`; button.innerHTML = `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i><span class="property-marker-copy"><small>${escapeMapHtml(PROPERTY_MAP_META[building.propertyType].short)}</small><strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><em>${escapeMapHtml(building.name)}</em></span>`; button.addEventListener("click", () => onSelectProperty(building.key));
           overlays.push(new maps.CustomOverlay({ position: new maps.LatLng(building.lat, building.lng), map, content: button, xAnchor: .5, yAnchor: 1, zIndex: (building.scope === "selected" ? 90 : 40) + Math.min(building.count, 50) }));
         });
         setMapError("");
@@ -725,7 +784,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     return () => {
       disposed = true; controller.abort(); resizeObserver?.disconnect(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); host.replaceChildren();
     };
-  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, focus, markets, nearbyBoundaryDongs, nearbyLegalDongs, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyLocation, propertyName, propertyType, selectedBoundaryDong, selectedDong, selectedSido]);
+  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, focus, markets, nearbyBoundaryDongs, nearbyLegalDongs, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyLocation, propertyName, propertyType, selectedBoundaryDong, selectedDong, selectedSido, visibleMapPrices]);
 
   if (focus === "national" || focus === "sido" || focus === "district") return <AdministrativeMarketMap key={`${focus}-${selectedSido}-${activeRegion.code}`} focus={focus} active={active} markets={markets} selectedSido={selectedSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongStats={dongStats} dongMetric={dongMetric} onDongMetricChange={onDongMetricChange} onSelectSido={onSelectSido} onSelectRegion={onSelectRegion} onSelectDong={onSelectDong} onOpenBuildings={onOpenBuildings} />;
 
@@ -733,13 +792,15 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     {mapError ? <MapFallback lat={fallbackLocation.lat} lng={fallbackLocation.lng} title={stageTitle} message={mapError} /> : <div ref={hostRef} className="naver-market-canvas" aria-label={`${stageTitle} 카카오 지도`} />}
     <KoreaFocusLocator active={active} selectedSido={selectedSido} />
     <div className="map-stage-card"><span>{focus === "buildings" ? "BUILDINGS" : "PROPERTY"}</span><b>{stageTitle}</b><small>{stageHint}</small></div>
-    {focus === "buildings" && <div className={`building-map-legend kind-${propertyType}`}><i /><span>현재 표시</span><b>{PROPERTY_MAP_META[propertyType].label}</b><small>진한 마커는 {selectedDong} · 연한 마커는 주변 동</small></div>}
+    {focus === "buildings" && <div className="building-map-legend"><div className="building-legend-type"><PropertyTypeIcon type={propertyType} /><span><small>주택 유형</small><b>{PROPERTY_MAP_META[propertyType].label}</b></span></div><div className="building-legend-heat" aria-label="현재 화면 매물 가격 구간"><span><i className="price-low" />낮은 가격대</span><span><i className="price-mid" />중간 가격대</span><span><i className="price-high" />높은 가격대</span></div><small>현재 지도 안 실거래 가격을 3구간으로 비교 · 연한 마커는 주변 동</small></div>}
   </div>;
 }
 
 export default function Home() {
   const navRef = useRef<HTMLElement>(null);
   const themeInteractedRef = useRef(false);
+  const spacePlanInputRef = useRef<HTMLInputElement>(null);
+  const spaceFurnitureSequenceRef = useRef(0);
   const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState("");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
@@ -753,7 +814,11 @@ export default function Home() {
   const [selectedMapSido, setSelectedMapSido] = useState("서울특별시"); const [mapFocus, setMapFocus] = useState<MapFocus>("district"); const [selectedBoundaryDong, setSelectedBoundaryDong] = useState(""); const [boundaryDongOptions, setBoundaryDongOptions] = useState<string[]>([]); const [nearbyBoundaryDongs, setNearbyBoundaryDongs] = useState<string[]>([]); const [nearbyLegalDongs, setNearbyLegalDongs] = useState<string[]>([]); const [mapPickerDong, setMapPickerDong] = useState(""); const [dongMetric, setDongMetric] = useState<DongMetric>("price");
   const [savedHomes, setSavedHomes] = useState<SavedHome[]>([]);
   const [fieldGroup, setFieldGroup] = useState(FIELD_GROUPS[0]); const [fieldFeatureId, setFieldFeatureId] = useState("region"); const [timeSlotIndex, setTimeSlotIndex] = useState(3); const [noiseSources, setNoiseSources] = useState(() => NOISE_SOURCES.map((source) => source.id));
-  const [commuteDestination, setCommuteDestination] = useState(""); const [lifestyleKeyword, setLifestyleKeyword] = useState("마트");
+  const [commuteDestination, setCommuteDestination] = useState(""); const [commuteEstimate, setCommuteEstimate] = useState<CommuteEstimate | null>(null); const [commuteLoading, setCommuteLoading] = useState(false); const [commuteError, setCommuteError] = useState("");
+  const [lifestyleKeyword, setLifestyleKeyword] = useState("마트"); const [showFieldMap, setShowFieldMap] = useState(false);
+  const [spaceArea, setSpaceArea] = useState(""); const [spaceRoomName, setSpaceRoomName] = useState("안방"); const [spaceRoomWidth, setSpaceRoomWidth] = useState("360"); const [spaceRoomDepth, setSpaceRoomDepth] = useState("420");
+  const [spacePlanUrl, setSpacePlanUrl] = useState(""); const [spacePlanName, setSpacePlanName] = useState(""); const [spacePlanError, setSpacePlanError] = useState("");
+  const [spaceFurniture, setSpaceFurniture] = useState<PlacedFurniture[]>([]); const [selectedSpaceFurnitureId, setSelectedSpaceFurnitureId] = useState("");
   const [researchCategory, setResearchCategory] = useState("price"); const [researchTool, setResearchTool] = useState("recent-fall");
   const [communityCategory, setCommunityCategory] = useState("living"); const [communityBoard, setCommunityBoard] = useState("전체");
   const [showStudyWriter, setShowStudyWriter] = useState(false); const [studyTitle, setStudyTitle] = useState(""); const [studyBody, setStudyBody] = useState(""); const [draftSaved, setDraftSaved] = useState(false);
@@ -780,6 +845,7 @@ export default function Home() {
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
   }, [themePreference]);
+  useEffect(() => () => { if (spacePlanUrl) URL.revokeObjectURL(spacePlanUrl); }, [spacePlanUrl]);
 
   useEffect(() => { const syncHash = () => { const next = window.location.hash.slice(1); if (NAV_ITEMS.some((item) => item.id === next)) { setActiveSection(next); if (next === "field") { const requestedId = new URLSearchParams(window.location.search).get("feature"); const requestedFeature = FIELD_FEATURES.find((feature) => feature.id === requestedId); if (requestedFeature) { setFieldGroup(requestedFeature.group); setFieldFeatureId(requestedFeature.id); } } window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }))); } }; syncHash(); window.addEventListener("hashchange", syncHash); return () => window.removeEventListener("hashchange", syncHash); }, []);
 
@@ -884,6 +950,23 @@ export default function Home() {
   const nearbyCategories = ["전체", ...NEARBY_CATEGORIES.map((category) => category.label)]; const activeFacilityCategory = NEARBY_CATEGORIES.find((category) => category.label === nearbyCategory); const nearbySubtypeOptions = activeFacilityCategory ? ["전체", ...activeFacilityCategory.subtypes] : [];
   const visibleNearbyPlaces = nearbyPlaces.filter((place) => (nearbyCategory === "전체" || place.category === nearbyCategory) && (nearbySubtype === "전체" || place.subCategory === nearbySubtype));
   const nearbyWithin500 = nearbyPlaces.filter((place) => place.distance <= 500).length;
+  const fieldAreaTitle = selectedProperty?.name || (selectedDong !== "all" ? selectedDong : activeRegion.sigungu);
+  const fieldCategorySummaries = NEARBY_CATEGORIES.map((category) => {
+    const places = nearbyPlaces.filter((place) => place.category === category.label);
+    return { ...category, count: places.length, within500m: places.filter((place) => place.distance <= 500).length, nearest: places[0] || null };
+  });
+  const maxFieldCategoryCount = Math.max(1, ...fieldCategorySummaries.map((category) => category.count));
+  const lifestyleSubtypes: Record<string, string[]> = { "마트": ["대형마트", "슈퍼마켓", "전통시장"], "병원": ["종합병원", "병·의원", "약국", "치과"], "학교": ["유치원", "초등학교", "중학교", "고등학교"], "헬스장": ["헬스장", "체육관"], "공원": ["공원"] };
+  const lifestylePlaces = nearbyPlaces.filter((place) => lifestyleSubtypes[lifestyleKeyword]?.includes(place.subCategory));
+  const nearestWalkTargets = [
+    { id: "station", label: "가까운 역", category: "교통", place: nearbyPlaces.find((place) => place.subCategory === "지하철역") || nearbyPlaces.find((place) => place.category === "교통") || null },
+    { id: "school", label: "가까운 학교", category: "교육", place: nearbyPlaces.find((place) => ["초등학교", "중학교", "고등학교"].includes(place.subCategory)) || null },
+    { id: "hospital", label: "가까운 병원", category: "의료", place: nearbyPlaces.find((place) => ["종합병원", "병·의원"].includes(place.subCategory)) || nearbyPlaces.find((place) => place.category === "의료") || null },
+    { id: "grocery", label: "가까운 장보기", category: "장보기", place: nearbyPlaces.find((place) => place.category === "장보기") || null },
+  ];
+  const nightStation = nearbyPlaces.find((place) => place.subCategory === "지하철역") || nearbyPlaces.find((place) => place.category === "교통") || null;
+  const nightConveniences = nearbyPlaces.filter((place) => place.subCategory === "편의점");
+  const nightMedical = nearbyPlaces.filter((place) => ["종합병원", "병·의원", "약국"].includes(place.subCategory));
   const risingCount = propertyRows.filter((property) => property.change !== null && property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change !== null && property.change < 0).length;
   const visibleProperties = useMemo(() => propertyRows.filter((property) => property.quarterCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? (b.change ?? -Infinity) - (a.change ?? -Infinity) : buildingSort === "fall" ? (a.change ?? Infinity) - (b.change ?? Infinity) : b.quarterCount - a.quarterCount), [propertyRows, buildingSort, minVolume]);
   const renderedProperties = visibleProperties.slice(0, propertyLimit);
@@ -968,7 +1051,26 @@ export default function Home() {
   const activeTimeSlot = TIME_SLOTS[timeSlotIndex];
   const fieldMapQuery = `${activeRegion.sido} ${activeRegion.sigungu} ${selectedDong !== "all" ? selectedDong : ""} ${selectedProperty?.name || ""}`.replace(/\s+/g, " ").trim();
   const fieldMapUrl = `https://map.kakao.com/link/search/${encodeURIComponent(fieldMapQuery)}`;
-  const commuteUrl = commuteDestination.trim() ? `https://map.kakao.com/link/search/${encodeURIComponent(`${fieldMapQuery} ${commuteDestination.trim()} 길찾기`)}` : "";
+  const spaceAreaNumber = Number(spaceArea); const spaceRoomWidthNumber = Number(spaceRoomWidth); const spaceRoomDepthNumber = Number(spaceRoomDepth);
+  const spaceRoomArea = spaceRoomWidthNumber > 0 && spaceRoomDepthNumber > 0 ? spaceRoomWidthNumber * spaceRoomDepthNumber / 10000 : 0;
+  const spaceFurnitureLayouts = useMemo(() => spaceFurniture.flatMap((placed) => {
+    const catalog = FURNITURE_CATALOG.find((item) => item.kind === placed.kind);
+    if (!catalog || spaceRoomWidthNumber <= 0 || spaceRoomDepthNumber <= 0) return [];
+    const width = placed.rotated ? catalog.depth : catalog.width; const depth = placed.rotated ? catalog.width : catalog.depth;
+    const rawWidthPercent = width / spaceRoomWidthNumber * 100; const rawDepthPercent = depth / spaceRoomDepthNumber * 100;
+    const widthPercent = Math.min(100, rawWidthPercent); const depthPercent = Math.min(100, rawDepthPercent);
+    return [{ ...placed, catalog, width, depth, widthPercent, depthPercent, left: placed.x * Math.max(0, 100 - widthPercent), top: placed.y * Math.max(0, 100 - depthPercent), overflow: rawWidthPercent > 100 || rawDepthPercent > 100 }];
+  }), [spaceFurniture, spaceRoomDepthNumber, spaceRoomWidthNumber]);
+  const collidingSpaceFurniture = useMemo(() => {
+    const ids = new Set<string>();
+    spaceFurnitureLayouts.forEach((first, index) => spaceFurnitureLayouts.slice(index + 1).forEach((second) => {
+      const overlaps = first.left < second.left + second.widthPercent && first.left + first.widthPercent > second.left && first.top < second.top + second.depthPercent && first.top + first.depthPercent > second.top;
+      if (overlaps) { ids.add(first.id); ids.add(second.id); }
+    }));
+    return ids;
+  }, [spaceFurnitureLayouts]);
+  const selectedSpaceFurniture = spaceFurnitureLayouts.find((item) => item.id === selectedSpaceFurnitureId) || null;
+  const occupiedSpaceArea = spaceFurnitureLayouts.reduce((sum, item) => sum + item.width * item.depth / 10000, 0);
   const resetPropertySelection = useCallback(() => { setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); setPropertyLocation(null); setPropertyLimit(30); }, []);
   const chooseRegion = useCallback((region: Region, scrollToTop = true) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedMapSido(region.sido); setMapFocus("district"); setSelectedBoundaryDong(""); setMapPickerDong(""); setSelectedDong("all"); resetPropertySelection(); setSubmittedQuery(""); setQuery(""); if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" }); }, [resetPropertySelection]);
   const chooseMapSido = useCallback((sido: string) => {
@@ -986,6 +1088,42 @@ export default function Home() {
   const selectSigungu = (code: string) => { const next = REGIONS.find((region) => region.code === code); if (next) chooseRegion(next); };
   const chooseFieldFeature = (featureId: string) => { const feature = FIELD_FEATURES.find((item) => item.id === featureId); if (!feature) return; setFieldGroup(feature.group); setFieldFeatureId(feature.id); setActiveSection("field"); const url = new URL(window.location.href); url.searchParams.set("feature", feature.id); url.hash = "field"; window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`); };
   const changeView = (view: string) => { setActiveSection(view); const url = new URL(window.location.href); url.hash = view; if (view === "field") url.searchParams.set("feature", fieldFeatureId); else url.searchParams.delete("feature"); window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const calculateCommute = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const destination = commuteDestination.trim();
+    if (!destination || !propertyLocation) return;
+    setCommuteLoading(true); setCommuteError(""); setCommuteEstimate(null);
+    try {
+      const response = await fetch(`/api/geocode?query=${encodeURIComponent(destination)}`);
+      const data = await response.json();
+      if (!response.ok || data.error || !Number.isFinite(data.lat) || !Number.isFinite(data.lng)) throw new Error(data.error || "목적지 좌표를 찾지 못했습니다.");
+      const distance = straightLineDistance(propertyLocation.lat, propertyLocation.lng, data.lat, data.lng);
+      const estimates = estimatedTravelMinutes(distance);
+      setCommuteEstimate({ destination, address: data.roadAddress || data.jibunAddress || destination, distance, ...estimates });
+    } catch (reason) {
+      setCommuteError(reason instanceof Error ? reason.message : "목적지 예상시간을 계산하지 못했습니다.");
+    } finally {
+      setCommuteLoading(false);
+    }
+  };
+  const handleSpacePlanUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setSpacePlanError("");
+    if (!file.type.startsWith("image/")) { setSpacePlanError("JPG·PNG·WEBP 평면도 이미지만 불러올 수 있습니다."); event.target.value = ""; return; }
+    if (file.size > 10 * 1024 * 1024) { setSpacePlanError("평면도 이미지는 10MB 이하로 선택해주세요."); event.target.value = ""; return; }
+    setSpacePlanUrl(URL.createObjectURL(file)); setSpacePlanName(file.name);
+  };
+  const removeSpacePlan = () => { setSpacePlanUrl(""); setSpacePlanName(""); setSpacePlanError(""); if (spacePlanInputRef.current) spacePlanInputRef.current.value = ""; };
+  const addSpaceFurniture = (kind: FurnitureKind) => {
+    if (spaceFurniture.length >= 8) return;
+    const positions = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }, { x: .5, y: .5 }];
+    const position = positions[spaceFurniture.length % positions.length]; spaceFurnitureSequenceRef.current += 1; const id = `space-${spaceFurnitureSequenceRef.current}`;
+    setSpaceFurniture((current) => [...current, { id, kind, x: position.x, y: position.y, rotated: false }]); setSelectedSpaceFurnitureId(id);
+  };
+  const moveSpaceFurniture = (x: number, y: number) => { if (selectedSpaceFurnitureId) setSpaceFurniture((current) => current.map((item) => item.id === selectedSpaceFurnitureId ? { ...item, x, y } : item)); };
+  const rotateSpaceFurniture = () => { if (selectedSpaceFurnitureId) setSpaceFurniture((current) => current.map((item) => item.id === selectedSpaceFurnitureId ? { ...item, rotated: !item.rotated } : item)); };
+  const removeSpaceFurniture = () => { if (selectedSpaceFurnitureId) { setSpaceFurniture((current) => current.filter((item) => item.id !== selectedSpaceFurnitureId)); setSelectedSpaceFurnitureId(""); } };
   const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = REGIONS.find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); const nextQuery = query.trim(); setSubmittedQuery(nextQuery); if (nextQuery) changeView("chart"); };
   const selectCandidate = (candidate: { propertyKey: string; buildingDong: string; areaBucket: number; key: string }) => { setSelectedKey(candidate.propertyKey); setSelectedBuildingDong(candidate.buildingDong); setSelectedAreaBucket(candidate.areaBucket); setSelectedVariantKey(candidate.key); setArea("all"); changeView("chart"); };
   const toggleSavedHome = () => { if (!selectedOpportunity) return; const id = `${regionCode}|${selectedOpportunity.key}`; const next = isSaved ? savedHomes.filter((home) => home.id !== id) : [...savedHomes, { id, name: selectedOpportunity.name, region: `${activeRegion.sido} ${activeRegion.sigungu}`, area: selectedOpportunity.areaBucket, price: selectedOpportunity.current, score: selectedOpportunity.score, savedAt: new Date().toISOString() }].slice(-6); setSavedHomes(next); try { window.localStorage.setItem("jipgaps:saved-homes", JSON.stringify(next)); } catch { /* device storage is optional */ } };
@@ -1081,16 +1219,37 @@ export default function Home() {
 
     <section className="field-intelligence" id="field">
       <header className="field-heading"><div><span>온라인 임장</span><h2>집을 보러 가기 전에,<br/>생활부터 시뮬레이션하세요.</h2><p>현재 선택한 지역과 단지를 기준으로 이동·환경·세대·비용을 한 흐름에서 점검합니다.</p></div><div className="field-status-summary"><b>{FIELD_FEATURES.filter((feature) => feature.status === "live").length}<small>바로 사용</small></b><b>{FIELD_FEATURES.filter((feature) => feature.status === "beta").length}<small>베타</small></b><b>{FIELD_FEATURES.filter((feature) => feature.status === "connect").length}<small>데이터 연결</small></b></div></header>
-      <div className="field-quick-tools" aria-label="온라인 임장 바로가기"><span>바로가기</span><button type="button" className={fieldFeatureId === "time" ? "active" : ""} onClick={() => chooseFieldFeature("time")}><b>시간대 분석</b><small>06·09·12·18·22·01시</small></button><button type="button" className={fieldFeatureId === "noise" ? "active" : ""} onClick={() => chooseFieldFeature("noise")}><b>소음 지도</b><small>소음원·시간대별 확인</small></button></div>
-      <nav className="field-level-path" aria-label="온라인 임장 4단계">{FIELD_LEVELS.map((level, index) => { const activeLevel = fieldFeatureId === level.featureId; const liveContext = level.id === "region" ? `${activeRegion.sigungu} 지역` : level.id === "complex" ? selectedProperty?.name || level.example : level.id === "unit" ? selectedVariant ? `${dongLabel(selectedVariant.buildingDong) || "동 정보 없음"} · 전용 ${selectedVariant.areaBucket}평` : level.example : level.example; return <button type="button" key={level.id} className={activeLevel ? "active" : ""} aria-pressed={activeLevel} onClick={() => chooseFieldFeature(level.featureId)}><em>LEVEL {index + 1}</em><b>{level.label}</b><span>{level.summary}</span><small>{liveContext}</small><i>{level.status}</i></button>; })}</nav>
+      <div className="field-quick-tools" aria-label="온라인 임장 바로가기"><span>바로가기</span><button type="button" className={fieldFeatureId === "space" ? "active" : ""} onClick={() => chooseFieldFeature("space")}><b>공간·가구 임장</b><small>평면도·면적·가구 배치</small></button><button type="button" className={fieldFeatureId === "time" ? "active" : ""} onClick={() => chooseFieldFeature("time")}><b>시간대 분석</b><small>06·09·12·18·22·01시</small></button><button type="button" className={fieldFeatureId === "noise" ? "active" : ""} onClick={() => chooseFieldFeature("noise")}><b>소음 지도</b><small>소음원·시간대별 확인</small></button></div>
+      <nav className="field-level-path" aria-label="온라인 임장 4단계">{FIELD_LEVELS.map((level, index) => { const activeLevel = fieldFeatureId === level.featureId && level.id !== "life"; const liveContext = level.id === "region" ? `${activeRegion.sigungu} 지역` : level.id === "complex" ? selectedProperty?.name || level.example : level.id === "unit" ? selectedVariant ? `${dongLabel(selectedVariant.buildingDong) || "동 정보 없음"} · 전용 ${selectedVariant.areaBucket}평` : level.example : "지역 온라인 임장에서 개인 기준 선택"; return <button type="button" key={level.id} className={activeLevel ? "active" : ""} aria-pressed={activeLevel} onClick={() => chooseFieldFeature(level.featureId)}><em>LEVEL {index + 1}</em><b>{level.label}</b><span>{level.summary}</span><small>{liveContext}</small><i>{level.status}</i></button>; })}</nav>
       <div className="field-context"><span>분석 위치</span><b>{fieldMapQuery}</b><small>상단 지역·단지 선택과 자동 동기화됩니다.</small></div>
       <div className="field-shell">
         <nav className="field-groups" aria-label="온라인 임장 분류">{FIELD_GROUPS.map((group) => <button key={group} className={fieldGroup === group ? "active" : ""} onClick={() => chooseFieldFeature(FIELD_FEATURES.find((feature) => feature.group === group)?.id || "region")}><span>{group}</span><b>{FIELD_FEATURES.filter((feature) => feature.group === group).length}</b></button>)}</nav>
         <div className="field-feature-list">{fieldGroupFeatures.map((feature) => <button key={feature.id} className={fieldFeatureId === feature.id ? "active" : ""} onClick={() => chooseFieldFeature(feature.id)}><div><b>{feature.title}</b><span>{feature.information}</span></div><em className={feature.status}>{feature.status === "live" ? "사용 가능" : feature.status === "beta" ? "베타" : "연결 예정"}</em><i className="importance-meter" aria-label={`중요도 5점 중 ${feature.importance}점`}>{[1,2,3,4,5].map((point) => <span key={point} className={point <= feature.importance ? "on" : ""} />)}</i></button>)}</div>
         <article className="field-workspace">
           <header><span className={activeFieldFeature.status}>{activeFieldFeature.status === "live" ? "LIVE" : activeFieldFeature.status === "beta" ? "BETA" : "DATA CONNECT"}</span><small>{activeFieldFeature.source}</small><h3>{activeFieldFeature.title}</h3><p>{activeFieldFeature.value}</p></header>
-          {activeFieldFeature.id === "region" && <div className="field-action-panel"><b>{fieldMapQuery}</b><p>단지를 선택하면 1km 안의 교통·교육·의료·장보기·여가 시설과 거리를 자동으로 계산합니다.</p><button onClick={() => changeView("chart")}>자동 생활권 지도 보기 →</button></div>}
-          {activeFieldFeature.id === "walk" && <div className="field-action-panel"><b>{fieldMapQuery}</b><p>실제 보행 경로는 횡단보도와 출입구를 반영한 최신 길찾기 결과로 최종 확인합니다.</p><a href={fieldMapUrl} target="_blank" rel="noreferrer">실제 도보 경로 확인 ↗</a></div>}
+          {activeFieldFeature.id === "space" && <div className="field-space-planner">
+            <div className="space-planner-heading"><div><h4>평면도를 보고, 내 가구가 들어가는지 확인하세요.</h4><p>특정 매물과 연결하지 않아도 평면도 이미지와 실제 방 치수만 있으면 공간을 검토할 수 있습니다.</p></div><div><Ruler size={20} strokeWidth={1.8} aria-hidden="true" /><span><b>{spaceAreaNumber > 0 ? `${spaceAreaNumber.toFixed(1)}㎡` : "면적 입력 전"}</b><small>{spaceAreaNumber > 0 ? `${(spaceAreaNumber / 3.3058).toFixed(1)}평 · 전용면적` : "계약서·도면 기준"}</small></span></div></div>
+            <div className="space-measurement-form"><label><span>전용면적</span><div><input type="number" min="1" max="1000" step="0.1" value={spaceArea} onChange={(event) => setSpaceArea(event.target.value)} placeholder="예: 84" /><em>㎡</em></div></label><label><span>검토 공간</span><input value={spaceRoomName} maxLength={20} onChange={(event) => setSpaceRoomName(event.target.value)} placeholder="예: 안방" /></label><label><span>방 가로</span><div><input type="number" min="50" max="3000" step="10" value={spaceRoomWidth} onChange={(event) => setSpaceRoomWidth(event.target.value)} /><em>cm</em></div></label><label><span>방 세로</span><div><input type="number" min="50" max="3000" step="10" value={spaceRoomDepth} onChange={(event) => setSpaceRoomDepth(event.target.value)} /><em>cm</em></div></label>{selectedVariant && <button type="button" onClick={() => setSpaceArea(String(Math.round(selectedVariant.areaMedian * 10) / 10))}>현재 선택 평형 {selectedVariant.areaMedian.toFixed(1)}㎡ 불러오기</button>}</div>
+            <div className="space-planner-stage">
+              <section className="space-plan-source"><header><div><b>1. 평면도 확인</b><span>매물 광고·분양 자료의 평면도를 불러옵니다.</span></div>{spacePlanUrl && <button type="button" onClick={removeSpacePlan}>이미지 제거</button>}</header>{spacePlanUrl ? <div className="space-plan-preview"><img src={spacePlanUrl} alt={`${spacePlanName} 사용자가 불러온 평면도`} /><span>{spacePlanName}</span></div> : <label className="space-plan-upload"><ImagePlus size={34} strokeWidth={1.5} aria-hidden="true" /><b>평면도 이미지 불러오기</b><span>JPG·PNG·WEBP · 최대 10MB</span><em><Upload size={15} strokeWidth={2} aria-hidden="true" />파일 선택</em><input ref={spacePlanInputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={handleSpacePlanUpload} /></label>}{spacePlanError && <p className="space-plan-error">{spacePlanError}</p>}<footer>이미지는 서버로 전송하지 않고 현재 브라우저에서만 미리봅니다. 이미지 비율만으로 실제 면적을 추정하지 않습니다.</footer></section>
+              <section className="space-room-editor"><header><div><b>2. {spaceRoomName || "선택 공간"} 배치 스케치</b><span>{spaceRoomWidthNumber > 0 && spaceRoomDepthNumber > 0 ? `${(spaceRoomWidthNumber / 100).toFixed(1)}m × ${(spaceRoomDepthNumber / 100).toFixed(1)}m · ${spaceRoomArea.toFixed(1)}㎡` : "가로·세로 치수를 입력하세요."}</span></div><Move size={18} strokeWidth={1.8} aria-hidden="true" /></header>{spaceRoomWidthNumber > 0 && spaceRoomDepthNumber > 0 ? <div className="space-room-canvas-wrap"><div className="space-room-width-ruler"><span>{(spaceRoomWidthNumber / 100).toFixed(1)}m</span></div><div className="space-room-depth-ruler"><span>{(spaceRoomDepthNumber / 100).toFixed(1)}m</span></div><div className="space-room-canvas" style={{ aspectRatio: `${spaceRoomWidthNumber} / ${spaceRoomDepthNumber}` }}>{spaceFurnitureLayouts.map((item) => { const ItemIcon = item.catalog.icon; const colliding = collidingSpaceFurniture.has(item.id); return <button type="button" key={item.id} className={`${selectedSpaceFurnitureId === item.id ? "selected" : ""} ${colliding ? "collision" : ""} ${item.overflow ? "overflow" : ""}`} style={{ left: `${item.left}%`, top: `${item.top}%`, width: `${item.widthPercent}%`, height: `${item.depthPercent}%`, "--furniture-color": item.catalog.color } as React.CSSProperties} onClick={() => setSelectedSpaceFurnitureId(item.id)} aria-label={`${item.catalog.label} ${item.width}×${item.depth}cm${colliding ? ", 다른 가구와 겹침" : ""}${item.overflow ? ", 방 크기 초과" : ""}`}><ItemIcon size={16} strokeWidth={1.8} aria-hidden="true" /><span>{item.catalog.label}<small>{item.width}×{item.depth}</small></span></button>; })}{!spaceFurniture.length && <div className="space-room-empty"><Sofa size={28} strokeWidth={1.5} aria-hidden="true" /><b>가구를 추가해 배치를 시작하세요.</b><span>아래 대표 규격을 선택하면 실제 치수 비율로 표시됩니다.</span></div>}</div></div> : <div className="field-data-state"><Ruler size={20} strokeWidth={1.7} aria-hidden="true" />방 가로·세로 치수를 입력해주세요.</div>}</section>
+            </div>
+            <div className="space-furniture-library"><div><b>3. 배치할 가구</b><span>대표 규격이며 실제 제품 치수는 직접 확인해야 합니다.</span></div><div>{FURNITURE_CATALOG.map((item) => { const ItemIcon = item.icon; return <button type="button" key={item.kind} onClick={() => addSpaceFurniture(item.kind)} disabled={spaceFurniture.length >= 8}><ItemIcon size={19} strokeWidth={1.8} aria-hidden="true" /><span><b>{item.label}</b><small>{item.width} × {item.depth}cm</small></span></button>; })}</div></div>
+            {selectedSpaceFurniture && <div className="space-furniture-controls"><div><span>선택 가구</span><b>{selectedSpaceFurniture.catalog.label}</b><small>{selectedSpaceFurniture.width} × {selectedSpaceFurniture.depth}cm</small></div><div className="space-position-grid" aria-label="선택 가구 위치"><button type="button" onClick={() => moveSpaceFurniture(0, 0)}>왼쪽 위</button><button type="button" onClick={() => moveSpaceFurniture(.5, 0)}>가운데 위</button><button type="button" onClick={() => moveSpaceFurniture(1, 0)}>오른쪽 위</button><button type="button" onClick={() => moveSpaceFurniture(0, 1)}>왼쪽 아래</button><button type="button" onClick={() => moveSpaceFurniture(.5, .5)}>정중앙</button><button type="button" onClick={() => moveSpaceFurniture(1, 1)}>오른쪽 아래</button></div><div className="space-edit-actions"><button type="button" onClick={rotateSpaceFurniture}><RotateCw size={15} strokeWidth={2} aria-hidden="true" />90° 회전</button><button type="button" className="delete" onClick={removeSpaceFurniture}><Trash2 size={15} strokeWidth={2} aria-hidden="true" />삭제</button></div></div>}
+            <div className="space-fit-status"><div><span>방 바닥면적</span><b>{spaceRoomArea > 0 ? `${spaceRoomArea.toFixed(1)}㎡` : "-"}</b></div><div><span>가구 바닥면적 합</span><b>{occupiedSpaceArea > 0 ? `${occupiedSpaceArea.toFixed(1)}㎡` : "0㎡"}</b><small>{spaceRoomArea > 0 ? `방 면적의 ${Math.round(occupiedSpaceArea / spaceRoomArea * 100)}%` : "방 치수 필요"}</small></div><div><span>배치 확인</span><b className={collidingSpaceFurniture.size || spaceFurnitureLayouts.some((item) => item.overflow) ? "caution" : "good"}>{spaceFurnitureLayouts.some((item) => item.overflow) ? "방 크기 초과" : collidingSpaceFurniture.size ? `${collidingSpaceFurniture.size}개 겹침` : spaceFurniture.length ? "현재 스케치상 가능" : "가구 미선택"}</b></div><button type="button" onClick={() => { setSpaceFurniture([]); setSelectedSpaceFurnitureId(""); }} disabled={!spaceFurniture.length}>배치 초기화</button></div>
+            <p className="space-planner-note"><b>판단 범위:</b> 입력한 방 치수와 가구의 대표 외곽 크기만 비교합니다. 문·창문·기둥·콘센트·동선 여유는 자동 판독하지 않으므로 최종 구매 전 현장 실측이 필요합니다.</p>
+          </div>}
+          {activeFieldFeature.id === "region" && <div className="field-region-dashboard">
+            <div className="field-region-intro"><div><span>1KM LIFE PROFILE</span><h4>{fieldAreaTitle}에서 어떤 생활을 누릴 수 있을까?</h4><p>지도를 먼저 읽지 않아도 생활시설의 양과 가장 가까운 곳을 비교할 수 있습니다.</p></div><div><b>{nearbyPlaces.length}</b><span>1km 안 확인 시설</span><small>카카오 로컬 검색 결과</small></div></div>
+            {!selectedProperty ? <div className="field-selection-needed"><b>먼저 단지·건물을 선택해주세요.</b><p>정확한 건물 좌표가 있어야 주변 시설이 다른 동과 섞이지 않습니다.</p><button type="button" onClick={() => changeView("chart")}>상세 차트에서 단지 선택</button></div> : nearbyLoading || locationLoading ? <div className="field-data-state"><i />생활권 시설을 집계하고 있습니다.</div> : nearbyError || locationError ? <div className="field-data-state error"><b>생활권을 불러오지 못했습니다.</b><span>{nearbyError || locationError}</span></div> : <>
+              <div className="field-lifestyle-filter"><span>내 생활 기준</span><div>{["마트","병원","학교","헬스장","공원"].map((keyword) => <button type="button" key={keyword} className={lifestyleKeyword === keyword ? "active" : ""} aria-pressed={lifestyleKeyword === keyword} onClick={() => setLifestyleKeyword(keyword)}>{keyword}</button>)}</div><p><b>{lifestyleKeyword} {lifestylePlaces.length}곳</b>{lifestylePlaces[0] ? ` · 가장 가까운 ${lifestylePlaces[0].name} ${lifestylePlaces[0].distance.toLocaleString()}m` : " · 1km 안에서 확인되지 않음"}</p></div>
+              <div className="field-life-chart" aria-label={`${fieldAreaTitle} 1km 생활시설 분포`}>{fieldCategorySummaries.map((category) => { const CategoryIcon = category.icon; return <div key={category.label} style={{ "--facility-color": category.color } as React.CSSProperties}><i><CategoryIcon size={17} strokeWidth={1.9} aria-hidden="true" /></i><span><b>{category.label}</b><small>{category.nearest ? `가장 가까운 ${category.nearest.name} · ${category.nearest.distance.toLocaleString()}m` : "확인 시설 없음"}</small></span><em><i style={{ width: `${Math.max(3, category.count / maxFieldCategoryCount * 100)}%` }} /></em><strong>{category.count}<small>곳</small></strong><p>{category.within500m}곳<small>500m 안</small></p></div>; })}</div>
+              <div className="field-map-option"><div><b>위치가 궁금할 때만 지도를 여세요.</b><p>요약 차트에서 후보를 좁힌 뒤 500m·1km 반경과 실제 시설 위치를 확인할 수 있습니다.</p></div><button type="button" aria-expanded={showFieldMap} onClick={() => setShowFieldMap((current) => !current)}>{showFieldMap ? "생활권 지도 닫기" : "필요할 때 지도 보기"}</button></div>
+              {showFieldMap && propertyLocation && <div className="field-inline-map"><KakaoPlaceMap location={propertyLocation} title={selectedProperty.name} places={nearbyPlaces} active={activeSection === "field" && fieldFeatureId === "region"} /><div className="radius-key"><span><i />500m 생활권</span><span><i />1km 생활권</span></div></div>}
+              <p className="field-estimate-note">시설 수와 거리는 카카오 장소 검색·직선거리 기준입니다. 등록 누락과 실제 출입구 위치에 따라 체감 접근성은 달라질 수 있습니다.</p>
+            </>}
+          </div>}
+          {activeFieldFeature.id === "walk" && <div className="field-walk-panel"><header><div><span>DAILY ROUTE CHECK</span><h4>{fieldAreaTitle}의 매일 쓰는 동선</h4><p>가까운 역·학교·병원·장보기를 한 화면에서 비교합니다.</p></div><small>도보·차량 모두 예상값</small></header>{!selectedProperty ? <div className="field-selection-needed"><b>단지를 선택하면 동선을 계산합니다.</b><button type="button" onClick={() => changeView("chart")}>단지 선택하기</button></div> : nearbyLoading ? <div className="field-data-state"><i />가까운 목적지를 찾고 있습니다.</div> : <div className="field-route-list">{nearestWalkTargets.map((target) => { const place = target.place; const drivingMinutes = place ? estimatedTravelMinutes(place.distance).drivingMinutes : 0; return <article key={target.id}><i><FacilityIcon name={place?.subCategory || target.category} size={20} /></i><div><span>{target.label}</span><b>{place?.name || "1km 안 확인 시설 없음"}</b><small>{place ? `${place.subCategory} · 직선 ${place.distance.toLocaleString()}m` : "검색 범위를 넓혀 확인해주세요."}</small></div><p><strong>{place ? `약 ${place.walkingMinutes}분` : "-"}</strong><small>도보 예상</small></p><p><strong>{place ? `약 ${drivingMinutes}분` : "-"}</strong><small>차량 예상</small></p></article>; })}</div>}<footer><b>계산 기준</b><p>도보는 직선거리의 1.2배와 분당 75m, 차량은 직선거리의 1.25배와 도심 평균 18km/h·진출입 3분을 적용한 예상입니다. 신호·경사·정체·출입구는 아직 반영하지 않습니다.</p></footer></div>}
           {activeFieldFeature.id === "time" && <div className={`field-time-panel tone-${activeTimeSlot.tone}`}>
             <header><div><span>선택 시간</span><b>{activeTimeSlot.label}</b></div><small>{fieldMapQuery}</small></header>
             <div className="field-time-slider"><input type="range" min="0" max={TIME_SLOTS.length - 1} step="1" value={timeSlotIndex} onChange={(event) => setTimeSlotIndex(Number(event.target.value))} aria-label={`동네 분위기 시간 선택, 현재 ${activeTimeSlot.label}`} /><div>{TIME_SLOTS.map((slot, index) => <button type="button" key={slot.hour} className={timeSlotIndex === index ? "active" : ""} aria-pressed={timeSlotIndex === index} onClick={() => setTimeSlotIndex(index)}>{slot.hour}시</button>)}</div></div>
@@ -1104,12 +1263,12 @@ export default function Home() {
             <div className="noise-time-table"><div className="noise-time-head"><span>시간</span><span>예상 소음</span><span>표시 기준</span></div>{["07시", "12시", "18시", "23시"].map((hour) => <div key={hour}><b>{hour}</b><strong>연결 대기</strong><span>{noiseSources.length ? "측정망·도로·철도·시설 데이터 결합" : "소음원 선택 필요"}</span></div>)}</div>
             <footer><span>실제 dB는 아직 표시하지 않습니다.</span><p>환경소음 측정망, 도로·철도·항공 경로, 공사 정보가 연결되면 선택한 소음원과 시간대별 dB·주의 구간을 같은 표와 지도에 표시합니다.</p></footer>
           </div>}
-          {activeFieldFeature.id === "commute" && <div className="field-action-panel"><label><span>회사·학교·자주 가는 곳</span><input value={commuteDestination} onChange={(event) => setCommuteDestination(event.target.value)} placeholder="예: 광화문역" /></label>{commuteUrl ? <a href={commuteUrl} target="_blank" rel="noreferrer">Door-to-Door 경로 확인 ↗</a> : <button disabled>목적지를 입력해주세요</button>}<small>출발지는 현재 선택한 단지 또는 지역입니다.</small></div>}
-          {activeFieldFeature.id === "lifestyle" && <div className="field-action-panel"><div className="lifestyle-chips">{["마트","병원","학교","헬스장","카페","공원"].map((keyword) => <button key={keyword} className={lifestyleKeyword === keyword ? "active" : ""} onClick={() => setLifestyleKeyword(keyword)}>{keyword}</button>)}</div><b>{fieldMapQuery} 주변 {lifestyleKeyword}</b><button onClick={() => changeView("chart")}>자동 생활권 지도 보기 →</button></div>}
+          {activeFieldFeature.id === "night" && <div className="field-night-panel"><header><div><span>NIGHT CHECK</span><h4>{fieldAreaTitle}의 늦은 귀가 조건</h4><p>막차와 밤 생활환경은 서로 다른 원천으로 나눠 확인합니다.</p></div><small>22:00 · 01:00 기준</small></header>{!selectedProperty ? <div className="field-selection-needed"><b>단지를 선택하면 야간 생활권을 확인합니다.</b><button type="button" onClick={() => changeView("chart")}>단지 선택하기</button></div> : <><div className="field-last-service"><div><FacilityIcon name="지하철역" size={20} /><span><small>가까운 교통 거점</small><b>{nightStation?.name || "1km 안 확인되지 않음"}</b><em>{nightStation ? `직선 ${nightStation.distance.toLocaleString()}m · 도보 약 ${nightStation.walkingMinutes}분` : "교통 검색 결과 없음"}</em></span></div><p><span>지하철 막차</span><strong>확인 필요</strong><small>노선·요일별 공식 시간표 연결 전</small></p><p><span>버스 막차</span><strong>확인 필요</strong><small>정류장·노선별 도착정보 연결 전</small></p></div><div className="field-night-environment"><article><FacilityIcon name="편의점" size={19} /><span><b>{nightConveniences.length}곳</b><small>1km 안 편의점</small></span></article><article><FacilityIcon name="약국" size={19} /><span><b>{nightMedical.length}곳</b><small>병원·약국 검색 결과</small></span></article><article><Moon size={19} strokeWidth={1.9} aria-hidden="true" /><span><b>현장 확인</b><small>가로등·골목·야간 소음</small></span></article></div><div className="field-night-checks">{TIME_SLOTS.filter((slot) => slot.hour === "22" || slot.hour === "01").map((slot) => <div key={slot.hour}><b>{slot.label}</b><span>{slot.phase}</span><ul>{slot.checks.map((check) => <li key={check.label}><strong>{check.label}</strong><small>{check.detail}</small></li>)}</ul></div>)}</div><p className="field-estimate-note">막차 시각은 임의로 표시하지 않습니다. 지하철·버스 공식 노선 시간표가 연결되면 요일과 역·정류장 기준으로 갱신합니다.</p></>}</div>}
+          {activeFieldFeature.id === "commute" && <div className="field-commute-panel"><form onSubmit={calculateCommute}><label><span>회사·학교·자주 가는 곳</span><input value={commuteDestination} onChange={(event) => { setCommuteDestination(event.target.value); setCommuteEstimate(null); setCommuteError(""); }} placeholder="예: 광화문역, 판교테크노밸리" /></label><button type="submit" disabled={!commuteDestination.trim() || !propertyLocation || commuteLoading}>{commuteLoading ? "목적지 확인 중…" : propertyLocation ? "이동시간 바로 계산" : "먼저 단지를 선택해주세요"}</button></form><small>출발지: {selectedProperty ? `${fieldMapQuery}` : "단지 선택 필요"}</small>{commuteError && <div className="field-data-state error"><b>계산하지 못했습니다.</b><span>{commuteError}</span></div>}{commuteEstimate && <div className="commute-result" aria-live="polite"><header><span><small>목적지</small><b>{commuteEstimate.destination}</b><em>{commuteEstimate.address}</em></span><strong>{(commuteEstimate.distance / 1000).toFixed(1)}km<small>직선거리</small></strong></header><div><article><MapPin size={20} strokeWidth={1.9} aria-hidden="true" /><span>걸어서</span><b>약 {commuteEstimate.walkingMinutes}분</b></article><article><CarFront size={20} strokeWidth={1.9} aria-hidden="true" /><span>차량</span><b>약 {commuteEstimate.drivingMinutes}분</b></article><article><BusFront size={20} strokeWidth={1.9} aria-hidden="true" /><span>대중교통</span><b>약 {commuteEstimate.transitMinutes}분</b></article></div><footer><b>경로 API 연결 전 예상</b><p>직선거리의 1.25배, 도보 분당 75m, 차량 평균 18km/h, 대중교통 평균 13.8km/h에 기본 대기시간을 더했습니다. 실제 환승·정체·신호는 반영되지 않습니다.</p></footer></div>}</div>}
           {activeFieldFeature.id === "price" && <div className="field-facts"><div><span>최근 3개월 거래</span><strong>{latestQuarterTrades.length.toLocaleString()}건</strong></div><div><span>분기 중위가격</span><strong>{formatPrice(median(latestQuarterTrades.map((trade) => trade.amount)))}</strong></div><div><span>유사 면적 대비</span><strong>{selectedKey && peerPyeongPrice ? `${valuationGap >= 0 ? "+" : ""}${valuationGap.toFixed(1)}%` : "단지 선택 필요"}</strong></div><a href="#chart" onClick={(event) => { event.preventDefault(); changeView("chart"); }}>상세 가격 차트 보기 →</a></div>}
           {activeFieldFeature.id === "report" && <div className="field-report"><h4>현재 실거래 자동 요약</h4><ul><li>{activeRegion.sigungu}에서 최근 3개월 신고 거래 {latestQuarterTrades.length.toLocaleString()}건을 확인했습니다.</li><li>{propertyRows.length ? `동·평형 조건 ${propertyRows.length.toLocaleString()}개를 같은 기준으로 비교할 수 있습니다.` : "현재 조건은 비교 가능한 동·평형 표본이 부족합니다."}</li><li>{selectedKey && peerPyeongPrice ? `선택 후보는 유사 면적 지역 중위보다 ${Math.abs(valuationGap).toFixed(1)}% ${valuationGap > 0 ? "높습니다." : "낮습니다."}` : "단지를 선택하면 유사 면적 실거래와 가격 차이를 계산합니다."}</li></ul><small>생성형 문장이 아니라 현재 화면의 실거래 계산값을 요약합니다.</small></div>}
           {activeFieldFeature.id === "compare" && <div className="field-compare">{savedHomes.length ? savedHomes.slice(0,3).map((home) => <div key={home.id}><b>{home.name}</b><span>{home.region} · {home.area}평</span><strong>{home.score}점</strong></div>) : <p>가격 차트에서 관심 후보를 담으면 최대 3개 단지를 한눈에 비교할 수 있습니다.</p>}<a href="#chart" onClick={(event) => { event.preventDefault(); changeView("chart"); }}>비교 후보 고르기 →</a></div>}
-          {!(["region","walk","time","noise","commute","lifestyle","price","report","compare"].includes(activeFieldFeature.id)) && <div className="field-connect"><span>{activeFieldFeature.information}</span><strong>{activeFieldFeature.source} 연결이 필요합니다.</strong><p>현장·센서·공식 원천이 확보되기 전에는 그럴듯한 추정 점수를 표시하지 않습니다. 데이터 출처와 갱신일을 확인한 뒤 같은 화면에 연결합니다.</p><div><i />원천 검증 <i />주소·동 매칭 <i />사용자 교차 확인</div></div>}
+          {!(["space","region","walk","time","noise","night","commute","price","report","compare"].includes(activeFieldFeature.id)) && <div className="field-connect"><span>{activeFieldFeature.information}</span><strong>{activeFieldFeature.source} 연결이 필요합니다.</strong><p>현장·센서·공식 원천이 확보되기 전에는 그럴듯한 추정 점수를 표시하지 않습니다. 데이터 출처와 갱신일을 확인한 뒤 같은 화면에 연결합니다.</p><div><i />원천 검증 <i />주소·동 매칭 <i />사용자 교차 확인</div></div>}
         </article>
       </div>
       <section className="field-scorecard" aria-label="온라인 임장 평가 예시">
