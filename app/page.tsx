@@ -135,7 +135,7 @@ function PropertyTypeIcon({ type }: { type: PropertyType }) {
   return <span className={`property-type-icon type-${type}`} aria-hidden="true" dangerouslySetInnerHTML={{ __html: propertyMapIconMarkup(type) }} />;
 }
 const PERIODS = [{ label: "3개월", value: 3 }, { label: "6개월", value: 6 }, { label: "1년", value: 12 }, { label: "3년", value: 36 }, { label: "5년", value: 60 }];
-const NAV_ITEMS = [{ id: "home", label: "집값의 정석", mobileLabel: "홈" }, { id: "chart", label: "상세 분석", mobileLabel: "분석" }, { id: "research", label: "리서치", mobileLabel: "리서치" }, { id: "map", label: "지도", mobileLabel: "지도" }, { id: "community", label: "커뮤니티", mobileLabel: "커뮤니티" }, { id: "policy", label: "정책", mobileLabel: "정책" }];
+const NAV_ITEMS = [{ id: "home", label: "집값의 정석", mobileLabel: "홈" }, { id: "chart", label: "상세 분석", mobileLabel: "분석" }, { id: "research", label: "리서치·지도", mobileLabel: "리서치" }, { id: "community", label: "커뮤니티", mobileLabel: "커뮤니티" }, { id: "policy", label: "정책", mobileLabel: "정책" }];
 const THEME_OPTIONS: { key: ThemePreference; label: string; icon: LucideIcon }[] = [
   { key: "light", label: "밝게", icon: Sun },
   { key: "dark", label: "어둡게", icon: Moon },
@@ -941,7 +941,7 @@ export default function Home() {
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState(""); const [analysisAddressInput, setAnalysisAddressInput] = useState("서울특별시 강남구");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
   const [selectedDong, setSelectedDong] = useState("all"); const [selectedBuildingDong, setSelectedBuildingDong] = useState(""); const [selectedAreaBucket, setSelectedAreaBucket] = useState<number | null>(null); const [selectedVariantKey, setSelectedVariantKey] = useState("");
-  const [area, setArea] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [dataRetry, setDataRetry] = useState(0);
+  const [area, setArea] = useState("all"); const [tradeAreaFilter, setTradeAreaFilter] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [dataRetry, setDataRetry] = useState(0);
   const [markets, setMarkets] = useState<OverviewMarket[]>([]); const [marketMonth, setMarketMonth] = useState(""); const [marketError, setMarketError] = useState(""); const [marketRetry, setMarketRetry] = useState(0);
   const [buildingSort, setBuildingSort] = useState<"volume" | "price" | "rise" | "fall">("volume"); const [minVolume, setMinVolume] = useState(0); const [propertyLimit, setPropertyLimit] = useState(30);
   const [policyItems, setPolicyItems] = useState<readonly PolicyItem[]>(POLICIES); const [policyUpdated, setPolicyUpdated] = useState("");
@@ -988,9 +988,10 @@ export default function Home() {
       const next = window.location.hash.slice(1);
       const params = new URLSearchParams(window.location.search);
       const legacyFieldLink = next === "field";
-      if (!legacyFieldLink && !NAV_ITEMS.some((item) => item.id === next)) return;
+      const legacyMapLink = next === "map";
+      if (!legacyFieldLink && !legacyMapLink && !NAV_ITEMS.some((item) => item.id === next)) return;
       const requestedMode: AnalysisMode = legacyFieldLink || params.get("analysis") === "field" ? "field" : "price";
-      setActiveSection(legacyFieldLink ? "chart" : next);
+      setActiveSection(legacyFieldLink ? "chart" : legacyMapLink ? "research" : next);
       if (legacyFieldLink || next === "chart") {
         setAnalysisMode(requestedMode);
         const requestedFeature = FIELD_FEATURES.find((feature) => feature.id === params.get("feature"));
@@ -1000,6 +1001,11 @@ export default function Home() {
         const url = new URL(window.location.href);
         url.searchParams.set("analysis", "field");
         url.hash = "chart";
+        window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+      }
+      if (legacyMapLink) {
+        const url = new URL(window.location.href);
+        url.hash = "research";
         window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
       }
       window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" })));
@@ -1037,6 +1043,18 @@ export default function Home() {
   const propertyTrades = useMemo(() => selectedKey ? scopedTrades.filter((trade) => trade.propertyKey === selectedKey && (!selectedBuildingDong || trade.buildingDong === selectedBuildingDong) && (selectedAreaBucket === null || areaBucket(trade.area) === selectedAreaBucket)) : scopedTrades, [scopedTrades, selectedKey, selectedBuildingDong, selectedAreaBucket]);
   const areas = useMemo(() => selectedKey ? [...new Set(propertyTrades.map((trade) => Math.round(trade.area * 10) / 10).filter(Boolean))].sort((a, b) => a - b) : [], [propertyTrades, selectedKey]);
   const filteredTrades = useMemo(() => propertyTrades.filter((trade) => area === "all" || Math.abs(trade.area - Number(area)) < .15), [propertyTrades, area]);
+  const tradeAreaGroups = useMemo(() => {
+    const grouped = new Map<number, Trade[]>();
+    propertyTrades.forEach((trade) => {
+      if (!trade.area) return;
+      const pyeong = Math.round(trade.area / 3.3058);
+      grouped.set(pyeong, [...(grouped.get(pyeong) || []), trade]);
+    });
+    return [...grouped.entries()].sort(([a], [b]) => a - b).map(([pyeong, rows]) => ({ pyeong, rows, median: median(rows.map((trade) => trade.amount)), areaMedian: median(rows.map((trade) => trade.area)) }));
+  }, [propertyTrades]);
+  const activeTradeAreaFilter = tradeAreaFilter === "all" || tradeAreaGroups.some((group) => String(group.pyeong) === tradeAreaFilter) ? tradeAreaFilter : "all";
+  const recentTradeRows = useMemo(() => propertyTrades.filter((trade) => activeTradeAreaFilter === "all" || Math.round(trade.area / 3.3058) === Number(activeTradeAreaFilter)).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30), [propertyTrades, activeTradeAreaFilter]);
+  const maxAreaMedian = Math.max(1, ...tradeAreaGroups.map((group) => group.median));
   const chartPoints = useMemo(() => {
     const grouped = new Map<string, number[]>(); filteredTrades.forEach((trade) => { const month = trade.date.slice(0, 7); const value = unit === "py" && trade.area ? trade.amount / (trade.area / 3.3058) : trade.amount; grouped.set(month, [...(grouped.get(month) || []), value]); });
     const base = [...grouped].sort(([a], [b]) => a.localeCompare(b)).map(([month, values]) => ({ month, price: median(values), volume: values.length }));
@@ -1283,7 +1301,8 @@ export default function Home() {
   const changeView = (view: string) => {
     if (view === "field") { changeAnalysisMode("field"); return; }
     if (view === "chart") { changeAnalysisMode("price"); return; }
-    setActiveSection(view); const url = new URL(window.location.href); url.hash = view; url.searchParams.delete("analysis"); url.searchParams.delete("feature"); window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`); window.scrollTo({ top: 0, behavior: "smooth" });
+    const nextView = view === "map" ? "research" : view;
+    setActiveSection(nextView); const url = new URL(window.location.href); url.hash = nextView; url.searchParams.delete("analysis"); url.searchParams.delete("feature"); window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`); window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const calculateCommute = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -1362,7 +1381,7 @@ export default function Home() {
       <button className="saved-badge" onClick={() => changeView("chart")}>관심 후보 <b>{savedHomes.length}</b></button><div className="live"><i /> 실거래 연동</div>
     </header>
     <nav className="mobile-primary-nav" aria-label="주요 화면">{NAV_ITEMS.map((item) => <a key={item.id} aria-label={item.label} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={(event) => { event.preventDefault(); changeView(item.id); }}>{item.mobileLabel}</a>)}</nav>
-    {activeSection !== "home" && activeSection !== "chart" && <div className="screen-context"><div><span>{NAV_ITEMS.find((item) => item.id === activeSection)?.label}</span><b>{activeRegion.sido} · {activeRegion.sigungu}{selectedDong !== "all" ? ` · ${selectedDong}` : ""}{selectedProperty ? ` · ${selectedProperty.name}` : ""}</b></div><div className="screen-context-actions" aria-label="지역과 건물 선택"><button type="button" className={activeSection === "map" ? "active" : ""} aria-pressed={activeSection === "map"} onClick={() => changeView("map")}><MapPin size={15} strokeWidth={1.9} aria-hidden="true" />지도에서 선택</button><button type="button" className={activeSection === "chart" ? "active" : ""} aria-pressed={activeSection === "chart"} onClick={() => changeView("chart")}><Building2 size={15} strokeWidth={1.9} aria-hidden="true" />건물 목록</button></div></div>}
+    {activeSection !== "home" && activeSection !== "chart" && <div className="screen-context"><div><span>{NAV_ITEMS.find((item) => item.id === activeSection)?.label}</span><b>{activeRegion.sido} · {activeRegion.sigungu}{selectedDong !== "all" ? ` · ${selectedDong}` : ""}{selectedProperty ? ` · ${selectedProperty.name}` : ""}</b></div><div className="screen-context-actions" aria-label="지역과 건물 선택"><button type="button" className={activeSection === "research" ? "active" : ""} aria-pressed={activeSection === "research"} onClick={() => changeView("research")}><MapPin size={15} strokeWidth={1.9} aria-hidden="true" />지도·리서치</button><button type="button" className={activeSection === "chart" ? "active" : ""} aria-pressed={activeSection === "chart"} onClick={() => changeView("chart")}><Building2 size={15} strokeWidth={1.9} aria-hidden="true" />상세 분석</button></div></div>}
     <section className="command app-view view-home" id="top">
       <div className="hero-copy"><div><h1>사는 집도, 투자하는 집도<br/><span>숫자로 먼저 고르세요.</span></h1><b>전국 실거래를 최근 3개월 단위로 비교하고, 면적별 가격과 거래 흐름까지 한 번에 확인합니다.</b></div><div className="hero-proof"><span><i>01</i>실거래 원문 기반</span><span><i>02</i>동·면적 단위 비교</span><span><i>03</i>판단 근거 공개</span></div></div>
       <div className="finder-panel"><div className="finder-title"><div><span>어느 지역을 살펴볼까요?</span><b>지역과 주택 유형을 고르면 최근 실거래와 생활 정보를 확인할 수 있습니다.</b></div><small>최근 3개월 기준</small></div><div className="type-tabs">{PROPERTY_TYPES.map((item) => <button key={item.key} className={type === item.key ? "active" : ""} onClick={() => { setType(item.key); setSelectedKey(""); setSelectedVariantKey(""); }}>{item.label}</button>)}</div>
@@ -1376,7 +1395,7 @@ export default function Home() {
       </div>
     </section>
 
-    <section className="national-overview" id="national"><div><h1>전국 최근 3개월 요약</h1><span>대표 권역의 최근 3개월과 직전 3개월 가격 방향을 비교합니다.</span></div><article><span>최근 3개월 표본 거래</span><strong>{markets.length ? nationalDeals.toLocaleString() : marketError ? "확인 필요" : "집계 중"}{markets.length > 0 && <em>건</em>}</strong><small>{markets.length ? `${marketMonth} 기준 대표 권역` : marketError ? "전국 실거래 연결 상태를 확인해주세요." : "공공데이터 확인 중"}</small></article><article><span>전국 중위가격</span><strong>{markets.length ? formatPrice(nationalMedian) : "-"}</strong><small>16개 대표 권역 중위값</small></article><article><span>직전 3개월 대비</span><strong className={markets.length ? nationalChange >= 0 ? "up" : "down" : ""}>{markets.length ? `${nationalChange >= 0 ? "+" : ""}${nationalChange.toFixed(2)}%` : "-"}</strong><small>거래량 가중 변화율</small></article><a href="#map" onClick={(event) => { event.preventDefault(); changeView("map"); }}>전국 비교 보기 →</a></section>
+    <section className="national-overview" id="national"><div><h1>전국 최근 3개월 요약</h1><span>대표 권역의 최근 3개월과 직전 3개월 가격 방향을 비교합니다.</span></div><article><span>최근 3개월 표본 거래</span><strong>{markets.length ? nationalDeals.toLocaleString() : marketError ? "확인 필요" : "집계 중"}{markets.length > 0 && <em>건</em>}</strong><small>{markets.length ? `${marketMonth} 기준 대표 권역` : marketError ? "전국 실거래 연결 상태를 확인해주세요." : "공공데이터 확인 중"}</small></article><article><span>전국 중위가격</span><strong>{markets.length ? formatPrice(nationalMedian) : "-"}</strong><small>16개 대표 권역 중위값</small></article><article><span>직전 3개월 대비</span><strong className={markets.length ? nationalChange >= 0 ? "up" : "down" : ""}>{markets.length ? `${nationalChange >= 0 ? "+" : ""}${nationalChange.toFixed(2)}%` : "-"}</strong><small>거래량 가중 변화율</small></article><a href="#research" onClick={(event) => { event.preventDefault(); changeView("research"); }}>지도·리서치 보기 →</a></section>
 
     <section className="monthly-board" id="market">
       <div className="month-intro"><h1>{activeRegion.sigungu} 최근 3개월</h1><span>{latestMonth ? `${PROPERTY_TYPES.find((item) => item.key === type)?.label} 실거래 신고 기준 · ${latestQuarterMonths[2]} ~ ${latestQuarterMonths[0]}` : `${PROPERTY_TYPES.find((item) => item.key === type)?.label} 실거래 연결 후 조회 기간을 표시합니다.`}</span></div>
@@ -1560,14 +1579,14 @@ export default function Home() {
         <button type="button" className={mapFocus === "district" ? "active" : ""} aria-current={mapFocus === "district" ? "step" : undefined} disabled={selectedMapSido !== activeRegion.sido} onClick={() => setMapFocus("district")}>{selectedMapSido === activeRegion.sido ? activeRegion.sigungu : "시·군·구 선택"}</button>
         <button type="button" className={mapFocus === "buildings" ? "active" : ""} aria-current={mapFocus === "buildings" ? "step" : undefined} disabled={!ROAD_MAP_AVAILABLE || selectedDong === "all" || selectedMapSido !== activeRegion.sido} onClick={openMapBuildings}>{selectedDong === "all" ? "동 선택" : ROAD_MAP_AVAILABLE ? selectedDong : `${selectedDong} · 지도 연결 전`}</button>
       </nav>
-      {activeSection === "map" && <div className="map-direct-picker" aria-label="목록으로 지역 선택">
+      {activeSection === "research" && <div className="map-direct-picker" aria-label="목록으로 지역 선택">
         <div aria-live="polite"><span>현재 범위</span><b>{mapLocationTitle}</b><small>{mapLocationDescription}</small></div>
         <label><span>시·도</span><select value={selectedMapSido} onChange={(event) => chooseMapSido(event.target.value)}>{sidoOptions.map((sido) => <option key={sido} value={sido}>{sido}</option>)}</select></label>
         <label><span>시·군·구</span><select value={selectedMapSido === activeRegion.sido ? regionCode : ""} onChange={(event) => { const next = REGIONS.find((region) => region.code === event.target.value); if (next) chooseMapRegion(next); }}><option value="" disabled>시·군·구 선택</option>{mapDistricts.map((region) => <option key={region.code} value={region.code}>{region.sigungu}</option>)}</select></label>
         <label><span>읍·면·동</span><select value={mapDongChoices.includes(mapPickerDong) ? mapPickerDong : ""} disabled={!mapDongChoices.length} onChange={(event) => setMapPickerDong(event.target.value)}><option value="" disabled>{mapDongChoices.length ? "읍·면·동 선택" : "동 목록 불러오는 중"}</option>{mapDongChoices.map((dong) => <option key={dong} value={dong}>{dong} · {formatDongMetric(mapDongStats[legalDongName(dong)], dongMetric)}</option>)}</select></label>
         <button type="button" disabled={!mapPickerDong || !mapDongChoices.includes(mapPickerDong)} onClick={() => chooseMapDong(mapPickerDong)}>{mapPickerDong ? `${mapPickerDong} 선택` : "동을 선택하세요"}</button>
       </div>}
-      <div className="map-layout"><KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "map"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} nearbyBoundaryDongs={nearbyBoundaryDongs} nearbyLegalDongs={nearbyLegalDongs} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />
+      <div className="map-layout"><KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "research"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} nearbyBoundaryDongs={nearbyBoundaryDongs} nearbyLegalDongs={nearbyLegalDongs} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />
         <aside className={`map-ranking${mapFocus === "buildings" ? "" : " map-selection-summary"}`} aria-label={mapFocus === "buildings" ? "선택 동과 주변 동의 최근 실거래 건물" : "선택 지역 요약"}>
           {mapFocus === "buildings" ? <>
             <div className="map-inspector-scope"><span>{selectedMapProperty ? "선택 건물 가격" : "선택 동과 주변 생활권"}</span><h3>{selectedMapProperty ? selectedMapProperty.name : mapLocationTitle}</h3><p>{selectedMapProperty ? `${selectedMapProperty.dong} ${selectedMapProperty.jibun || "지번 확인 중"} · 최근 실거래 ${formatPrice(selectedMapProperty.lastAmount)} · ${selectedMapProperty.count}건 · 다른 아이콘을 눌러 계속 비교할 수 있습니다.` : nearbyLegalDongs.length ? `${nearbyLegalDongs.slice(0, 4).join(" · ")}${nearbyLegalDongs.length > 4 ? ` 외 ${nearbyLegalDongs.length - 4}곳` : ""}의 거래 건물도 함께 봅니다.` : "선택 동의 최근 실거래 건물을 지도에 표시합니다."}</p></div>
@@ -1585,7 +1604,14 @@ export default function Home() {
       </div>
     </section>
 
-    <section className="trade-section" id="transactions"><div className="section-title wide"><div><h2>{displayName} 최근 실거래</h2></div><span>단위: 만원 · 최대 30건 표시</span></div><div className="trade-table"><div className="table-head"><span>계약일</span><span>건물명</span><span>전용면적</span><span>층</span><span>거래금액</span><span>평당가</span></div>{[...filteredTrades].reverse().slice(0, 30).map((trade) => <div className="table-row" key={trade.id}><span>{trade.date.replaceAll("-", ".")}</span><b>{trade.name}</b><span>{trade.area ? `${trade.area.toFixed(1)}㎡` : "-"}</span><span>{trade.floor === null ? "-" : `${trade.floor}층`}</span><strong>{formatPrice(trade.amount)}</strong><span>{trade.area ? `${Math.round(trade.amount / (trade.area / 3.3058)).toLocaleString()}만` : "-"}</span></div>)}</div></section>
+    <section className="trade-section" id="transactions">
+      <div className="section-title wide"><div><h2>{displayName} 최근 실거래</h2><span>평수를 선택하면 같은 면적대의 거래만 모아봅니다.</span></div><span>단위: 만원 · 최대 30건 표시</span></div>
+      <nav className="trade-area-tabs" aria-label="평수별 최근 실거래 필터"><button type="button" className={activeTradeAreaFilter === "all" ? "active" : ""} aria-pressed={activeTradeAreaFilter === "all"} onClick={() => setTradeAreaFilter("all")}>전체 <small>{propertyTrades.length}건</small></button>{tradeAreaGroups.map((group) => <button type="button" key={group.pyeong} className={activeTradeAreaFilter === String(group.pyeong) ? "active" : ""} aria-pressed={activeTradeAreaFilter === String(group.pyeong)} onClick={() => setTradeAreaFilter(String(group.pyeong))}>{group.pyeong}평 <small>{group.rows.length}건</small></button>)}</nav>
+      <div className="trade-analysis-layout">
+        <div className="trade-table" role="region" aria-label={`${displayName} ${activeTradeAreaFilter === "all" ? "전체 평수" : `${activeTradeAreaFilter}평`} 최근 실거래`}><div className="table-head"><span>계약일</span><span>건물명</span><span>전용면적</span><span>평수</span><span>층</span><span>거래금액</span><span>평당가</span></div>{recentTradeRows.map((trade) => <div className="table-row" key={trade.id}><span>{trade.date.replaceAll("-", ".")}</span><b>{trade.name}</b><span>{trade.area ? `${trade.area.toFixed(1)}㎡` : "-"}</span><span>{trade.area ? `${(trade.area / 3.3058).toFixed(1)}평` : "-"}</span><span>{trade.floor === null ? "-" : `${trade.floor}층`}</span><strong>{formatPrice(trade.amount)}</strong><span>{trade.area ? `${Math.round(trade.amount / (trade.area / 3.3058)).toLocaleString()}만` : "-"}</span></div>)}{!recentTradeRows.length && <div className="trade-empty">선택한 평수의 실거래가 없습니다.</div>}</div>
+        <aside className="area-trade-chart" aria-label="면적별 전체 거래 차트"><header><div><span>면적별 전체 거래</span><h3>평수별 가격과 거래량</h3></div><small>중위가격 기준</small></header><div className="area-trade-bars">{tradeAreaGroups.length ? tradeAreaGroups.map((group) => <button type="button" key={group.pyeong} className={activeTradeAreaFilter === String(group.pyeong) ? "active" : ""} onClick={() => setTradeAreaFilter(String(group.pyeong))} aria-label={`${group.pyeong}평, 중위가격 ${formatPrice(group.median)}, ${group.rows.length}건`}><span><b>{group.pyeong}평</b><small>{group.areaMedian.toFixed(1)}㎡</small></span><i><em style={{ width: `${Math.max(8, group.median / maxAreaMedian * 100)}%` }} /></i><strong>{formatPrice(group.median)}<small>{group.rows.length}건</small></strong></button>) : <div className="trade-empty">면적별로 집계할 실거래가 없습니다.</div>}</div><p>막대 길이는 각 평수의 중위 거래가격이며, 오른쪽 숫자는 신고 거래 건수입니다.</p></aside>
+      </div>
+    </section>
 
     <section className="study-community" id="community">
       <div className="study-heading"><div><h2>광고보다 근거가 먼저인 부동산 스터디</h2><span>주제별 게시판에서 지역·평형·기간을 밝히고, 사실과 의견을 나눠 이야기합니다.</span></div><div><strong>5</strong><span>대분류</span><i /><strong>25</strong><span>세부 게시판</span></div></div>

@@ -1174,8 +1174,8 @@ html[data-theme="dark"] .field-score-radar{background:linear-gradient(90deg,#0d1
 .terminal-shell[data-view="chart"][data-analysis-mode="price"]>#price-analysis{display:grid!important}
 .terminal-shell[data-view="chart"][data-analysis-mode="field"]>#field{display:block!important}
 .terminal-shell[data-view="research"]>#research,
-.terminal-shell[data-view="map"]>#map,
-.terminal-shell[data-view="map"]>#transactions,
+.terminal-shell[data-view="research"]>#map,
+.terminal-shell[data-view="research"]>#transactions,
 .terminal-shell[data-view="community"]>#community,
 .terminal-shell[data-view="policy"]>#policy{display:block!important}
 .terminal-shell[data-view="home"] :is(.national-overview>div>p,.month-intro>p),
@@ -1483,9 +1483,16 @@ html[data-theme="dark"] .level-district .district-active-outline path{stroke:#67
 
 /* Unified analysis workspace: one selector, chart below the shortlist, one life-map control row. */
 @media(min-width:901px){
-  .terminal-shell[data-view="chart"]>#price-analysis.market-browser{grid-template-columns:minmax(390px,.76fr) minmax(0,1.24fr)!important;align-items:start}
+  .terminal-shell[data-view="chart"]>#price-analysis.market-browser{grid-template-columns:minmax(340px,.62fr) minmax(0,1.38fr)!important;align-items:start}
 }
 .watchlist{display:flex;min-height:0;flex-direction:column}
+.terminal-shell[data-view="chart"] .watchlist>.watch-head,
+.terminal-shell[data-view="chart"] .watchlist>.watch-filters,
+.terminal-shell[data-view="chart"] .watchlist>.watch-columns,
+.terminal-shell[data-view="chart"] .watchlist>.watch-state,
+.terminal-shell[data-view="chart"] .watchlist>.watch-scroll{display:none!important}
+.terminal-shell[data-view="chart"] .watchlist{min-height:0!important}
+.terminal-shell[data-view="chart"] .watch-chart{border-top:0}
 .watchlist .watch-scroll{height:410px!important;flex:0 0 auto}
 .watch-chart{min-width:0;border-top:1px solid var(--atlas-line,#d9e1eb);background:var(--atlas-surface,#fff)}
 .watch-chart .chart-toolbar{padding:8px!important;display:grid!important;gap:7px;border-bottom:1px solid var(--atlas-line,#d9e1eb)!important}
@@ -1500,6 +1507,48 @@ html[data-theme="dark"] .level-district .district-active-outline path{stroke:#67
 .facility-result-tabs button{min-height:58px!important;padding:8px 10px!important}
 .unified-map-picker>.field-selector-layout{border-radius:16px;background:var(--atlas-soft,#f3f6fa)}
 .unified-map-picker .field-selector-layout>.administrative-market-map,.unified-map-picker .field-selector-layout>.naver-market-map{border-radius:12px!important}
+
+/* Detail flow: selector → map → compact chart/detail workspace. */
+.terminal-shell[data-view="chart"][data-analysis-mode="price"]{display:flex;flex-direction:column}
+.terminal-shell[data-view="chart"][data-analysis-mode="price"]>#chart{order:10}
+.terminal-shell[data-view="chart"][data-analysis-mode="price"]>#field{display:contents!important}
+.terminal-shell[data-view="chart"][data-analysis-mode="price"]>#field>*{display:none!important}
+.terminal-shell[data-view="chart"][data-analysis-mode="price"]>#field>.unified-map-picker{display:block!important;order:20;width:min(1344px,calc(100% - 48px));margin:12px auto 0;padding:12px;border:1px solid var(--atlas-line,#d9e1eb);border-radius:16px;background:var(--atlas-surface,#fff)}
+.terminal-shell[data-view="chart"][data-analysis-mode="price"]>#field>.unified-map-picker .field-selector-layout{min-height:520px}
+.terminal-shell[data-view="chart"][data-analysis-mode="price"]>#price-analysis{order:30}
+.terminal-shell[data-view="chart"][data-analysis-mode="price"]>footer{order:100}
+
+/* Research and map share one navigation destination; the map leads the flow. */
+.terminal-shell[data-view="research"]{display:flex;flex-direction:column}
+.terminal-shell[data-view="research"]>#map{order:20;padding-top:28px!important}
+.terminal-shell[data-view="research"]>#research{order:30;padding-top:44px!important}
+.terminal-shell[data-view="research"]>#transactions{order:40}
+.terminal-shell[data-view="research"]>footer{order:100}
+
+.trade-section .table-head,.trade-section .table-row{grid-template-columns:.82fr 1.16fr .7fr .58fr .4fr 1fr .72fr!important}
+.trade-section .section-title.wide>div>span{display:block;margin-top:7px;color:var(--atlas-muted,#667085);font-size:12px}
+.trade-area-tabs{display:flex;gap:7px;margin:0 0 12px;padding:2px;overflow-x:auto;scrollbar-width:thin}
+.trade-area-tabs button{flex:0 0 auto;min-height:42px;padding:0 13px;border:1px solid var(--atlas-line,#d9e1eb);border-radius:999px;background:var(--atlas-surface,#fff);color:var(--atlas-ink,#182230);font-size:12px;font-weight:800}
+.trade-area-tabs button small{margin-left:5px;color:var(--atlas-muted,#667085);font-size:10px;font-weight:600}
+.trade-area-tabs button.active{border-color:var(--atlas-blue,#0878ee);background:var(--atlas-blue,#0878ee);color:#fff}
+.trade-area-tabs button.active small{color:#dcecff}
+.trade-analysis-layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(310px,.7fr);gap:12px;align-items:start}
+.trade-analysis-layout>.trade-table{min-width:0;max-height:620px;overflow:auto;border-radius:16px!important}
+.area-trade-chart{min-width:0;border:1px solid var(--atlas-line,#d9e1eb);border-radius:16px;background:var(--atlas-surface,#fff);overflow:hidden}
+.area-trade-chart>header{min-height:78px;padding:15px 16px;border-bottom:1px solid var(--atlas-line,#d9e1eb);display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.area-trade-chart>header span{color:var(--atlas-blue,#0878ee);font-size:10px;font-weight:900;letter-spacing:.08em}
+.area-trade-chart>header h3{margin:5px 0 0;color:var(--atlas-ink,#182230);font-size:17px}
+.area-trade-chart>header>small{color:var(--atlas-muted,#667085);font-size:10px;white-space:nowrap}
+.area-trade-bars{max-height:500px;padding:8px;overflow:auto}
+.area-trade-bars>button{width:100%;min-height:58px;padding:8px;border:0;border-radius:10px;background:transparent;color:var(--atlas-ink,#182230);display:grid;grid-template-columns:58px minmax(70px,1fr) 92px;gap:9px;align-items:center;text-align:left}
+.area-trade-bars>button:hover,.area-trade-bars>button.active{background:var(--atlas-soft,#f3f6fa)}
+.area-trade-bars>button>span b,.area-trade-bars>button>span small,.area-trade-bars>button>strong small{display:block}
+.area-trade-bars>button>span b{font-size:13px}.area-trade-bars>button>span small{margin-top:3px;color:var(--atlas-muted,#667085);font-size:10px}
+.area-trade-bars>button>i{height:8px;border-radius:999px;background:#e8edf3;overflow:hidden}
+.area-trade-bars>button>i>em{display:block;height:100%;border-radius:inherit;background:var(--atlas-blue,#0878ee)}
+.area-trade-bars>button>strong{text-align:right;font-size:12px}.area-trade-bars>button>strong small{margin-top:4px;color:var(--atlas-muted,#667085);font-size:10px;font-weight:600}
+.area-trade-chart>p{margin:0;padding:12px 16px;border-top:1px solid var(--atlas-line,#d9e1eb);color:var(--atlas-muted,#667085);font-size:10px;line-height:1.55}
+.trade-empty{min-height:120px;display:grid;place-items:center;color:var(--atlas-muted,#667085);font-size:12px}
 .field-region-redirect{margin-top:18px;padding:18px 20px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;border:1px solid var(--atlas-line,#d9e1eb);border-radius:14px;background:var(--atlas-soft,#f3f6fa);color:var(--atlas-blue,#0878ee)}
 .field-region-redirect b{display:block;color:var(--atlas-ink,#182230);font-size:14px;letter-spacing:-.02em}
 .field-region-redirect p{margin:4px 0 0;color:var(--atlas-muted,#667085);font-size:11px;line-height:1.5}
@@ -1516,6 +1565,13 @@ html[data-theme="dark"] .level-district .district-active-outline path{stroke:#67
   .facility-result-tabs{grid-template-columns:repeat(2,minmax(0,1fr))!important}
   .facility-result-tabs button{min-height:56px!important}
   .unified-map-picker .field-selector-layout{padding:8px!important}
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]>#field>.unified-map-picker{width:calc(100% - 24px);padding:8px}
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]>#field>.unified-map-picker .field-selector-layout{min-height:460px}
+  .trade-section .table-head,.trade-section .table-row{min-width:780px!important}
+  .trade-analysis-layout{grid-template-columns:1fr}
+  .trade-analysis-layout>.trade-table{order:1;max-height:470px}
+  .area-trade-chart{order:2}
+  .area-trade-bars{max-height:360px}
   .field-region-redirect{grid-template-columns:auto minmax(0,1fr);padding:15px}
   .field-region-redirect button{grid-column:1/-1;width:100%}
 }
