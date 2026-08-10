@@ -1231,7 +1231,7 @@ export default function Home() {
 
     <section className="opportunity-section" aria-label="매수 검토 후보"><div className="opportunity-head"><div><p>SMART SHORTLIST</p><h2>{activeRegion.sigungu}에서 먼저 볼 후보</h2><span>평형별 가격 매력 45% · 거래량 35% · 가격 흐름 20%를 합산한 탐색 점수입니다.</span></div><b>추천이 아닌 검토 우선순위</b></div><div className="opportunity-grid">{loading ? <div className="opportunity-empty">후보를 계산하고 있습니다…</div> : scoredCandidates.length ? scoredCandidates.slice(0, 3).map((candidate, index) => <button key={candidate.key} onClick={() => selectCandidate(candidate)}><span className="candidate-rank">0{index + 1}</span><div><em>{candidate.tag}</em><h3>{candidate.name}</h3><p>{candidate.dong} · {dongLabel(candidate.buildingDong) || "동 정보 없음"} · 전용 {candidate.areaBucket}평</p></div><strong>{candidate.score}<small>/100</small><i>{formatPrice(candidate.current)}</i></strong></button>) : <div className="opportunity-empty"><b>이 지역은 아직 표본이 부족합니다.</b><span>아파트 또는 인기 지역을 선택하면 거래가 있는 후보를 빠르게 확인할 수 있습니다.</span></div>}</div>{savedHomes.length > 0 && <div className="saved-shelf"><span>내 관심 후보</span>{savedHomes.map((home) => <article key={home.id}><div><b>{home.name}</b><small>{home.region} · {home.area}평</small></div><strong>{home.score}점 · {formatPrice(home.price)}</strong><button aria-label={`${home.name} 관심 후보에서 삭제`} onClick={() => { const next = savedHomes.filter((item) => item.id !== home.id); setSavedHomes(next); try { window.localStorage.setItem("jipgaps:saved-homes", JSON.stringify(next)); } catch { /* device storage is optional */ } }}>×</button></article>)}</div>}</section>
 
-    <section className="analysis-hub" aria-labelledby="analysis-hub-title">
+    <section className="analysis-hub" id="chart" aria-labelledby="analysis-hub-title">
       <div className="analysis-hub-copy"><span>DETAIL ANALYSIS</span><h1 id="analysis-hub-title">가격과 생활을 한곳에서 판단하세요.</h1><p>같은 지역과 건물을 유지한 채, 숫자로 보는 가격과 실제로 사는 생활 조건을 오갈 수 있습니다.</p></div>
       <div className="analysis-mode-switch" role="tablist" aria-label="상세 분석 방식">
         <button type="button" role="tab" aria-selected={analysisMode === "price"} className={analysisMode === "price" ? "active" : ""} onClick={() => changeAnalysisMode("price")}><Building2 size={20} strokeWidth={1.8} aria-hidden="true" /><span><b>가격·거래</b><small>실거래 차트 · 평형 비교 · 적정가격</small></span><em>숫자로 판단</em></button>
@@ -1239,7 +1239,7 @@ export default function Home() {
       </div>
     </section>
 
-    <section className="market-browser" id="chart">
+    <section className="market-browser" id="price-analysis">
       <aside className="watchlist">
         <div className="watch-head"><div><p>AREA-SPECIFIC WATCHLIST</p><h2>{activeRegion.sigungu} 동·평형별 3개월 순위</h2></div><span>{Math.min(propertyLimit, visibleProperties.length)}/{visibleProperties.length}</span></div>
         <div className="watch-filters"><select value={buildingSort} onChange={(event) => { setBuildingSort(event.target.value as typeof buildingSort); setPropertyLimit(30); }} aria-label="건물 목록 정렬"><option value="volume">3개월 거래량순</option><option value="price">3개월 중위가순</option><option value="rise">직전 분기 대비 상승순</option><option value="fall">직전 분기 대비 하락순</option></select><select value={minVolume} onChange={(event) => { setMinVolume(Number(event.target.value)); setPropertyLimit(30); }} aria-label="최소 거래량"><option value="0">거래량 전체</option><option value="1">3개월 1건 이상</option><option value="3">3개월 3건 이상</option><option value="5">3개월 5건 이상</option></select></div>
