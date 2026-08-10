@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 
-type NaverLocalItem = { title?: string; category?: string; address?: string; roadAddress?: string; mapx?: string; mapy?: string };
+type KakaoLocalItem = { id?: string; place_name?: string; category_name?: string; address_name?: string; road_address_name?: string; x?: string; y?: string; distance?: string };
 type NearbyPlace = { id: string; name: string; category: string; subCategory: string; distance: number; walkingMinutes: number; lat: number; lng: number; detail: string };
 
 const SEARCH_GROUPS = [
@@ -19,42 +19,33 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number) {
   return earthRadius * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
 }
 
-function normalizeCoordinate(value?: string) {
-  const coordinate = Number(value);
-  if (!Number.isFinite(coordinate)) return Number.NaN;
-
-  // NAVER local search coordinates can be returned as WGS84 values scaled by 10,000,000.
-  return Math.abs(coordinate) > 180 ? coordinate / 10_000_000 : coordinate;
-}
-
-function stripHtml(value = "") { return value.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").trim(); }
-
-async function searchLocal(area: string, category: string, subCategory: string, keyword: string, clientId: string, clientSecret: string) {
-  const url = new URL("https://naverapihub.apigw.ntruss.com/search/v1/local");
-  url.searchParams.set("query", `${area} ${keyword}`.trim()); url.searchParams.set("display", "5"); url.searchParams.set("start", "1"); url.searchParams.set("sort", "random"); url.searchParams.set("format", "json");
-  const response = await fetch(url, { headers: { Accept: "application/json", "X-NCP-APIGW-API-KEY-ID": clientId, "X-NCP-APIGW-API-KEY": clientSecret }, signal: AbortSignal.timeout(9000) });
-  if (!response.ok) throw new Error(`NAVER_LOCAL_${response.status}`);
-  const data = await response.json() as { items?: NaverLocalItem[] };
-  return (data.items || []).map((item) => ({ ...item, group: category, subGroup: subCategory }));
+async function searchLocal(lat: number, lng: number, category: string, subCategory: string, keyword: string, restApiKey: string) {
+  const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
+  url.searchParams.set("query", keyword); url.searchParams.set("x", String(lng)); url.searchParams.set("y", String(lat)); url.searchParams.set("radius", "1000"); url.searchParams.set("sort", "distance"); url.searchParams.set("size", "15");
+  const response = await fetch(url, { headers: { Accept: "application/json", Authorization: `KakaoAK ${restApiKey}` }, signal: AbortSignal.timeout(9000) });
+  if (!response.ok) throw new Error(`KAKAO_LOCAL_${response.status}`);
+  const data = await response.json() as { documents?: KakaoLocalItem[] };
+  return (data.documents || []).map((item) => ({ ...item, group: category, subGroup: subCategory }));
 }
 
 export async function GET(request: Request) {
-  const params = new URL(request.url).searchParams; const lat = Number(params.get("lat")); const lng = Number(params.get("lng")); const area = (params.get("area") || "").trim().slice(0, 80);
+  const params = new URL(request.url).searchParams; const lat = Number(params.get("lat")); const lng = Number(params.get("lng"));
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < 32 || lat > 40 || lng < 123 || lng > 133) return Response.json({ error: "대한민국 안의 올바른 좌표가 필요합니다." }, { status: 400 });
-  const clientId = process.env.NAVER_API_HUB_CLIENT_ID; const clientSecret = process.env.NAVER_API_HUB_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return Response.json({ error: "NAVER API HUB 인증 정보가 설정되지 않았습니다." }, { status: 503 });
+  const restApiKey = process.env.KAKAO_REST_API_KEY;
+  if (!restApiKey) return Response.json({ error: "카카오 REST API 키가 설정되지 않았습니다." }, { status: 503 });
   try {
-    const tasks = SEARCH_GROUPS.flatMap((group) => group.targets.map((target) => searchLocal(area, group.category, target.subCategory, target.keyword, clientId, clientSecret)));
+    const tasks = SEARCH_GROUPS.flatMap((group) => group.targets.map((target) => searchLocal(lat, lng, group.category, target.subCategory, target.keyword, restApiKey)));
     const results = (await Promise.allSettled(tasks)).flatMap((result) => result.status === "fulfilled" ? result.value : []); const seen = new Set<string>();
     const places: NearbyPlace[] = results.flatMap((item) => {
-      const placeLat = normalizeCoordinate(item.mapy); const placeLng = normalizeCoordinate(item.mapx); const name = stripHtml(item.title); if (!name || !Number.isFinite(placeLat) || !Number.isFinite(placeLng)) return [];
-      const distance = Math.round(haversine(lat, lng, placeLat, placeLng)); const key = `${name}|${placeLat.toFixed(5)}|${placeLng.toFixed(5)}`; if (distance > 1000 || seen.has(key)) return []; seen.add(key);
-      return [{ id: key, name, category: item.group, subCategory: item.subGroup, distance, walkingMinutes: Math.max(1, Math.round(distance * 1.2 / 75)), lat: placeLat, lng: placeLng, detail: item.category || item.roadAddress || item.address || "" }];
+      const placeLat = Number(item.y); const placeLng = Number(item.x); const name = (item.place_name || "").trim(); if (!name || !Number.isFinite(placeLat) || !Number.isFinite(placeLng)) return [];
+      const measuredDistance = Number(item.distance); const distance = Math.round(Number.isFinite(measuredDistance) && measuredDistance >= 0 ? measuredDistance : haversine(lat, lng, placeLat, placeLng)); const key = item.id || `${name}|${placeLat.toFixed(5)}|${placeLng.toFixed(5)}`; if (distance > 1000 || seen.has(key)) return []; seen.add(key);
+      return [{ id: key, name, category: item.group, subCategory: item.subGroup, distance, walkingMinutes: Math.max(1, Math.round(distance * 1.2 / 75)), lat: placeLat, lng: placeLng, detail: item.category_name || item.road_address_name || item.address_name || "" }];
     }).sort((a, b) => a.distance - b.distance);
     const categoryCounts = SEARCH_GROUPS.map((group) => ({ category: group.category, within500m: places.filter((place) => place.category === group.category && place.distance <= 500).length, within1km: places.filter((place) => place.category === group.category).length }));
-    return Response.json({ places, counts: { within500m: places.filter((place) => place.distance <= 500).length, within1km: places.length, categories: categoryCounts }, radius: 1000, taxonomyVersion: 2, source: "NAVER API HUB 지역 검색", measuredAt: new Date().toISOString(), coverageNote: "시설별 검색 결과를 세부 유형으로 나누고 좌표 거리로 재분류한 집계입니다." }, { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" } });
+    return Response.json({ places, counts: { within500m: places.filter((place) => place.distance <= 500).length, within1km: places.length, categories: categoryCounts }, radius: 1000, taxonomyVersion: 2, source: "Kakao Local keyword search", measuredAt: new Date().toISOString(), coverageNote: "시설별 검색 결과를 세부 유형으로 나누고 카카오가 제공한 중심점 거리로 재분류한 집계입니다." }, { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" } });
   } catch (error) {
-    const message = error instanceof Error && error.message.includes("401") ? "NAVER API HUB 인증 정보를 확인해주세요." : "주변 시설 데이터를 잠시 불러오지 못했습니다. 잠시 후 다시 확인해주세요.";
+    const code = error instanceof Error ? error.message : "";
+    const message = /KAKAO_LOCAL_(401|403|429)/.test(code) ? "카카오 로컬 API 권한과 REST API 키를 확인해주세요." : "주변 시설 데이터를 잠시 불러오지 못했습니다. 잠시 후 다시 확인해주세요.";
     return Response.json({ error: message }, { status: 502, headers: { "Cache-Control": "no-store" } });
   }
 }

@@ -27,6 +27,15 @@ npm run dev
 npm run build
 ```
 
+## Kakao Maps
+
+실제 도로 지도와 주소·주변 시설 검색은 카카오맵을 사용합니다.
+
+- `NEXT_PUBLIC_KAKAO_MAP_APP_KEY`: 카카오 플랫폼 키 중 JavaScript 키
+- `KAKAO_REST_API_KEY`: 서버의 주소·장소 검색에 사용하는 REST API 키
+- 카카오 개발자 콘솔의 JavaScript SDK 허용 도메인에 로컬 주소와 운영 도메인을 각각 등록해야 합니다.
+- 실제 키는 `.env.local`과 호스팅 환경변수에만 저장하고 Git에는 올리지 않습니다.
+
 This starter does not use `wrangler.jsonc`.
 
 ## Included Shape

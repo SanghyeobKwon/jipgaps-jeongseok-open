@@ -66,14 +66,14 @@ export async function POST(request: Request) {
     }
 
     return Response.json(
-      { locations, requested: properties.length, matched: locations.length, source: "국토교통부 실거래 + NAVER Maps Geocoding" },
+      { locations, requested: properties.length, matched: locations.length, source: "국토교통부 실거래 + Kakao Local Geocoding" },
       { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800" } },
     );
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
-    const message = code === "NAVER_MAP_NOT_CONFIGURED"
-      ? "네이버 지도 API가 아직 연결되지 않았습니다."
+    const message = code === "KAKAO_MAP_NOT_CONFIGURED"
+      ? "카카오 REST API 키가 아직 연결되지 않았습니다."
       : "선택한 동의 건물 위치를 불러오지 못했습니다.";
-    return Response.json({ error: message }, { status: code === "NAVER_MAP_NOT_CONFIGURED" ? 503 : 502, headers: { "Cache-Control": "no-store" } });
+    return Response.json({ error: message }, { status: code === "KAKAO_MAP_NOT_CONFIGURED" ? 503 : 502, headers: { "Cache-Control": "no-store" } });
   }
 }

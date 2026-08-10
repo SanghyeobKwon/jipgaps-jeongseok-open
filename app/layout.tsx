@@ -2,6 +2,18 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
 
+const themeBootstrap = `(() => {
+  try {
+    const preference = localStorage.getItem("jipgaps:theme") || "system";
+    const dark = preference === "dark" || (preference === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    document.documentElement.dataset.themePreference = preference;
+  } catch {
+    document.documentElement.dataset.theme = "light";
+    document.documentElement.dataset.themePreference = "system";
+  }
+})();`;
+
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host") || "jipgaps-jeongseok.sueb4509.chatgpt.site";
@@ -20,5 +32,5 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="ko"><body>{children}</body></html>;
+  return <html lang="ko" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeBootstrap }} /></head><body>{children}</body></html>;
 }

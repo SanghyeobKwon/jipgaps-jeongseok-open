@@ -44,3 +44,7 @@ yarn-error.log*
 /.openai/package-*/
 /.openai/site-*.tar.gz
 *.tsbuildinfo
+
+# local Codex UI verification artifacts
+/.impeccable/
+/.codex-local-dev.*.log

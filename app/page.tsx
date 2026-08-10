@@ -1,9 +1,11 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Baby, Building2, BusFront, Drama, Dumbbell, Film, GraduationCap, HeartPulse, Hospital, Landmark, Library, Mail, MapPin, Pill, School, ShoppingBasket, ShoppingCart, Stethoscope, Store, TrainFront, Trees, Trophy, WashingMachine, Waves, type LucideIcon } from "lucide-react";
+import { Baby, Building2, BusFront, Drama, Dumbbell, Film, GraduationCap, HeartPulse, Hospital, Landmark, Library, Mail, MapPin, Monitor, Moon, Pill, School, ShoppingBasket, ShoppingCart, Stethoscope, Store, Sun, TrainFront, Trees, Trophy, WashingMachine, Waves, type LucideIcon } from "lucide-react";
 import regions from "./data/regions.json";
 
 type PropertyType = "apt" | "rowhouse" | "house" | "officetel" | "commercial" | "factory";
+type ThemePreference = "light" | "dark" | "system";
+type ResolvedTheme = "light" | "dark";
 type Region = { code: string; sido: string; sigungu: string };
 type Trade = { id: string; date: string; amount: number; area: number; floor: number | null; name: string; propertyKey: string; dong: string; buildingDong: string; jibun: string; buildYear: number | null; dealingType: string; cancelled: boolean };
 type Property = { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; areas: number[] };
@@ -18,7 +20,7 @@ type CommunityCategory = { id: string; number: string; label: string; descriptio
 type CommunityGuide = { id: string; category: string; board: string; tag: string; title: string; summary: string; evidence: string };
 type FieldFeature = { id: string; group: string; title: string; information: string; value: string; importance: 4 | 5; status: "live" | "beta" | "connect"; source: string };
 type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAddress: string };
-type PropertyMapLocation = PropertyLocation & { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; propertyType: PropertyType };
+type PropertyMapLocation = PropertyLocation & { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; propertyType: PropertyType; scope: "selected" | "nearby" };
 type NearbyPlace = { id: string; name: string; category: string; subCategory: string; distance: number; walkingMinutes: number; lat: number; lng: number; detail: string };
 type FacilityMeta = { label: string; description: string; color: string; icon: LucideIcon; subtypes: string[] };
 const NEARBY_CATEGORIES: FacilityMeta[] = [
@@ -49,22 +51,28 @@ type DongMetric = "price" | "py" | "volume";
 type DongMarketStat = { count: number; median: number; perPy: number };
 type GeoJsonFeature = { type: "Feature"; properties: Record<string, unknown>; geometry: Record<string, unknown> };
 type GeoJsonFeatureCollection = { type: "FeatureCollection"; features: GeoJsonFeature[] };
-type NaverBounds = { getCenter: () => unknown };
-type NaverDataFeature = { getProperty: (key: string) => unknown; getBounds?: () => NaverBounds };
-type NaverDataLayer = { addGeoJson: (data: GeoJsonFeatureCollection) => NaverDataFeature[]; setStyle: (style: (feature: NaverDataFeature) => Record<string, unknown>) => void };
-type NaverMapInstance = { data: NaverDataLayer; destroy?: () => void; fitBounds?: (bounds: unknown, margin?: number | { top: number; right: number; bottom: number; left: number }) => void; getZoom?: () => number; setCenter?: (center: unknown) => void; setZoom?: (zoom: number) => void };
-type NaverOverlayInstance = { setMap: (map: NaverMapInstance | null) => void };
-type NaverMarkerInstance = NaverOverlayInstance;
-type NaverEventListener = unknown;
-type NaverMapsApi = { maps: { Map: new (element: HTMLElement, options: Record<string, unknown>) => NaverMapInstance; LatLng: new (lat: number, lng: number) => unknown; LatLngBounds: new (southWest: unknown, northEast: unknown) => NaverBounds; Point: new (x: number, y: number) => unknown; Marker: new (options: Record<string, unknown>) => NaverMarkerInstance; Circle: new (options: Record<string, unknown>) => NaverOverlayInstance; Position: { TOP_RIGHT: unknown; BOTTOM_LEFT: unknown }; Event: { addListener: (target: unknown, eventName: string, listener: (event: { feature?: NaverDataFeature }) => void) => NaverEventListener; removeListener: (listener: NaverEventListener) => void } } };
+type KakaoLatLng = unknown;
+type KakaoBounds = { extend: (latLng: KakaoLatLng) => void };
+type KakaoMapInstance = { setBounds: (bounds: KakaoBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number) => void; getLevel: () => number; setLevel: (level: number) => void; addControl?: (control: unknown, position: unknown) => void; relayout?: () => void };
+type KakaoOverlayInstance = { setMap: (map: KakaoMapInstance | null) => void };
+type KakaoEventListener = { target: unknown; eventName: string; listener: (...args: unknown[]) => void };
+type KakaoMapsApi = { maps: {
+  load: (callback: () => void) => void;
+  Map: new (element: HTMLElement, options: Record<string, unknown>) => KakaoMapInstance;
+  LatLng: new (lat: number, lng: number) => KakaoLatLng;
+  LatLngBounds: new () => KakaoBounds;
+  CustomOverlay: new (options: Record<string, unknown>) => KakaoOverlayInstance;
+  Circle: new (options: Record<string, unknown>) => KakaoOverlayInstance;
+  Polygon: new (options: Record<string, unknown>) => KakaoOverlayInstance;
+  ZoomControl: new () => unknown;
+  ControlPosition: { TOPRIGHT: unknown };
+  event: { addListener: (target: unknown, eventName: string, listener: (...args: unknown[]) => void) => void; removeListener: (target: unknown, eventName: string, listener: (...args: unknown[]) => void) => void };
+} };
 
 declare global {
   interface Window {
-    naver?: NaverMapsApi;
-    navermap_authFailure?: () => void;
-    __jipgapsNaverMap?: Promise<void>;
-    __jipgapsNaverMapAuthFailed?: boolean;
-    __jipgapsNaverMapAuthHandler?: boolean;
+    kakao?: KakaoMapsApi;
+    __jipgapsKakaoMap?: Promise<void>;
   }
 }
 
@@ -99,6 +107,11 @@ const PROPERTY_MAP_META: Record<PropertyType, { label: string; short: string }> 
 };
 const PERIODS = [{ label: "3개월", value: 3 }, { label: "6개월", value: 6 }, { label: "1년", value: 12 }, { label: "3년", value: 36 }, { label: "5년", value: 60 }];
 const NAV_ITEMS = [{ id: "home", label: "지도에서 찾기", mobileLabel: "찾기" }, { id: "chart", label: "상세 차트", mobileLabel: "차트" }, { id: "field", label: "온라인 임장", mobileLabel: "임장" }, { id: "research", label: "리서치", mobileLabel: "리서치" }, { id: "map", label: "전국 지도", mobileLabel: "전국" }, { id: "community", label: "커뮤니티", mobileLabel: "커뮤니티" }, { id: "policy", label: "정책", mobileLabel: "정책" }];
+const THEME_OPTIONS: { key: ThemePreference; label: string; icon: LucideIcon }[] = [
+  { key: "light", label: "라이트", icon: Sun },
+  { key: "dark", label: "다크", icon: Moon },
+  { key: "system", label: "시스템", icon: Monitor },
+];
 const SIDO_CENTERS: Record<string, { lat: number; lng: number; zoom: number }> = {
   서울특별시: { lat: 37.5665, lng: 126.978, zoom: 10 }, 부산광역시: { lat: 35.1796, lng: 129.0756, zoom: 10 }, 대구광역시: { lat: 35.8714, lng: 128.6014, zoom: 10 }, 인천광역시: { lat: 37.4563, lng: 126.7052, zoom: 9 },
   전남광주통합특별시: { lat: 35.15, lng: 126.95, zoom: 8 }, 대전광역시: { lat: 36.3504, lng: 127.3845, zoom: 10 }, 울산광역시: { lat: 35.5384, lng: 129.3114, zoom: 9 }, 세종특별자치시: { lat: 36.48, lng: 127.289, zoom: 10 },
@@ -135,11 +148,11 @@ const FIELD_SCORE_EXAMPLE = [
   { label: "주차", score: 68, grade: "주의" },
 ];
 const FIELD_FEATURES: FieldFeature[] = [
-  { id: "region", group: "입지·동선", title: "지역 온라인 임장", information: "상권·교통·학교·병원·공원·유흥시설", value: "동네를 직접 돌지 않고 생활권을 먼저 파악", importance: 5, status: "live", source: "네이버 지도·장소 검색" },
-  { id: "walk", group: "입지·동선", title: "도보 임장", information: "역에서 단지까지 실제 동선과 보행 환경", value: "지도 거리와 실제 체감거리 차이를 확인", importance: 5, status: "beta", source: "네이버 길찾기 연결" },
+  { id: "region", group: "입지·동선", title: "지역 온라인 임장", information: "상권·교통·학교·병원·공원·유흥시설", value: "동네를 직접 돌지 않고 생활권을 먼저 파악", importance: 5, status: "live", source: "카카오맵·로컬 장소 검색" },
+  { id: "walk", group: "입지·동선", title: "도보 임장", information: "역에서 단지까지 실제 동선과 보행 환경", value: "지도 거리와 실제 체감거리 차이를 확인", importance: 5, status: "beta", source: "카카오맵 길찾기 연결" },
   { id: "time", group: "입지·동선", title: "시간대 분석", information: "출근·퇴근·야간 교통과 유동인구", value: "낮과 밤의 지역 분위기 차이를 확인", importance: 5, status: "connect", source: "시간대별 교통·유동인구 원천 필요" },
   { id: "night", group: "입지·동선", title: "야간 임장", information: "가로등·골목·편의점·보행 동선", value: "밤의 생활환경과 귀가 동선을 확인", importance: 4, status: "connect", source: "공공 조도·현장 제보 데이터 필요" },
-  { id: "commute", group: "입지·동선", title: "Door-to-Door 출퇴근", information: "집에서 회사까지 실제 예상 경로", value: "직선거리 대신 매일 쓰는 생활시간을 비교", importance: 5, status: "live", source: "네이버 지도 경로 검색" },
+  { id: "commute", group: "입지·동선", title: "Door-to-Door 출퇴근", information: "집에서 회사까지 실제 예상 경로", value: "직선거리 대신 매일 쓰는 생활시간을 비교", importance: 5, status: "live", source: "카카오맵 경로 검색" },
   { id: "lifestyle", group: "입지·동선", title: "개인 생활권", information: "헬스장·마트·카페·병원·학교", value: "내 생활패턴에 맞는 입지를 평가", importance: 4, status: "live", source: "선택 지역 장소 검색" },
   { id: "noise", group: "주거환경", title: "소음 지도", information: "도로·철도·상가·학교 소음", value: "조용한 지역과 동을 선택", importance: 5, status: "connect", source: "환경소음·현장 측정 데이터 필요" },
   { id: "parking", group: "주거환경", title: "시간대별 주차난", information: "혼잡·이중주차·동별 접근성", value: "실거주 주차 불편을 계약 전에 확인", importance: 5, status: "connect", source: "관리사무소·거주자 제보 필요" },
@@ -247,67 +260,51 @@ function formatDongMetric(stat: DongMarketStat | undefined, metric: DongMetric) 
 function monthLabel(value: string) { const [year, month] = value.split("-"); return `${year.slice(2)}.${month}`; }
 function shiftMonth(value: string, offset: number) { if (!value) return ""; const [year, month] = value.split("-").map(Number); const date = new Date(year, month - 1 + offset, 1); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`; }
 
-function loadNaverMap(clientId: string) {
-  if (!window.__jipgapsNaverMapAuthHandler) {
-    const previousHandler = window.navermap_authFailure;
-    window.navermap_authFailure = () => {
-      window.__jipgapsNaverMapAuthFailed = true;
-      window.__jipgapsNaverMap = undefined;
-      window.dispatchEvent(new Event("jipgaps:naver-map-auth-failure"));
-      previousHandler?.();
-    };
-    window.__jipgapsNaverMapAuthHandler = true;
-  }
-  if (window.__jipgapsNaverMapAuthFailed) return Promise.reject(new Error("NAVER_MAP_AUTH_FAILED"));
-  if (window.naver?.maps) return Promise.resolve();
-  if (window.__jipgapsNaverMap) return window.__jipgapsNaverMap;
-  window.__jipgapsNaverMap = new Promise<void>((resolve, reject) => {
-    document.querySelector<HTMLScriptElement>('script[data-jipgaps-naver-map="true"]')?.remove();
+function loadKakaoMap(appKey: string) {
+  if (window.__jipgapsKakaoMap) return window.__jipgapsKakaoMap;
+  window.__jipgapsKakaoMap = new Promise<void>((resolve, reject) => {
+    const finish = () => window.kakao?.maps.load(() => resolve());
+    if (window.kakao?.maps) { finish(); return; }
+    document.querySelector<HTMLScriptElement>('script[data-jipgaps-kakao-map="true"]')?.remove();
     const script = document.createElement("script");
-    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(clientId)}`;
-    script.async = true; script.defer = true; script.dataset.jipgapsNaverMap = "true";
-    const timeout = window.setTimeout(() => reject(new Error("지도 연결 시간이 초과되었습니다.")), 12000);
-    script.onload = () => { window.clearTimeout(timeout); if (window.naver?.maps) resolve(); else reject(new Error("지도 SDK 초기화 실패")); };
-    script.onerror = () => { window.clearTimeout(timeout); reject(new Error("지도 SDK를 불러오지 못했습니다.")); };
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(appKey)}&autoload=false`;
+    script.async = true; script.defer = true; script.dataset.jipgapsKakaoMap = "true";
+    const timeout = window.setTimeout(() => reject(new Error("카카오 지도 연결 시간이 초과되었습니다.")), 12000);
+    script.onload = () => { window.clearTimeout(timeout); if (window.kakao?.maps) finish(); else reject(new Error("카카오 지도 SDK 초기화에 실패했습니다.")); };
+    script.onerror = () => { window.clearTimeout(timeout); reject(new Error("카카오 지도 SDK를 불러오지 못했습니다. JavaScript 키와 허용 도메인을 확인해주세요.")); };
     document.head.appendChild(script);
-  }).catch((error) => { window.__jipgapsNaverMap = undefined; throw error; });
-  return window.__jipgapsNaverMap;
+  }).catch((error) => { window.__jipgapsKakaoMap = undefined; throw error; });
+  return window.__jipgapsKakaoMap;
 }
 
 function safeMapMessage(error: unknown) {
-  return error instanceof Error && error.message === "NAVER_MAP_AUTH_FAILED"
-    ? "Vercel 도메인이 네이버 지도 허용 URL에 등록되지 않아 안전 지도로 전환했습니다."
-    : error instanceof Error ? error.message : "지도를 표시하지 못했습니다.";
+  return error instanceof Error ? error.message : "카카오 지도를 표시하지 못했습니다.";
 }
 
-function shouldUseSafeMapOnVercel() {
-  return window.location.hostname === "jipgaps-jeongseok.vercel.app";
-}
-
-function safelyDestroyNaverMap(map: NaverMapInstance | null) {
-  try { map?.destroy?.(); } catch { /* An unauthorized SDK instance can throw while detaching its internal listeners. */ }
-}
-
-function safelyRemoveNaverOverlay(overlay: NaverOverlayInstance) {
+function safelyRemoveKakaoOverlay(overlay: KakaoOverlayInstance) {
   try { overlay.setMap(null); } catch { /* Ignore cleanup errors from an incomplete map instance. */ }
 }
 
-function safelyRemoveNaverListener(listener: NaverEventListener) {
-  try { window.naver?.maps.Event.removeListener(listener); } catch { /* Ignore cleanup errors from an incomplete SDK. */ }
+function safelyRemoveKakaoListener(listener: KakaoEventListener) {
+  try { window.kakao?.maps.event.removeListener(listener.target, listener.eventName, listener.listener); } catch { /* Ignore cleanup errors from an incomplete SDK. */ }
+}
+
+function kakaoLevelForZoom(zoom: number) {
+  return Math.max(1, Math.min(14, 20 - zoom));
 }
 
 function MapFallback({ lat, lng, title, message }: { lat: number; lng: number; title: string; message: string }) {
   const delta = .035;
   const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
   const src = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(`${lat},${lng}`)}`;
-  const naverUrl = `https://map.naver.com/p/search/${encodeURIComponent(title)}`;
+  const kakaoUrl = `https://map.kakao.com/link/map/${encodeURIComponent(title)},${lat},${lng}`;
   return <div className="safe-map-fallback">
     <iframe title={`${title} 안전 지도`} src={src} loading="lazy" referrerPolicy="no-referrer" />
-    <div className="safe-map-notice"><b>안전 지도로 전환됨</b><span>{message}</span><a href={naverUrl} target="_blank" rel="noreferrer">네이버 지도에서 열기 →</a></div>
+    <div className="safe-map-notice"><b>안전 지도로 전환됨</b><span>{message}</span><a href={kakaoUrl} target="_blank" rel="noreferrer">카카오맵에서 열기 →</a></div>
   </div>;
 }
 
-function PriceChart({ points, unit }: { points: ChartPoint[]; unit: "price" | "py" }) {
+function PriceChart({ points, unit, theme }: { points: ChartPoint[]; unit: "price" | "py"; theme: ResolvedTheme }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
@@ -318,6 +315,8 @@ function PriceChart({ points, unit }: { points: ChartPoint[]; unit: "price" | "p
       const ratio = window.devicePixelRatio || 1; const width = host.clientWidth; const height = host.clientHeight;
       canvas.width = width * ratio; canvas.height = height * ratio; canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
       const ctx = canvas.getContext("2d"); if (!ctx) return; ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.clearRect(0, 0, width, height);
+      const rootStyle = getComputedStyle(document.documentElement); const color = (name: string, fallback: string) => rootStyle.getPropertyValue(name).trim() || fallback;
+      const chartGrid = color("--chart-grid", "#e5e7eb"); const chartGridSoft = color("--chart-grid-soft", "#eef0f3"); const chartMuted = color("--chart-muted", "#667085"); const chartText = color("--chart-text", "#1d1d1f"); const chartPrice = color("--chart-price", "#0071e3"); const chartAverage = color("--chart-average", "#8b95a5"); const chartTooltip = color("--chart-tooltip", "#fffffff5"); const chartBorder = color("--chart-border", "#dfe3e8"); const chartPointStroke = color("--chart-point-stroke", "#ffffff");
       const pad = { left: 15, right: 72, top: 22, bottom: 30 }; const volumeH = 64; const gap = 18;
       const chartBottom = height - pad.bottom - volumeH - gap; const plotW = width - pad.left - pad.right; const plotH = chartBottom - pad.top;
       const all = points.flatMap((point) => [point.price, point.average]).filter(Boolean); const rawMin = Math.min(...all); const rawMax = Math.max(...all);
@@ -325,58 +324,48 @@ function PriceChart({ points, unit }: { points: ChartPoint[]; unit: "price" | "p
       const xAt = (index: number) => points.length === 1 ? pad.left + plotW / 2 : pad.left + plotW * index / (points.length - 1);
       const yAt = (value: number) => pad.top + (max - value) / (max - min) * plotH;
       ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace"; ctx.textAlign = "left";
-      for (let i = 0; i < 5; i++) { const y = pad.top + plotH * i / 4; ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.fillStyle = "#667085"; ctx.fillText(compactPrice(max - (max - min) * i / 4), width - pad.right + 10, y + 4); }
+      for (let i = 0; i < 5; i++) { const y = pad.top + plotH * i / 4; ctx.strokeStyle = chartGrid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.fillStyle = chartMuted; ctx.fillText(compactPrice(max - (max - min) * i / 4), width - pad.right + 10, y + 4); }
       const labelStep = Math.max(1, Math.ceil(points.length / 7));
-      points.forEach((point, index) => { if (index % labelStep === 0 || index === points.length - 1) { const x = xAt(index); ctx.strokeStyle = "#eef0f3"; ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, height - pad.bottom); ctx.stroke(); ctx.fillStyle = "#667085"; ctx.textAlign = "center"; ctx.fillText(monthLabel(point.month), x, height - 8); } });
+      points.forEach((point, index) => { if (index % labelStep === 0 || index === points.length - 1) { const x = xAt(index); ctx.strokeStyle = chartGridSoft; ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, height - pad.bottom); ctx.stroke(); ctx.fillStyle = chartMuted; ctx.textAlign = "center"; ctx.fillText(monthLabel(point.month), x, height - 8); } });
       const maxVolume = Math.max(...points.map((point) => point.volume), 1); const barW = Math.max(3, Math.min(18, plotW / points.length * .58));
-      points.forEach((point, index) => { const x = xAt(index); const h = point.volume / maxVolume * volumeH; ctx.fillStyle = index && point.price < points[index - 1].price ? "#8ec5ff" : "#b8d9ff"; ctx.fillRect(x - barW / 2, height - pad.bottom - h, barW, h); });
+      points.forEach((point, index) => { const x = xAt(index); const h = point.volume / maxVolume * volumeH; ctx.fillStyle = index && point.price < points[index - 1].price ? color("--chart-volume-down", "#8ec5ff") : color("--chart-volume-up", "#b8d9ff"); ctx.fillRect(x - barW / 2, height - pad.bottom - h, barW, h); });
       const renderLine = (field: "price" | "average", color: string, widthLine: number) => { ctx.beginPath(); points.forEach((point, index) => { const x = xAt(index); const y = yAt(point[field]); if (index) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.strokeStyle = color; ctx.lineWidth = widthLine; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.stroke(); };
-      renderLine("average", "#8b95a5", 1.5); renderLine("price", "#0071e3", 2.3);
+      renderLine("average", chartAverage, 1.5); renderLine("price", chartPrice, 2.3);
       const active = hover ?? points.length - 1; const point = points[active]; const x = xAt(active); const y = yAt(point.price);
-      ctx.setLineDash([4, 4]); ctx.strokeStyle = "#9aa8ba88"; ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, height - pad.bottom); ctx.stroke(); ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = "#0071e3"; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2; ctx.stroke();
-      const tag = compactPrice(point.price); ctx.fillStyle = "#0071e3"; ctx.fillRect(width - pad.right + 4, y - 11, 64, 22); ctx.fillStyle = "#fff"; ctx.font = "700 11px ui-monospace"; ctx.textAlign = "center"; ctx.fillText(tag, width - pad.right + 36, y + 4);
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = color("--chart-crosshair", "#9aa8ba88"); ctx.beginPath(); ctx.moveTo(x, pad.top); ctx.lineTo(x, height - pad.bottom); ctx.stroke(); ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(width - pad.right, y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = chartPrice; ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = chartPointStroke; ctx.lineWidth = 2; ctx.stroke();
+      const tag = compactPrice(point.price); ctx.fillStyle = chartPrice; ctx.fillRect(width - pad.right + 4, y - 11, 64, 22); ctx.fillStyle = "#fff"; ctx.font = "700 11px ui-monospace"; ctx.textAlign = "center"; ctx.fillText(tag, width - pad.right + 36, y + 4);
       const boxW = 166; const boxX = Math.min(width - pad.right - boxW - 8, Math.max(pad.left + 8, x + (x > width / 2 ? -boxW - 14 : 14))); const boxY = pad.top + 8;
-      ctx.fillStyle = "#fffffff5"; ctx.strokeStyle = "#dfe3e8"; ctx.lineWidth = 1; ctx.fillRect(boxX, boxY, boxW, 66); ctx.strokeRect(boxX, boxY, boxW, 66);
-      ctx.textAlign = "left"; ctx.fillStyle = "#667085"; ctx.font = "10px sans-serif"; ctx.fillText(`${point.month} · 거래 ${point.volume}건`, boxX + 11, boxY + 17); ctx.fillStyle = "#1d1d1f"; ctx.font = "700 13px sans-serif"; ctx.fillText(formatPrice(point.price), boxX + 11, boxY + 38); ctx.fillStyle = "#667085"; ctx.font = "10px sans-serif"; ctx.fillText(`3개월 이동평균 ${formatPrice(point.average)}`, boxX + 11, boxY + 56);
+      ctx.fillStyle = chartTooltip; ctx.strokeStyle = chartBorder; ctx.lineWidth = 1; ctx.fillRect(boxX, boxY, boxW, 66); ctx.strokeRect(boxX, boxY, boxW, 66);
+      ctx.textAlign = "left"; ctx.fillStyle = chartMuted; ctx.font = "10px sans-serif"; ctx.fillText(`${point.month} · 거래 ${point.volume}건`, boxX + 11, boxY + 17); ctx.fillStyle = chartText; ctx.font = "700 13px sans-serif"; ctx.fillText(formatPrice(point.price), boxX + 11, boxY + 38); ctx.fillStyle = chartMuted; ctx.font = "10px sans-serif"; ctx.fillText(`3개월 이동평균 ${formatPrice(point.average)}`, boxX + 11, boxY + 56);
     };
     draw(); const observer = new ResizeObserver(draw); observer.observe(host); return () => observer.disconnect();
-  }, [points, hover, unit]);
+  }, [points, hover, theme, unit]);
 
   return <canvas ref={canvasRef} onPointerMove={(event) => { const rect = event.currentTarget.getBoundingClientRect(); const plotWidth = rect.width - 87; const index = Math.round(((event.clientX - rect.left - 15) / plotWidth) * (points.length - 1)); setHover(Math.max(0, Math.min(points.length - 1, index))); }} onPointerLeave={() => setHover(null)} aria-label="월별 실거래 중위가격과 거래량 차트" />;
 }
 
-function NaverPlaceMap({ location, title, places, active }: { location: PropertyLocation; title: string; places: NearbyPlace[]; active: boolean }) {
+function KakaoPlaceMap({ location, title, places, active }: { location: PropertyLocation; title: string; places: NearbyPlace[]; active: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null); const [mapError, setMapError] = useState("");
   useEffect(() => {
-    const host = hostRef.current; const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID; let disposed = false; let map: NaverMapInstance | null = null; const overlays: NaverOverlayInstance[] = [];
+    const host = hostRef.current; const appKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY; let disposed = false; const overlays: KakaoOverlayInstance[] = [];
     if (!host || !active) return;
-    if (shouldUseSafeMapOnVercel()) {
-      const timer = window.setTimeout(() => setMapError("Vercel 도메인의 네이버 지도 인증을 확인하는 동안 안전 지도를 표시합니다."), 0);
-      return () => window.clearTimeout(timer);
-    }
-    const handleAuthFailure = () => {
-      if (disposed) return;
-      safelyDestroyNaverMap(map);
-      host.replaceChildren();
-      setMapError(safeMapMessage(new Error("NAVER_MAP_AUTH_FAILED")));
-    };
-    window.addEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure);
-    if (!clientId) { const timer = window.setTimeout(() => setMapError("네이버 지도 클라이언트 ID가 연결되지 않았습니다."), 0); return () => { window.clearTimeout(timer); window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); }; }
-    loadNaverMap(clientId).then(() => {
-      if (disposed || !window.naver?.maps) return;
-      const maps = window.naver.maps; const center = new maps.LatLng(location.lat, location.lng);
-      map = new maps.Map(host, { center, zoom: 15, minZoom: 11, zoomControl: true, scaleControl: false, mapDataControl: false });
+    if (!appKey) { const timer = window.setTimeout(() => setMapError("카카오 지도 JavaScript 키가 연결되지 않았습니다."), 0); return () => window.clearTimeout(timer); }
+    loadKakaoMap(appKey).then(() => {
+      if (disposed || !window.kakao?.maps) return;
+      const maps = window.kakao.maps; const center = new maps.LatLng(location.lat, location.lng);
+      const map = new maps.Map(host, { center, level: 5 });
+      map.addControl?.(new maps.ZoomControl(), maps.ControlPosition.TOPRIGHT);
       overlays.push(new maps.Circle({ map, center, radius: 1000, strokeColor: "#0071e3", strokeOpacity: .34, strokeWeight: 1, fillColor: "#0071e3", fillOpacity: .035 }));
       overlays.push(new maps.Circle({ map, center, radius: 500, strokeColor: "#0071e3", strokeOpacity: .72, strokeWeight: 2, fillColor: "#0071e3", fillOpacity: .065 }));
-      overlays.push(new maps.Marker({ position: center, map, title, icon: { content: `<div class="nearby-home-pin"><b>${escapeMapHtml(title)}</b><span>선택 단지</span></div>`, anchor: new maps.Point(42, 42) }, zIndex: 100 }));
+      overlays.push(new maps.CustomOverlay({ position: center, map, content: `<div class="nearby-home-pin"><b>${escapeMapHtml(title)}</b><span>선택 단지</span></div>`, xAnchor: .5, yAnchor: 1, zIndex: 100 }));
       const colors = Object.fromEntries(NEARBY_CATEGORIES.map((category) => [category.label, category.color]));
-      places.slice(0, 28).forEach((place) => { const position = new maps.LatLng(place.lat, place.lng); overlays.push(new maps.Marker({ position, map, title: `${place.subCategory} · ${place.name} · ${place.distance}m`, icon: { content: `<div class="nearby-place-pin" style="--pin:${colors[place.category] || "#526173"}"><i></i><b>${escapeMapHtml(place.subCategory || place.category)} · ${escapeMapHtml(place.name)}</b><span>${place.distance}m</span></div>`, anchor: new maps.Point(12, 12) }, zIndex: Math.max(10, 70 - Math.round(place.distance / 30)) })); });
+      places.slice(0, 28).forEach((place) => { const position = new maps.LatLng(place.lat, place.lng); overlays.push(new maps.CustomOverlay({ position, map, content: `<div class="nearby-place-pin" title="${escapeMapHtml(`${place.subCategory} · ${place.name} · ${place.distance}m`)}" style="--pin:${colors[place.category] || "#526173"}"><i></i><b>${escapeMapHtml(place.subCategory || place.category)} · ${escapeMapHtml(place.name)}</b><span>${place.distance}m</span></div>`, xAnchor: .16, yAnchor: .5, zIndex: Math.max(10, 70 - Math.round(place.distance / 30)) })); });
       setMapError("");
     }).catch((error) => { if (!disposed) setMapError(safeMapMessage(error)); });
-    return () => { disposed = true; window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); overlays.forEach(safelyRemoveNaverOverlay); safelyDestroyNaverMap(map); };
+    return () => { disposed = true; overlays.forEach(safelyRemoveKakaoOverlay); host.replaceChildren(); };
   }, [active, location.lat, location.lng, places, title]);
-  return <div className="naver-map-frame">{mapError ? <MapFallback lat={location.lat} lng={location.lng} title={title} message={mapError} /> : <div ref={hostRef} className="naver-map-canvas" role="img" aria-label={`${title}와 주변 생활시설 네이버 지도`} />}</div>;
+  return <div className="naver-map-frame">{mapError ? <MapFallback lat={location.lat} lng={location.lng} title={title} message={mapError} /> : <div ref={hostRef} className="naver-map-canvas" role="img" aria-label={`${title}와 주변 생활시설 카카오 지도`} />}</div>;
 }
 
 function escapeMapHtml(value: string) {
@@ -400,6 +389,27 @@ function geoJsonExtent(data: GeoJsonFeatureCollection) {
   return Number.isFinite(minLng) ? { minLng, minLat, maxLng, maxLat } : null;
 }
 
+function nearbyDongContext(data: GeoJsonFeatureCollection, selectedBoundaryDong: string, selectedDong: string) {
+  const selectedFeatures = data.features.filter((feature) => {
+    const name = String(feature.properties.name || "");
+    return selectedBoundaryDong ? name === selectedBoundaryDong : legalDongName(name) === selectedDong;
+  });
+  const targets = selectedFeatures.length ? selectedFeatures : data.features.filter((feature) => legalDongName(String(feature.properties.name || "")) === selectedDong);
+  const targetExtent = geoJsonExtent({ type: "FeatureCollection", features: targets });
+  if (!targetExtent) return { boundaryDongs: [] as string[], legalDongs: [] as string[] };
+  const lngPad = Math.max((targetExtent.maxLng - targetExtent.minLng) * .72, .006);
+  const latPad = Math.max((targetExtent.maxLat - targetExtent.minLat) * .72, .005);
+  const expanded = { minLng: targetExtent.minLng - lngPad, minLat: targetExtent.minLat - latPad, maxLng: targetExtent.maxLng + lngPad, maxLat: targetExtent.maxLat + latPad };
+  const selectedNames = new Set(targets.map((feature) => String(feature.properties.name || "")));
+  const boundaryDongs = data.features.filter((feature) => {
+    const extent = geoJsonExtent({ type: "FeatureCollection", features: [feature] });
+    if (!extent) return false;
+    return extent.maxLng >= expanded.minLng && extent.minLng <= expanded.maxLng && extent.maxLat >= expanded.minLat && extent.minLat <= expanded.maxLat;
+  }).map((feature) => String(feature.properties.name || "")).filter((name) => name && !selectedNames.has(name));
+  const legalDongs = [...new Set(boundaryDongs.map(legalDongName).filter((name) => name && name !== selectedDong))];
+  return { boundaryDongs, legalDongs };
+}
+
 type AdministrativeFocus = "national" | "sido" | "district";
 type ProjectedBoundary = { code: string; name: string; path: string; centerX: number; centerY: number; width: number; height: number };
 const NATIONAL_LABEL_OFFSETS: Record<string, [number, number]> = {
@@ -411,7 +421,7 @@ const SIDO_MAP_LABELS: Record<string, string> = {
   "강원특별자치도": "강원", "충청북도": "충북", "충청남도": "충남", "전남광주통합특별시": "전남·광주", "전북특별자치도": "전북", "경상북도": "경북", "경상남도": "경남", "제주특별자치도": "제주",
 };
 const NATIONAL_PRIMARY_LABELS = new Set(["경기도", "강원특별자치도", "충청남도", "전북특별자치도", "전남광주통합특별시", "경상북도", "경상남도", "제주특별자치도"]);
-const ROAD_MAP_AVAILABLE = Boolean(process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID);
+const ROAD_MAP_AVAILABLE = Boolean(process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY);
 
 function compactAdministrativeLabel(name: string, focus: AdministrativeFocus) {
   if (focus === "national") return SIDO_MAP_LABELS[name] || name;
@@ -582,12 +592,12 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
         </g>;
       })}</g>
     </svg> : <div className="administrative-map-loading"><i />행정경계를 조립하고 있습니다.</div>}
-    <div className="administrative-map-foot"><span><i />선택 지역</span><b>{focus === "national" ? selectedSido : focus === "sido" ? activeRegion.sigungu : selectedBoundaryDong || "동을 선택하세요"}</b><small>{focus === "district" ? selectedBoundaryDong ? `${formatDongMetric(dongStats[legalDongName(selectedBoundaryDong)], dongMetric)} · 선택한 뒤 건물 지도를 열 수 있습니다.` : "경계를 누르면 지역명과 실거래 요약을 먼저 확인합니다." : "경계를 누르면 한 단계씩 확대됩니다."}</small>{focus === "district" && selectedBoundaryDong && <button type="button" className="administrative-map-open" disabled={!ROAD_MAP_AVAILABLE} onClick={onOpenBuildings}>{ROAD_MAP_AVAILABLE ? "건물 지도 보기" : "도로 지도 연결 전"}</button>}</div>
+    <div className="administrative-map-foot"><span><i />선택 지역</span><b>{focus === "national" ? selectedSido : focus === "sido" ? activeRegion.sigungu : selectedBoundaryDong || "동을 선택하세요"}</b><small>{focus === "district" ? selectedBoundaryDong ? `${formatDongMetric(dongStats[legalDongName(selectedBoundaryDong)], dongMetric)} · 선택한 뒤 건물 지도를 열 수 있습니다.` : "경계를 누르면 지역명과 실거래 요약을 먼저 확인합니다." : "경계를 누르면 한 단계씩 확대됩니다."}</small>{focus === "district" && selectedBoundaryDong && <button type="button" className="administrative-map-open" disabled={!ROAD_MAP_AVAILABLE} onClick={onOpenBuildings}>{ROAD_MAP_AVAILABLE ? "건물 지도 보기" : "카카오 지도 키 연결 전"}</button>}</div>
     {boundaryError && <div className="administrative-map-error" role="status"><b>행정경계를 불러오지 못했습니다.</b><span>{boundaryError}</span><button type="button" onClick={() => setBoundaryRetry((value) => value + 1)}>다시 불러오기</button></div>}
   </div>;
 }
 
-function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, dongStats, dongMetric, onDongMetricChange, buildingLocations, buildingsLoading, buildingsError, propertyLocation, propertyName, onSelectSido, onSelectRegion, onSelectDong, onOpenBuildings, onSelectProperty }: {
+function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, nearbyBoundaryDongs, nearbyLegalDongs, dongStats, dongMetric, onDongMetricChange, buildingLocations, buildingsLoading, buildingsError, propertyLocation, propertyName, onSelectSido, onSelectRegion, onSelectDong, onOpenBuildings, onSelectProperty }: {
   markets: OverviewMarket[];
   focus: MapFocus;
   active: boolean;
@@ -596,6 +606,8 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   activeRegion: Region;
   selectedDong: string;
   selectedBoundaryDong: string;
+  nearbyBoundaryDongs: string[];
+  nearbyLegalDongs: string[];
   dongStats: Record<string, DongMarketStat>;
   dongMetric: DongMetric;
   onDongMetricChange: (metric: DongMetric) => void;
@@ -613,32 +625,22 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   const hostRef = useRef<HTMLDivElement>(null);
   const [mapError, setMapError] = useState("");
   const stageTitle = focus === "national" ? "대한민국 16개 시·도" : focus === "sido" ? selectedSido : focus === "detail" ? propertyName || "선택 단지" : focus === "buildings" ? `${activeRegion.sido} ${activeRegion.sigungu} · ${selectedDong === "all" ? legalDongName(selectedBoundaryDong) : selectedDong}` : `${activeRegion.sido} ${activeRegion.sigungu}${selectedBoundaryDong ? ` · ${selectedBoundaryDong}` : ""}`;
-  const stageHint = focus === "national" ? "시·도 경계를 눌러 다음 단계로 들어가세요." : focus === "sido" ? "시·군·구 경계를 눌러 읍·면·동 지도로 확대하세요." : focus === "detail" ? "선택한 단지의 검증된 실제 주소 좌표입니다." : focus === "buildings" ? buildingsLoading ? "선택한 동의 실제 거래 건물 좌표를 확인하고 있습니다." : buildingsError ? buildingsError : `실거래가 있는 건물 ${buildingLocations.length}곳을 표시했습니다. 핀을 누르면 단지를 선택합니다.` : selectedBoundaryDong ? `${legalDongName(selectedBoundaryDong)} 실거래 조건과 연동했습니다.` : "읍·면·동 경계를 누르면 실거래 건물 지도로 확대됩니다.";
+  const selectedLocationCount = buildingLocations.filter((building) => building.scope === "selected").length;
+  const nearbyLocationCount = buildingLocations.length - selectedLocationCount;
+  const stageHint = focus === "national" ? "시·도 경계를 눌러 다음 단계로 들어가세요." : focus === "sido" ? "시·군·구 경계를 눌러 읍·면·동 지도로 확대하세요." : focus === "detail" ? "선택한 단지의 검증된 실제 주소 좌표입니다." : focus === "buildings" ? buildingsLoading ? "선택한 동과 인접 동의 최근 실거래 건물 좌표를 확인하고 있습니다." : buildingsError ? buildingsError : `${selectedDong} ${selectedLocationCount}곳 · 인접 ${nearbyLegalDongs.length}개 동 ${nearbyLocationCount}곳을 함께 표시합니다.` : selectedBoundaryDong ? `${legalDongName(selectedBoundaryDong)} 실거래 조건과 연동했습니다.` : "읍·면·동 경계를 누르면 실거래 건물 지도로 확대됩니다.";
   const fallbackLocation = propertyLocation || buildingLocations[0] || SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
 
   useEffect(() => {
     const host = hostRef.current;
-    const clientId = process.env.NEXT_PUBLIC_NAVER_MAP_CLIENT_ID;
+    const appKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY;
     const controller = new AbortController();
     let disposed = false;
-    let map: NaverMapInstance | null = null;
-    const markers: NaverMarkerInstance[] = [];
-    const listeners: NaverEventListener[] = [];
+    const overlays: KakaoOverlayInstance[] = [];
+    const listeners: KakaoEventListener[] = [];
     if (!host || !active || (focus !== "buildings" && focus !== "detail")) return;
-    if (shouldUseSafeMapOnVercel()) {
-      const timer = window.setTimeout(() => setMapError("Vercel 도메인의 네이버 지도 인증을 확인하는 동안 안전 지도를 표시합니다."), 0);
+    if (!appKey) {
+      const timer = window.setTimeout(() => setMapError("카카오 지도 JavaScript 키가 연결되지 않았습니다."), 0);
       return () => window.clearTimeout(timer);
-    }
-    const handleAuthFailure = () => {
-      if (disposed) return;
-      safelyDestroyNaverMap(map);
-      host.replaceChildren();
-      setMapError(safeMapMessage(new Error("NAVER_MAP_AUTH_FAILED")));
-    };
-    window.addEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure);
-    if (!clientId) {
-      const timer = window.setTimeout(() => setMapError("네이버 지도 클라이언트 ID가 연결되지 않았습니다."), 0);
-      return () => { window.clearTimeout(timer); window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); };
     }
 
     const readGeoJson = async (url: string) => {
@@ -647,53 +649,61 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       return response.json() as Promise<GeoJsonFeatureCollection>;
     };
 
-    loadNaverMap(clientId).then(async () => {
-      if (disposed || !window.naver?.maps) return;
-      const maps = window.naver.maps;
+    loadKakaoMap(appKey).then(async () => {
+      if (disposed || !window.kakao?.maps) return;
+      const maps = window.kakao.maps;
       const province = SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
       const initial = focus === "detail" && propertyLocation ? { lat: propertyLocation.lat, lng: propertyLocation.lng, zoom: 17 } : province;
-      map = new maps.Map(host, { center: new maps.LatLng(initial.lat, initial.lng), zoom: initial.zoom, minZoom: 6, maxZoom: 20, zoomControl: true, zoomControlOptions: { position: maps.Position.TOP_RIGHT }, scaleControl: true, mapDataControl: false, logoControlOptions: { position: maps.Position.BOTTOM_LEFT } });
+      const map = new maps.Map(host, { center: new maps.LatLng(initial.lat, initial.lng), level: kakaoLevelForZoom(initial.zoom) });
+      map.addControl?.(new maps.ZoomControl(), maps.ControlPosition.TOPRIGHT);
 
-      const addMarkerListener = (marker: NaverMarkerInstance, listener: () => void) => {
-        listeners.push(maps.Event.addListener(marker, "click", listener));
+      const addListener = (target: unknown, eventName: string, listener: (...args: unknown[]) => void) => {
+        maps.event.addListener(target, eventName, listener); listeners.push({ target, eventName, listener });
       };
-      const fitCollection = (data: GeoJsonFeatureCollection, zoomOut = 0) => {
-        const extent = geoJsonExtent(data); if (!extent || !map) return;
-        const bounds = new maps.LatLngBounds(new maps.LatLng(extent.minLat, extent.minLng), new maps.LatLng(extent.maxLat, extent.maxLng));
-        map.fitBounds?.(bounds, { top: 76, right: 34, bottom: 34, left: 34 });
-        if (zoomOut) window.setTimeout(() => { if (!disposed && map?.getZoom && map.setZoom) map.setZoom(Math.max(6, map.getZoom() - zoomOut)); }, 80);
+      const fitCollection = (data: GeoJsonFeatureCollection) => {
+        const extent = geoJsonExtent(data); if (!extent) return;
+        const bounds = new maps.LatLngBounds();
+        bounds.extend(new maps.LatLng(extent.minLat, extent.minLng)); bounds.extend(new maps.LatLng(extent.maxLat, extent.maxLng));
+        map.setBounds(bounds, 76, 34, 34, 34);
       };
-      if (focus === "detail" && propertyLocation && map) {
+      if (focus === "detail" && propertyLocation) {
         const position = new maps.LatLng(propertyLocation.lat, propertyLocation.lng);
-        markers.push(new maps.Marker({ position, map, title: propertyName, icon: { content: `<div class="naver-property-pin"><i></i><span>${escapeMapHtml(propertyName || "선택 단지")}</span></div>`, anchor: new maps.Point(17, 38) } }));
+        overlays.push(new maps.CustomOverlay({ position, map, content: `<div class="naver-property-pin" title="${escapeMapHtml(propertyName || "선택 단지")}"><i></i><span>${escapeMapHtml(propertyName || "선택 단지")}</span></div>`, xAnchor: .5, yAnchor: 1, zIndex: 100 }));
         setMapError("");
         return;
       }
 
-      if (focus === "buildings" && map) {
+      if (focus === "buildings") {
         const dongs = await readGeoJson(`/data/boundaries/emd/${activeRegion.code}.json`);
-        if (disposed || !map) return;
-        const dongFeatures = map.data.addGeoJson(dongs);
+        if (disposed) return;
         const targetDong = selectedBoundaryDong || selectedDong;
-        map.data.setStyle((feature) => {
-          const name = String(feature.getProperty("name") || "");
-          const selected = name === targetDong || legalDongName(name) === selectedDong;
-          return { fillColor: selected ? "#0071e3" : "#dbeaf8", fillOpacity: selected ? 0.24 : 0.05, strokeColor: selected ? "#0071e3" : "#9eb5ca", strokeWeight: selected ? 2.6 : .8, strokeOpacity: selected ? .95 : .45, clickable: true };
+        const nearbyBoundarySet = new Set(nearbyBoundaryDongs);
+        dongs.features.forEach((feature) => {
+          const name = String(feature.properties.name || "");
+          const selected = selectedBoundaryDong ? name === targetDong : legalDongName(name) === selectedDong;
+          const nearby = nearbyBoundarySet.has(name);
+          const geometryType = String(feature.geometry.type || "");
+          const rawCoordinates = feature.geometry.coordinates;
+          const polygonCoordinates = geometryType === "Polygon" ? [rawCoordinates] : geometryType === "MultiPolygon" && Array.isArray(rawCoordinates) ? rawCoordinates : [];
+          polygonCoordinates.forEach((polygonValue) => {
+            if (!Array.isArray(polygonValue)) return;
+            const path = polygonValue.map((ringValue) => Array.isArray(ringValue) ? ringValue.flatMap((coordinate) => Array.isArray(coordinate) && typeof coordinate[0] === "number" && typeof coordinate[1] === "number" ? [new maps.LatLng(coordinate[1], coordinate[0])] : []) : []).filter((ring) => ring.length >= 3);
+            if (!path.length) return;
+            const polygon = new maps.Polygon({ map, path, clickable: true, fillColor: selected ? "#0068d8" : nearby ? "#8fc6ef" : "#dbe5ed", fillOpacity: selected ? .27 : nearby ? .13 : .025, strokeColor: selected ? "#0054b1" : nearby ? "#4389bb" : "#aebbc7", strokeWeight: selected ? 3 : nearby ? 1.5 : .7, strokeOpacity: selected ? 1 : nearby ? .8 : .28, strokeStyle: "solid", zIndex: selected ? 4 : nearby ? 3 : 1 });
+            overlays.push(polygon); addListener(polygon, "click", () => { if (name) onSelectDong(name); });
+          });
         });
-        const targetFeature = dongFeatures.find((feature) => { const name = String(feature.getProperty("name") || ""); return name === targetDong || legalDongName(name) === selectedDong; });
-        if (targetFeature?.getBounds?.()) map.fitBounds?.(targetFeature.getBounds(), { top: 88, right: 46, bottom: 46, left: 46 });
+        const visibleDongs = dongs.features.filter((feature) => {
+          const name = String(feature.properties.name || "");
+          const selected = selectedBoundaryDong ? name === targetDong : legalDongName(name) === selectedDong;
+          return selected || nearbyBoundarySet.has(name);
+        });
+        if (visibleDongs.length) fitCollection({ type: "FeatureCollection", features: visibleDongs });
         else fitCollection(dongs);
         buildingLocations.forEach((building) => {
-          const typeMeta = PROPERTY_MAP_META[building.propertyType] || PROPERTY_MAP_META[propertyType];
-          const marker = new maps.Marker({
-            position: new maps.LatLng(building.lat, building.lng),
-            map,
-            title: `${building.name} · ${building.count}건 · ${formatPrice(building.lastAmount)}`,
-            icon: { content: `<button class="naver-building-pin kind-${building.propertyType}" type="button" aria-label="${escapeMapHtml(building.name)} ${escapeMapHtml(formatPrice(building.lastAmount))}"><strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><span>${escapeMapHtml(typeMeta.short)} · ${building.count}건</span></button>`, anchor: new maps.Point(18, 38) },
-            zIndex: 40 + Math.min(building.count, 50),
-          });
-          markers.push(marker);
-          addMarkerListener(marker, () => onSelectProperty(building.key));
+          const button = document.createElement("button");
+          button.type = "button"; button.className = `naver-building-pin kind-${building.propertyType} scope-${building.scope}`; button.setAttribute("aria-label", `${building.dong} ${building.name} ${formatPrice(building.lastAmount)}`); button.innerHTML = `<strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><span>${escapeMapHtml(building.scope === "selected" ? selectedDong : building.dong)} · ${building.count}건</span>`; button.addEventListener("click", () => onSelectProperty(building.key));
+          overlays.push(new maps.CustomOverlay({ position: new maps.LatLng(building.lat, building.lng), map, content: button, xAnchor: .18, yAnchor: 1, zIndex: (building.scope === "selected" ? 90 : 40) + Math.min(building.count, 50) }));
         });
         setMapError("");
         return;
@@ -703,22 +713,23 @@ function NaverMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     }).catch((error) => { if (!disposed && (!(error instanceof Error) || error.name !== "AbortError")) setMapError(safeMapMessage(error)); });
 
     return () => {
-      disposed = true; controller.abort(); window.removeEventListener("jipgaps:naver-map-auth-failure", handleAuthFailure); listeners.forEach(safelyRemoveNaverListener); markers.forEach(safelyRemoveNaverOverlay); safelyDestroyNaverMap(map);
+      disposed = true; controller.abort(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); host.replaceChildren();
     };
-  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, focus, markets, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyLocation, propertyName, propertyType, selectedBoundaryDong, selectedDong, selectedSido]);
+  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, focus, markets, nearbyBoundaryDongs, nearbyLegalDongs, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyLocation, propertyName, propertyType, selectedBoundaryDong, selectedDong, selectedSido]);
 
   if (focus === "national" || focus === "sido" || focus === "district") return <AdministrativeMarketMap key={`${focus}-${selectedSido}-${activeRegion.code}`} focus={focus} active={active} markets={markets} selectedSido={selectedSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongStats={dongStats} dongMetric={dongMetric} onDongMetricChange={onDongMetricChange} onSelectSido={onSelectSido} onSelectRegion={onSelectRegion} onSelectDong={onSelectDong} onOpenBuildings={onOpenBuildings} />;
 
   return <div className="naver-market-map">
-    {mapError ? <MapFallback lat={fallbackLocation.lat} lng={fallbackLocation.lng} title={stageTitle} message={mapError} /> : <div ref={hostRef} className="naver-market-canvas" aria-label={`${stageTitle} 네이버 지도`} />}
+    {mapError ? <MapFallback lat={fallbackLocation.lat} lng={fallbackLocation.lng} title={stageTitle} message={mapError} /> : <div ref={hostRef} className="naver-market-canvas" aria-label={`${stageTitle} 카카오 지도`} />}
     <KoreaFocusLocator active={active} selectedSido={selectedSido} />
     <div className="map-stage-card"><span>{focus === "buildings" ? "BUILDINGS" : "PROPERTY"}</span><b>{stageTitle}</b><small>{stageHint}</small></div>
-    {focus === "buildings" && <div className={`building-map-legend kind-${propertyType}`}><i /><span>현재 표시</span><b>{PROPERTY_MAP_META[propertyType].label}</b><small>가격을 누르면 단지 선택</small></div>}
+    {focus === "buildings" && <div className={`building-map-legend kind-${propertyType}`}><i /><span>현재 표시</span><b>{PROPERTY_MAP_META[propertyType].label}</b><small>진한 마커는 {selectedDong} · 연한 마커는 주변 동</small></div>}
   </div>;
 }
 
 export default function Home() {
   const navRef = useRef<HTMLElement>(null);
+  const themeInteractedRef = useRef(false);
   const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState("");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
@@ -728,7 +739,8 @@ export default function Home() {
   const [buildingSort, setBuildingSort] = useState<"volume" | "price" | "rise" | "fall">("volume"); const [minVolume, setMinVolume] = useState(0); const [propertyLimit, setPropertyLimit] = useState(30); const [marketSort, setMarketSort] = useState<"volume" | "price" | "rise" | "fall">("volume");
   const [policyItems, setPolicyItems] = useState<readonly PolicyItem[]>(POLICIES); const [policyUpdated, setPolicyUpdated] = useState("");
   const [activeSection, setActiveSection] = useState("home"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
-  const [selectedMapSido, setSelectedMapSido] = useState("서울특별시"); const [mapFocus, setMapFocus] = useState<MapFocus>("district"); const [selectedBoundaryDong, setSelectedBoundaryDong] = useState(""); const [boundaryDongOptions, setBoundaryDongOptions] = useState<string[]>([]); const [mapPickerDong, setMapPickerDong] = useState(""); const [dongMetric, setDongMetric] = useState<DongMetric>("price");
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system"); const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
+  const [selectedMapSido, setSelectedMapSido] = useState("서울특별시"); const [mapFocus, setMapFocus] = useState<MapFocus>("district"); const [selectedBoundaryDong, setSelectedBoundaryDong] = useState(""); const [boundaryDongOptions, setBoundaryDongOptions] = useState<string[]>([]); const [nearbyBoundaryDongs, setNearbyBoundaryDongs] = useState<string[]>([]); const [nearbyLegalDongs, setNearbyLegalDongs] = useState<string[]>([]); const [mapPickerDong, setMapPickerDong] = useState(""); const [dongMetric, setDongMetric] = useState<DongMetric>("price");
   const [savedHomes, setSavedHomes] = useState<SavedHome[]>([]);
   const [fieldGroup, setFieldGroup] = useState(FIELD_GROUPS[0]); const [fieldFeatureId, setFieldFeatureId] = useState("region"); const [timeSlotIndex, setTimeSlotIndex] = useState(3); const [noiseSources, setNoiseSources] = useState(() => NOISE_SOURCES.map((source) => source.id));
   const [commuteDestination, setCommuteDestination] = useState(""); const [lifestyleKeyword, setLifestyleKeyword] = useState("마트");
@@ -739,8 +751,25 @@ export default function Home() {
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]); const [nearbyLoading, setNearbyLoading] = useState(false); const [nearbyError, setNearbyError] = useState(""); const [nearbyCategory, setNearbyCategory] = useState("전체"); const [nearbySubtype, setNearbySubtype] = useState("전체");
   const [buildingLocations, setBuildingLocations] = useState<PropertyMapLocation[]>([]); const [buildingsLoading, setBuildingsLoading] = useState(false); const [buildingsError, setBuildingsError] = useState("");
   const activeRegion = REGIONS.find((item) => item.code === regionCode) || REGIONS[0];
+  const chooseThemePreference = (next: ThemePreference) => { themeInteractedRef.current = true; try { window.localStorage.setItem("jipgaps:theme", next); } catch { /* device storage is optional */ } setThemePreference(next); };
 
   useEffect(() => { const timer = window.setTimeout(() => { try { const stored = window.localStorage.getItem("jipgaps:saved-homes"); if (stored) setSavedHomes(JSON.parse(stored)); const draft = window.localStorage.getItem("jipgaps:study-draft"); if (draft) { const parsed = JSON.parse(draft); setStudyTitle(parsed.title || ""); setStudyBody(parsed.body || ""); } } catch { /* device storage is optional */ } }, 0); return () => window.clearTimeout(timer); }, []);
+  useEffect(() => { const timer = window.setTimeout(() => { try { const stored = window.localStorage.getItem("jipgaps:theme"); if (stored === "light" || stored === "dark" || stored === "system") setThemePreference(stored); } catch { /* device storage is optional */ } }, 0); return () => window.clearTimeout(timer); }, []);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      const bootstrapped = document.documentElement.dataset.themePreference;
+      if (!themeInteractedRef.current && themePreference === "system" && (bootstrapped === "light" || bootstrapped === "dark")) return;
+      const next: ResolvedTheme = themePreference === "system" ? media.matches ? "dark" : "light" : themePreference;
+      document.documentElement.dataset.theme = next;
+      document.documentElement.dataset.themePreference = themePreference;
+      document.documentElement.style.colorScheme = next;
+      setResolvedTheme(next);
+    };
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [themePreference]);
 
   useEffect(() => { const syncHash = () => { const next = window.location.hash.slice(1); if (NAV_ITEMS.some((item) => item.id === next)) { setActiveSection(next); if (next === "field") { const requestedId = new URLSearchParams(window.location.search).get("feature"); const requestedFeature = FIELD_FEATURES.find((feature) => feature.id === requestedId); if (requestedFeature) { setFieldGroup(requestedFeature.group); setFieldFeatureId(requestedFeature.id); } } window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }))); } }; syncHash(); window.addEventListener("hashchange", syncHash); return () => window.removeEventListener("hashchange", syncHash); }, []);
 
@@ -859,6 +888,19 @@ export default function Home() {
     fetch(`/data/boundaries/emd/${activeRegion.code}.json`, { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject(new Error("동 경계를 불러오지 못했습니다."))).then((data: GeoJsonFeatureCollection) => setBoundaryDongOptions(data.features.map((feature) => String(feature.properties.name || "")).filter(Boolean))).catch((error) => { if (error instanceof Error && error.name !== "AbortError") setBoundaryDongOptions([]); });
     return () => controller.abort();
   }, [activeRegion.code]);
+  useEffect(() => {
+    if (selectedDong === "all") return;
+    const controller = new AbortController();
+    fetch(`/data/boundaries/emd/${activeRegion.code}.json`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("주변 동 경계를 불러오지 못했습니다.")))
+      .then((data: GeoJsonFeatureCollection) => {
+        const context = nearbyDongContext(data, selectedBoundaryDong, selectedDong);
+        setNearbyBoundaryDongs(context.boundaryDongs);
+        setNearbyLegalDongs(context.legalDongs);
+      })
+      .catch((error) => { if (error instanceof Error && error.name !== "AbortError") { setNearbyBoundaryDongs([]); setNearbyLegalDongs([]); } });
+    return () => controller.abort();
+  }, [activeRegion.code, selectedBoundaryDong, selectedDong]);
   const mapDongChoices = boundaryDongOptions.length ? boundaryDongOptions : dongOptions;
   const mapDongStats = useMemo(() => {
     const groups = new Map<string, Trade[]>();
@@ -870,7 +912,11 @@ export default function Home() {
     });
     return stats;
   }, [trades, latestQuarterMonths]);
-  const buildingCandidates = useMemo(() => properties.filter((property) => property.dong === selectedDong).slice(0, 30), [properties, selectedDong]);
+  const buildingCandidates = useMemo(() => {
+    const selected = properties.filter((property) => property.dong === selectedDong).sort((a, b) => b.count - a.count || b.lastAmount - a.lastAmount);
+    const nearby = properties.filter((property) => property.dong !== selectedDong && nearbyLegalDongs.includes(property.dong)).sort((a, b) => b.count - a.count || b.lastAmount - a.lastAmount);
+    return [...selected.slice(0, 18), ...nearby.slice(0, 12)].slice(0, 30);
+  }, [nearbyLegalDongs, properties, selectedDong]);
   useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
@@ -889,7 +935,11 @@ export default function Home() {
         }),
         signal: controller.signal,
       }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "건물 위치를 불러오지 못했습니다."); return data; })
-        .then((data) => { setBuildingLocations(data.locations || []); if (!data.locations?.length) setBuildingsError("선택한 동의 거래 건물 주소를 지도 좌표와 연결하지 못했습니다."); })
+        .then((data) => {
+          const locations = (data.locations || []).map((location: Omit<PropertyMapLocation, "scope">) => ({ ...location, scope: location.dong === selectedDong ? "selected" as const : "nearby" as const }));
+          setBuildingLocations(locations);
+          if (!locations.length) setBuildingsError("선택한 동과 주변 동의 거래 건물 주소를 지도 좌표와 연결하지 못했습니다.");
+        })
         .catch((reason) => { if (reason.name !== "AbortError") { setBuildingLocations([]); setBuildingsError(reason.message); } })
         .finally(() => { if (!controller.signal.aborted) setBuildingsLoading(false); });
     }, 0);
@@ -907,8 +957,8 @@ export default function Home() {
   const fieldGroupFeatures = FIELD_FEATURES.filter((feature) => feature.group === fieldGroup);
   const activeTimeSlot = TIME_SLOTS[timeSlotIndex];
   const fieldMapQuery = `${activeRegion.sido} ${activeRegion.sigungu} ${selectedDong !== "all" ? selectedDong : ""} ${selectedProperty?.name || ""}`.replace(/\s+/g, " ").trim();
-  const fieldMapUrl = `https://map.naver.com/p/search/${encodeURIComponent(fieldMapQuery)}`;
-  const commuteUrl = commuteDestination.trim() ? `https://map.naver.com/p/search/${encodeURIComponent(`${fieldMapQuery} ${commuteDestination.trim()} 길찾기`)}` : "";
+  const fieldMapUrl = `https://map.kakao.com/link/search/${encodeURIComponent(fieldMapQuery)}`;
+  const commuteUrl = commuteDestination.trim() ? `https://map.kakao.com/link/search/${encodeURIComponent(`${fieldMapQuery} ${commuteDestination.trim()} 길찾기`)}` : "";
   const resetPropertySelection = useCallback(() => { setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); setPropertyLocation(null); setPropertyLimit(30); }, []);
   const chooseRegion = useCallback((region: Region, scrollToTop = true) => { setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedMapSido(region.sido); setMapFocus("district"); setSelectedBoundaryDong(""); setMapPickerDong(""); setSelectedDong("all"); resetPropertySelection(); setSubmittedQuery(""); setQuery(""); if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" }); }, [resetPropertySelection]);
   const chooseMapSido = useCallback((sido: string) => {
@@ -935,9 +985,20 @@ export default function Home() {
   const mapLocationDescription = mapFocus === "national" ? "전국 16개 시·도의 최근 3개월 시장 흐름" : mapFocus === "sido" ? `${selectedMapSido} 시·군·구 선택 단계` : `${PROPERTY_TYPES.find((item) => item.key === type)?.label} · 최근 3개월 실거래 기준`;
   const selectedMapMarket = markets.find((market) => market.sido === selectedMapSido);
   const selectedMapDongStat = selectedDong !== "all" ? mapDongStats[legalDongName(selectedBoundaryDong || selectedDong)] : undefined;
+  const mapBuildingRows = useMemo(() => [...buildingLocations].sort((a, b) => Number(b.scope === "selected") - Number(a.scope === "selected") || b.count - a.count || b.lastAmount - a.lastAmount), [buildingLocations]);
+  const selectedMapBuildingCount = mapBuildingRows.filter((building) => building.scope === "selected").length;
+  const nearbyMapBuildingCount = mapBuildingRows.length - selectedMapBuildingCount;
+  const mapBuildingMedian = mapBuildingRows.length ? median(mapBuildingRows.map((building) => building.lastAmount).filter(Boolean)) : 0;
 
   return <main className="terminal-shell" data-view={activeSection}>
-    <header className="topbar"><a href="#home" className="brand" onClick={(event) => { event.preventDefault(); changeView("home"); }}><span>집값</span>의 정석 <em>PRO</em></a><nav ref={navRef}>{NAV_ITEMS.map((item) => <a key={item.id} data-view={item.id} aria-label={item.label} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={(event) => { event.preventDefault(); changeView(item.id); }}>{item.label}</a>)}<i className="nav-indicator" style={{ left: navIndicator.left, width: navIndicator.width }} /></nav><button className="saved-badge" onClick={() => changeView("chart")}>관심 후보 <b>{savedHomes.length}</b></button><div className="live"><i /> 실거래 연동</div></header>
+    <header className="topbar">
+      <a href="#home" className="brand" onClick={(event) => { event.preventDefault(); changeView("home"); }}><span>집값</span>의 정석 <em>PRO</em></a>
+      <nav ref={navRef}>{NAV_ITEMS.map((item) => <a key={item.id} data-view={item.id} aria-label={item.label} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={(event) => { event.preventDefault(); changeView(item.id); }}>{item.label}</a>)}<i className="nav-indicator" style={{ left: navIndicator.left, width: navIndicator.width }} /></nav>
+      <div className="theme-switcher" role="group" aria-label="화면 테마">
+        {THEME_OPTIONS.map((option) => { const Icon = option.icon; return <button type="button" key={option.key} className={themePreference === option.key ? "active" : ""} aria-pressed={themePreference === option.key} title={`${option.label} 모드`} onClick={() => chooseThemePreference(option.key)}><Icon size={14} strokeWidth={1.9} aria-hidden="true" /><span>{option.label}</span></button>; })}
+      </div>
+      <button className="saved-badge" onClick={() => changeView("chart")}>관심 후보 <b>{savedHomes.length}</b></button><div className="live"><i /> 실거래 연동</div>
+    </header>
     <nav className="mobile-primary-nav" aria-label="주요 화면">{NAV_ITEMS.map((item) => <a key={item.id} aria-label={item.label} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={(event) => { event.preventDefault(); changeView(item.id); }}>{item.mobileLabel}</a>)}</nav>
     {activeSection !== "home" && <div className="screen-context"><div><span>{NAV_ITEMS.find((item) => item.id === activeSection)?.label}</span><b>{activeRegion.sido} · {activeRegion.sigungu}{selectedDong !== "all" ? ` · ${selectedDong}` : ""}</b></div><button onClick={() => changeView("home")}>지역·주택 다시 선택</button></div>}
     <section className="command app-view view-home" id="top">
@@ -980,7 +1041,7 @@ export default function Home() {
         <div className="chart-toolbar"><div className="period-switch">{PERIODS.map((item) => <button key={item.value} className={period === item.value ? "active" : ""} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div><div className="view-switch"><select value={area} onChange={(event) => setArea(event.target.value)} aria-label="전용면적 선택"><option value="all">전체 면적</option>{areas.map((value) => <option key={value} value={value}>전용 {value}㎡ ({(value / 3.3058).toFixed(1)}평)</option>)}</select><button className={unit === "price" ? "active" : ""} onClick={() => setUnit("price")}>실거래가</button><button className={unit === "py" ? "active" : ""} onClick={() => setUnit("py")}>평당가</button></div></div>
         <article className="chart-card">
           <div className="chart-legend"><span><i className="price-dot" />월 중위가격</span><span><i className="ma-dot" />3개월 이동평균</span><span><i className="volume-dot" />거래량</span><small>마우스를 움직여 월별 상세 확인</small></div>
-          <div className="canvas-wrap">{loading ? <div className="state"><i /> 실거래 데이터를 불러오는 중입니다</div> : error ? <div className="state error"><b>실거래 데이터를 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : chartPoints.length ? <PriceChart points={chartPoints} unit={unit} /> : <div className="state"><b>선택 조건의 거래가 없습니다</b><span>왼쪽 목록에서 다른 건물을 선택하거나 전체 면적을 선택하세요.</span></div>}</div>
+          <div className="canvas-wrap">{loading ? <div className="state"><i /> 실거래 데이터를 불러오는 중입니다</div> : error ? <div className="state error"><b>실거래 데이터를 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : chartPoints.length ? <PriceChart points={chartPoints} unit={unit} theme={resolvedTheme} /> : <div className="state"><b>선택 조건의 거래가 없습니다</b><span>왼쪽 목록에서 다른 건물을 선택하거나 전체 면적을 선택하세요.</span></div>}</div>
         </article>
         <div className="stat-strip"><article><span>최근 월 중위가</span><strong>{formatPrice(latest)}</strong></article><article><span>기간 최고 / 최저</span><strong>{compactPrice(high)} <em>/</em> {compactPrice(low)}</strong></article><article><span>실거래 건수</span><strong>{filteredTrades.length.toLocaleString()}<em>건</em></strong></article><article><span>시장 신호</span><strong className={!chartChangeComparable ? "" : change >= 0 ? "up" : "down"}>{!chartChangeComparable ? "표본 부족" : change > 2 ? "매수 우위" : change < -2 ? "조정 구간" : "보합 구간"}</strong></article></div>
         <section className="valuation-panel">
@@ -996,14 +1057,14 @@ export default function Home() {
         <section className="facility-panel">
           <header><div><p>NEARBY LIFE MAP</p><h2>{selectedProperty ? `${selectedProperty.name}에서 어떤 생활을 누릴 수 있을까?` : "집 하나를 고르면 주변 생활권이 자동으로 열립니다"}</h2><span>{selectedProperty ? `${placeRegion} ${placePropertyDong} · 7개 생활 영역과 영화관·공연장·학교·병원 등 28개 세부 유형` : "왼쪽 목록에서 집을 선택하면 별도 검색 없이 주변 시설과 거리를 계산합니다."}</span></div>{selectedProperty && <div><b>{nearbyPlaces.length}<small>곳</small></b><span>1km 안 시설</span><em>세부 유형 분석</em></div>}</header>
           {selectedProperty ? <><div className="facility-radar-summary" aria-label="생활권 반경별 편의시설 집계"><div className="radar-totals"><span><b>{nearbyWithin500}</b><small>500m 안</small></span><span><b>{nearbyPlaces.length}</b><small>1km 안</small></span></div><div className="radar-category-counts">{NEARBY_CATEGORIES.map((category) => { const inside500 = nearbyPlaces.filter((place) => place.category === category.label && place.distance <= 500).length; const inside1000 = nearbyPlaces.filter((place) => place.category === category.label).length; const CategoryIcon = category.icon; return <button key={category.label} className={nearbyCategory === category.label ? "active" : ""} aria-pressed={nearbyCategory === category.label} style={{ "--facility-color": category.color } as React.CSSProperties} onClick={() => { setNearbyCategory(category.label); setNearbySubtype("전체"); }}><i><CategoryIcon size={16} strokeWidth={1.9} aria-hidden="true" /></i><span>{category.label}<small>{category.description}</small></span><b>{inside500}<small> / {inside1000}</small></b><em>500m / 1km</em></button>; })}</div></div><div className="facility-layout">
-            <div className="facility-map">{locationLoading ? <div className="facility-state"><i />단지 좌표를 확인하고 있습니다.</div> : propertyLocation ? <><NaverPlaceMap location={propertyLocation} title={selectedProperty.name} places={visibleNearbyPlaces} active={activeSection === "chart"} /><span className="facility-address">{propertyLocation.roadAddress || propertyLocation.jibunAddress || placeAddressQuery}</span><div className="radius-key"><span><i />500m 생활권</span><span><i />1km 생활권</span></div></> : <div className="facility-state error"><b>지도 위치를 표시하지 못했습니다.</b><span>{locationError || "선택 지역과 일치하는 주소 좌표가 없습니다."}</span></div>}</div>
+            <div className="facility-map">{locationLoading ? <div className="facility-state"><i />단지 좌표를 확인하고 있습니다.</div> : propertyLocation ? <><KakaoPlaceMap location={propertyLocation} title={selectedProperty.name} places={visibleNearbyPlaces} active={activeSection === "chart"} /><span className="facility-address">{propertyLocation.roadAddress || propertyLocation.jibunAddress || placeAddressQuery}</span><div className="radius-key"><span><i />500m 생활권</span><span><i />1km 생활권</span></div></> : <div className="facility-state error"><b>지도 위치를 표시하지 못했습니다.</b><span>{locationError || "선택 지역과 일치하는 주소 좌표가 없습니다."}</span></div>}</div>
             <div className="nearby-browser">
               <div className="nearby-tabs">{nearbyCategories.map((category) => { const meta = NEARBY_CATEGORIES.find((item) => item.label === category); return <button key={category} className={nearbyCategory === category ? "active" : ""} aria-pressed={nearbyCategory === category} onClick={() => { setNearbyCategory(category); setNearbySubtype("전체"); }}><FacilityIcon name={category} size={14} /><span>{category}</span><small>{category === "전체" ? nearbyPlaces.length : nearbyPlaces.filter((place) => place.category === category).length}</small>{meta && <em>{meta.description}</em>}</button>; })}</div>
               {activeFacilityCategory && <div className="nearby-subtype-tabs" aria-label={`${activeFacilityCategory.label} 세부 유형`}>{nearbySubtypeOptions.map((subtype) => <button key={subtype} className={nearbySubtype === subtype ? "active" : ""} aria-pressed={nearbySubtype === subtype} onClick={() => setNearbySubtype(subtype)}><FacilityIcon name={subtype === "전체" ? activeFacilityCategory.label : subtype} size={14} /><span>{subtype === "전체" ? `${activeFacilityCategory.label} 전체` : subtype}</span><small>{subtype === "전체" ? nearbyPlaces.filter((place) => place.category === nearbyCategory).length : nearbyPlaces.filter((place) => place.category === nearbyCategory && place.subCategory === subtype).length}</small></button>)}</div>}
               {nearbyLoading ? <div className="nearby-state"><i />1km 안 생활시설을 세부 유형별로 찾고 있습니다.</div> : nearbyError ? <div className="nearby-state error"><b>주변 시설을 불러오지 못했습니다.</b><span>{nearbyError}</span></div> : visibleNearbyPlaces.length ? <div className="nearby-list">{visibleNearbyPlaces.map((place) => { const meta = NEARBY_CATEGORIES.find((item) => item.label === place.category); return <article key={place.id} style={{ "--facility-color": meta?.color || "#526173" } as React.CSSProperties}><i className="nearby-place-icon"><FacilityIcon name={place.subCategory || place.category} size={17} /></i><div><em>{place.subCategory || place.category}</em><b>{place.name}</b><span>{place.category} · {place.distance <= 500 ? "500m 생활권" : "1km 생활권"}</span></div><strong>{place.distance.toLocaleString()}m<small>직선거리</small></strong><p>도보 약 {place.walkingMinutes}분<small>경로 보정 추정</small></p></article>; })}</div> : <div className="nearby-state"><b>{nearbySubtype === "전체" ? "이 범위에서 등록된 시설이 없습니다." : `1km 안에 확인된 ${nearbySubtype}이 없습니다.`}</b><span>0건도 생활권 판단에 필요한 결과입니다. 다른 세부 유형을 함께 비교해보세요.</span></div>}
             </div>
           </div></> : <div className="facility-empty"><span>01</span><b>단지 선택</b><i>→</i><span>02</span><b>정확한 주소 좌표 확인</b><i>→</i><span>03</span><b>주변 생활시설 비교</b></div>}
-          <p className="facility-note">단지 좌표와 배경 지도는 네이버 Maps, 주변 시설은 NAVER API HUB 지역 검색을 사용합니다. 7개 생활 영역을 영화관·공연장·공원·학교·병원·마트 등 28개 유형으로 나눈 결과이며, 거리는 직선거리입니다. 도보 시간은 경로 굴곡을 20% 반영한 참고값으로 실제 길찾기와 다를 수 있습니다.</p>
+          <p className="facility-note">단지 좌표와 배경 지도, 주변 시설은 카카오맵·로컬 API를 사용합니다. 7개 생활 영역을 영화관·공연장·공원·학교·병원·마트 등 28개 유형으로 나눈 결과이며, 거리는 직선거리입니다. 도보 시간은 경로 굴곡을 20% 반영한 참고값으로 실제 길찾기와 다를 수 있습니다.</p>
         </section>
       </div>
     </section>
@@ -1089,10 +1150,26 @@ export default function Home() {
         <label><span>읍·면·동</span><select value={mapDongChoices.includes(mapPickerDong) ? mapPickerDong : ""} disabled={!mapDongChoices.length} onChange={(event) => setMapPickerDong(event.target.value)}><option value="" disabled>{mapDongChoices.length ? "읍·면·동 선택" : "동 목록 불러오는 중"}</option>{mapDongChoices.map((dong) => <option key={dong} value={dong}>{dong} · {formatDongMetric(mapDongStats[legalDongName(dong)], dongMetric)}</option>)}</select></label>
         <button type="button" disabled={!mapPickerDong || !mapDongChoices.includes(mapPickerDong)} onClick={() => chooseMapDong(mapPickerDong)}>{mapPickerDong ? `${mapPickerDong} 선택` : "동을 선택하세요"}</button>
       </div>
-      <div className="map-layout"><NaverMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "map"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} propertyLocation={propertyLocation} propertyName={selectedProperty?.name || ""} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />
-        <aside className="map-ranking" aria-label="선택 지역 요약과 전국 비교"><div className="map-inspector-scope"><span>선택 지역</span><h3>{mapLocationTitle}</h3><p>{mapLocationDescription}</p></div>{selectedMapDongStat?.count ? <div className="map-market-summary"><div><span>동 중위가격</span><strong>{formatPrice(selectedMapDongStat.median)}</strong></div><div><span>동 평당가</span><strong>{compactPrice(selectedMapDongStat.perPy)}/평</strong></div><div><span>최근 거래</span><strong>{selectedMapDongStat.count.toLocaleString()}건</strong></div></div> : selectedMapMarket ? <div className="map-market-summary"><div><span>시·도 중위가격</span><strong>{formatPrice(selectedMapMarket.median)}</strong></div><div><span>직전 3개월 대비</span><strong className={selectedMapMarket.change >= 0 ? "up" : "down"}>{selectedMapMarket.change >= 0 ? "+" : ""}{selectedMapMarket.change.toFixed(2)}%</strong></div><div><span>최근 거래</span><strong>{selectedMapMarket.count.toLocaleString()}건</strong></div></div> : marketError ? <div className="map-summary-loading error"><b>전국 실거래를 불러오지 못했습니다.</b><span>{marketError}</span><button type="button" onClick={() => setMarketRetry((value) => value + 1)}>다시 불러오기</button></div> : <div className="map-summary-loading">선택 지역의 실거래를 집계하고 있습니다.</div>}<div className="map-ranking-head"><div><b>전국 3개월 흐름</b><span>시·도를 선택하면 지도가 함께 이동합니다.</span></div><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">거래량순</option><option value="price">중위가순</option><option value="rise">상승순</option><option value="fall">하락순</option></select></div><div className="ranking-labels"><span>순위</span><span>지역</span><span>중위가격</span><span>3개월</span></div><div className="map-ranking-list">{sortedMarkets.length ? sortedMarkets.map((market, index) => <button key={market.code} className={market.sido === selectedMapSido ? "selected" : ""} aria-pressed={market.sido === selectedMapSido} onClick={() => chooseMapSido(market.sido)}><em>{String(index + 1).padStart(2,"0")}</em><b>{market.sido}<small>{market.count}건</small></b><span>{formatPrice(market.median)}</span><strong className={market.change >= 0 ? "up" : "down"}>{market.change >= 0 ? "+" : ""}{market.change.toFixed(2)}%</strong></button>) : <div className="ranking-loading">{marketError ? "전국 실거래 연결을 다시 확인해주세요." : "16개 대표 권역의 공공데이터를 확인하고 있습니다."}</div>}</div><div className="map-example-links"><span>빠른 예시</span><div><button type="button" onClick={openGangnamMap}>강남구</button><button type="button" onClick={openHaengdangMap}>행당동</button></div></div></aside>
+      <div className="map-layout"><KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "map"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} nearbyBoundaryDongs={nearbyBoundaryDongs} nearbyLegalDongs={nearbyLegalDongs} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} propertyLocation={propertyLocation} propertyName={selectedProperty?.name || ""} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />
+        <aside className="map-ranking" aria-label={mapFocus === "buildings" ? "선택 동과 주변 동의 최근 실거래 건물" : "선택 지역 요약과 전국 비교"}>
+          {mapFocus === "buildings" ? <>
+            <div className="map-inspector-scope"><span>선택 동과 주변 생활권</span><h3>{mapLocationTitle}</h3><p>{nearbyLegalDongs.length ? `${nearbyLegalDongs.slice(0, 4).join(" · ")}${nearbyLegalDongs.length > 4 ? ` 외 ${nearbyLegalDongs.length - 4}곳` : ""}의 거래 건물도 함께 봅니다.` : "선택 동의 최근 실거래 건물을 지도에 표시합니다."}</p></div>
+            <div className="map-market-summary"><div><span>{selectedDong} 건물</span><strong>{selectedMapBuildingCount}곳</strong></div><div><span>주변 동 건물</span><strong>{nearbyMapBuildingCount}곳</strong></div><div><span>표시 건물 중위가</span><strong>{mapBuildingMedian ? formatPrice(mapBuildingMedian) : buildingsLoading ? "확인 중" : buildingsError ? "좌표 확인 불가" : "데이터 없음"}</strong></div></div>
+            <div className="map-ranking-head"><div><b>지도에 표시된 거래 건물</b><span>선택 동을 먼저, 인접 동을 다음에 보여줍니다.</span></div></div>
+            <div className="ranking-labels building-labels"><span>구분</span><span>건물</span><span>최근 거래가</span><span>거래</span></div>
+            <div className="map-ranking-list building-list">{buildingsLoading ? <div className="ranking-loading">선택 동과 주변 동의 건물 좌표를 확인하고 있습니다.</div> : mapBuildingRows.length ? mapBuildingRows.map((building) => <button key={building.key} className={building.scope === "selected" ? "selected" : "nearby"} onClick={() => chooseMapProperty(building.key)}><em>{building.scope === "selected" ? "선택" : "주변"}</em><b>{building.name}<small>{building.dong} · {PROPERTY_MAP_META[building.propertyType].short}</small></b><span>{formatPrice(building.lastAmount)}</span><strong>{building.count}건</strong></button>) : <div className="ranking-loading">{buildingsError || "이 범위에서 지도 좌표가 확인된 거래 건물이 없습니다."}</div>}</div>
+            <div className="map-example-links map-context-foot"><span>지도에서 주변 동 경계를 눌러 바로 이동할 수 있습니다.</span></div>
+          </> : <>
+            <div className="map-inspector-scope"><span>선택 지역</span><h3>{mapLocationTitle}</h3><p>{mapLocationDescription}</p></div>
+            {selectedMapDongStat?.count ? <div className="map-market-summary"><div><span>동 중위가격</span><strong>{formatPrice(selectedMapDongStat.median)}</strong></div><div><span>동 평당가</span><strong>{compactPrice(selectedMapDongStat.perPy)}/평</strong></div><div><span>최근 거래</span><strong>{selectedMapDongStat.count.toLocaleString()}건</strong></div></div> : selectedMapMarket ? <div className="map-market-summary"><div><span>시·도 중위가격</span><strong>{formatPrice(selectedMapMarket.median)}</strong></div><div><span>직전 3개월 대비</span><strong className={selectedMapMarket.change >= 0 ? "up" : "down"}>{selectedMapMarket.change >= 0 ? "+" : ""}{selectedMapMarket.change.toFixed(2)}%</strong></div><div><span>최근 거래</span><strong>{selectedMapMarket.count.toLocaleString()}건</strong></div></div> : marketError ? <div className="map-summary-loading error"><b>전국 실거래를 불러오지 못했습니다.</b><span>{marketError}</span><button type="button" onClick={() => setMarketRetry((value) => value + 1)}>다시 불러오기</button></div> : <div className="map-summary-loading">선택 지역의 실거래를 집계하고 있습니다.</div>}
+            <div className="map-ranking-head"><div><b>전국 3개월 흐름</b><span>시·도를 선택하면 지도가 함께 이동합니다.</span></div><select value={marketSort} onChange={(event) => setMarketSort(event.target.value as typeof marketSort)} aria-label="전국 시장 정렬"><option value="volume">거래량순</option><option value="price">중위가순</option><option value="rise">상승순</option><option value="fall">하락순</option></select></div>
+            <div className="ranking-labels"><span>순위</span><span>지역</span><span>중위가격</span><span>3개월</span></div>
+            <div className="map-ranking-list">{sortedMarkets.length ? sortedMarkets.map((market, index) => <button key={market.code} className={market.sido === selectedMapSido ? "selected" : ""} aria-pressed={market.sido === selectedMapSido} onClick={() => chooseMapSido(market.sido)}><em>{String(index + 1).padStart(2,"0")}</em><b>{market.sido}<small>{market.count}건</small></b><span>{formatPrice(market.median)}</span><strong className={market.change >= 0 ? "up" : "down"}>{market.change >= 0 ? "+" : ""}{market.change.toFixed(2)}%</strong></button>) : <div className="ranking-loading">{marketError ? "전국 실거래 연결을 다시 확인해주세요." : "16개 대표 권역의 공공데이터를 확인하고 있습니다."}</div>}</div>
+            <div className="map-example-links"><span>빠른 예시</span><div><button type="button" onClick={openGangnamMap}>강남구</button><button type="button" onClick={openHaengdangMap}>행당동</button></div></div>
+          </>}
+        </aside>
       </div>
-      <p className="map-note">전국·시도·구·동 탐색은 <a href="https://github.com/vuski/admdongkor" target="_blank" rel="noreferrer">2026-07-01 SGIS 기반 행정구역 경계</a>(CC BY 4.0)를 사용합니다. 동을 선택한 뒤부터 네이버 실제 지도와 국토교통부 실거래 가격을 결합해 건물과 생활권을 평가합니다.</p>
+      <p className="map-note">전국·시도·구·동 탐색은 <a href="https://github.com/vuski/admdongkor" target="_blank" rel="noreferrer">2026-07-01 SGIS 기반 행정구역 경계</a>(CC BY 4.0)를 사용합니다. 동을 선택한 뒤부터 카카오 실제 지도와 국토교통부 실거래 가격을 결합해 건물과 생활권을 평가합니다.</p>
     </section>
 
     <section className="trade-section" id="transactions"><div className="section-title wide"><div><p>RECENT CONTRACTS</p><h2>{displayName} 최근 실거래</h2></div><span>단위: 만원 · 최대 30건 표시</span></div><div className="trade-table"><div className="table-head"><span>계약일</span><span>건물명</span><span>전용면적</span><span>층</span><span>거래금액</span><span>평당가</span></div>{[...filteredTrades].reverse().slice(0, 30).map((trade) => <div className="table-row" key={trade.id}><span>{trade.date.replaceAll("-", ".")}</span><b>{trade.name}</b><span>{trade.area ? `${trade.area.toFixed(1)}㎡` : "-"}</span><span>{trade.floor === null ? "-" : `${trade.floor}층`}</span><strong>{formatPrice(trade.amount)}</strong><span>{trade.area ? `${Math.round(trade.amount / (trade.area / 3.3058)).toLocaleString()}만` : "-"}</span></div>)}</div></section>
