@@ -1,0 +1,77 @@
+/* 집값의 정석 HMI foundations. Values are intentionally product-level, not component-level. */
+:root {
+  --hmi-font-sans: "Apple SD Gothic Neo", Pretendard, "Noto Sans KR", system-ui, sans-serif;
+  --hmi-font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --hmi-type-100: 0.75rem;
+  --hmi-type-200: 0.8125rem;
+  --hmi-type-300: 0.875rem;
+  --hmi-type-400: 1rem;
+  --hmi-type-500: 1.125rem;
+  --hmi-type-600: 1.375rem;
+  --hmi-type-700: 1.75rem;
+  --hmi-type-800: clamp(2rem, 4vw, 3rem);
+  --hmi-leading-tight: 1.25;
+  --hmi-leading-body: 1.6;
+  --hmi-leading-relaxed: 1.75;
+  --hmi-weight-regular: 400;
+  --hmi-weight-medium: 550;
+  --hmi-weight-semibold: 700;
+  --hmi-weight-bold: 800;
+  --hmi-tracking-tight: -0.025em;
+  --hmi-tracking-normal: 0;
+
+  --hmi-space-0: 0;
+  --hmi-space-1: 0.25rem;
+  --hmi-space-2: 0.5rem;
+  --hmi-space-3: 0.75rem;
+  --hmi-space-4: 1rem;
+  --hmi-space-5: 1.25rem;
+  --hmi-space-6: 1.5rem;
+  --hmi-space-8: 2rem;
+  --hmi-space-10: 2.5rem;
+  --hmi-space-12: 3rem;
+  --hmi-space-16: 4rem;
+
+  --hmi-radius-control: 0.625rem;
+  --hmi-radius-surface: 0.875rem;
+  --hmi-radius-inset: 0.75rem;
+  --hmi-radius-round: 999px;
+
+  --hmi-shadow-1: 0 2px 8px rgb(12 28 50 / 7%);
+  --hmi-shadow-2: 0 12px 32px rgb(12 28 50 / 12%);
+  --hmi-shadow-drawer: 0 24px 64px rgb(5 16 31 / 24%);
+
+  --hmi-motion-fast: 120ms;
+  --hmi-motion-base: 180ms;
+  --hmi-motion-slow: 280ms;
+  --hmi-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --hmi-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  --hmi-z-base: 0;
+  --hmi-z-sticky: 20;
+  --hmi-z-overlay: 60;
+  --hmi-z-drawer: 70;
+  --hmi-z-toast: 80;
+
+  --hmi-touch-min: 2.75rem;
+  --hmi-content-max: 84rem;
+  --hmi-reading-max: 72ch;
+
+  --hmi-blue-50: #eaf2ff;
+  --hmi-blue-500: #155bd7;
+  --hmi-blue-600: #0f4fca;
+  --hmi-navy-900: #0c1c32;
+  --hmi-navy-950: #08111e;
+  --hmi-mint-500: #0d9f8a;
+  --hmi-red-500: #c24132;
+  --hmi-amber-500: #a15c00;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --hmi-motion-fast: 0ms;
+    --hmi-motion-base: 0ms;
+    --hmi-motion-slow: 0ms;
+  }
+}

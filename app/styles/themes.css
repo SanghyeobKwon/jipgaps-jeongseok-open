@@ -1,0 +1,69 @@
+:root,
+html[data-theme="light"] {
+  color-scheme: light;
+  --hmi-canvas: #f3f6fa;
+  --hmi-surface: #ffffff;
+  --hmi-surface-subtle: #f7f9fc;
+  --hmi-surface-inset: #eef3f8;
+  --hmi-surface-hover: #f1f6fc;
+  --hmi-surface-selected: var(--hmi-blue-50);
+  --hmi-ink: var(--hmi-navy-900);
+  --hmi-ink-secondary: #526173;
+  --hmi-ink-muted: #617086;
+  --hmi-border: #d9e1eb;
+  --hmi-border-quiet: #e8edf3;
+  --hmi-action: var(--hmi-blue-500);
+  --hmi-action-hover: var(--hmi-blue-600);
+  --hmi-action-ink: #ffffff;
+  --hmi-focus: rgb(21 91 215 / 34%);
+  --hmi-evidence: var(--hmi-mint-500);
+  --hmi-evidence-soft: #e8f7f4;
+  --hmi-danger: var(--hmi-red-500);
+  --hmi-danger-soft: #fff0ed;
+  --hmi-warning: var(--hmi-amber-500);
+  --hmi-warning-soft: #fff6e5;
+  --hmi-scrim: rgb(8 17 30 / 52%);
+  --hmi-selection: #cfe3ff;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --hmi-canvas: #08111e;
+  --hmi-surface: #0d1a2a;
+  --hmi-surface-subtle: #122235;
+  --hmi-surface-inset: #17283b;
+  --hmi-surface-hover: #1b3047;
+  --hmi-surface-selected: #173a60;
+  --hmi-ink: #f2f6fb;
+  --hmi-ink-secondary: #c1ccda;
+  --hmi-ink-muted: #93a3b6;
+  --hmi-border: #25354a;
+  --hmi-border-quiet: #1d2d40;
+  --hmi-action: #67a6ff;
+  --hmi-action-hover: #8bbcff;
+  --hmi-action-ink: #07111d;
+  --hmi-focus: rgb(103 166 255 / 42%);
+  --hmi-evidence: #45c9b2;
+  --hmi-evidence-soft: #123b37;
+  --hmi-danger: #ff8a78;
+  --hmi-danger-soft: #43231f;
+  --hmi-warning: #f2b85b;
+  --hmi-warning-soft: #3e301a;
+  --hmi-scrim: rgb(0 6 13 / 72%);
+  --hmi-selection: #234f80;
+  --hmi-shadow-1: 0 2px 8px rgb(0 0 0 / 22%);
+  --hmi-shadow-2: 0 12px 32px rgb(0 0 0 / 32%);
+  --hmi-shadow-drawer: 0 24px 64px rgb(0 0 0 / 48%);
+}
+
+html.hmi-theme-transition,
+html.hmi-theme-transition * {
+  transition-duration: var(--hmi-motion-base);
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-timing-function: var(--hmi-ease-out);
+}
+
+::selection {
+  background: var(--hmi-selection);
+  color: var(--hmi-ink);
+}
