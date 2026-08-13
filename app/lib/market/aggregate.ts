@@ -7,7 +7,7 @@ import type {
   SampleStatus,
 } from "./types";
 
-const M2_PER_PYEONG = 3.3058;
+const M2_PER_PYEONG = 3.305785;
 
 export function median(values: number[]): number | null {
   const finite = values.filter(Number.isFinite).sort((a, b) => a - b);

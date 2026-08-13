@@ -37,6 +37,10 @@ test("거래 API는 전체 페이지를 수집하고 취소거래와 면적 kind
     assert.ok(payload.trades.every((trade: { cancelled: boolean }) => !trade.cancelled));
     assert.ok(payload.trades.every((trade: { areaMeasurement: { kind: string } }) => trade.areaMeasurement.kind === "exclusive"));
     assert.equal(payload.meta.fetchedPages, 6);
+    // The fixture date is intentionally outside the dynamically requested three-month window.
+    assert.equal(payload.research.status, "empty");
+    assert.equal(Object.keys(payload.research.views).length, 6);
+    assert.ok(payload.research.rows.every((row: { areaKind: string }) => row.areaKind === "exclusive"));
     assert.equal(payload.meta.warnings.filter((warning: string) => warning.includes("취소 신고")).length, 1);
     assert.equal(calls.length, 6);
   });

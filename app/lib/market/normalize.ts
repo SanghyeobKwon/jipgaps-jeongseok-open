@@ -1,7 +1,7 @@
 import type { AreaKind, AreaMeasurement, PropertyType, TradeRecord } from "./types";
 import type { RawMolitFields } from "./molit";
 
-const M2_PER_PYEONG = 3.3058;
+const M2_PER_PYEONG = 3.305785;
 
 function numberValue(value = ""): number | null {
   const normalized = value.replaceAll(",", "").trim();

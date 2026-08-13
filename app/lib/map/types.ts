@@ -14,6 +14,33 @@ export type MapScope = {
   propertyKey?: string;
 };
 
+export type RegionLevel = "sido" | "sigungu" | "emd";
+
+/**
+ * Single source of truth shared by a boundary click, search result and region
+ * controls. Codes are authoritative; names are display values only.
+ */
+export type RegionSelection = {
+  level: RegionLevel;
+  sidoCode: string;
+  sidoName: string;
+  sigunguCode?: string;
+  sigunguName?: string;
+  adminDongCode?: string;
+  adminDongName?: string;
+  legalDongCode?: string;
+  legalDongName?: string;
+  boundaryAdminCode?: string;
+  propertyKey?: string;
+  camera?: { lat: number; lng: number; level: number };
+};
+
+export type RegionNavigationChange = {
+  selection: RegionSelection;
+  cleared: Array<"sigungu" | "dong" | "property" | "area" | "tradePy">;
+  history: "push" | "replace";
+};
+
 export type MapCamera = {
   contextKey: string;
   center: { lat: number; lng: number };

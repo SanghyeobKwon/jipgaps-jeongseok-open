@@ -1,6 +1,7 @@
 import { combineDataState, monthlySeries, rollingQuarter } from "../../lib/market/aggregate.ts";
 import { fetchAllMolitPages, type MolitCollection, UpstreamDataError } from "../../lib/market/molit.ts";
 import { normalizeMolitTrade } from "../../lib/market/normalize.ts";
+import { buildResearchBundle } from "../../lib/market/research.ts";
 import type { PropertySummary, PropertyType, TradeRecord, TradesResponse } from "../../lib/market/types";
 
 export const dynamic = "force-dynamic";
@@ -148,6 +149,14 @@ export async function GET(request: Request) {
         monthly: monthlySeries(trades, from, to, 2, partialMonths),
         rollingQuarter: rollingQuarter(trades, to, 3, partialMonths),
       },
+      research: buildResearchBundle(trades, {
+        from,
+        to,
+        anchorMonth: to,
+        minimumSample: 3,
+        partialMonths,
+        partial: status === "partial",
+      }),
       meta: {
         requestedMonths,
         successfulMonths,
