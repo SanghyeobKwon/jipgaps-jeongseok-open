@@ -957,6 +957,7 @@ export default function Home() {
   const spaceFurnitureSequenceRef = useRef(0);
   const historyModeRef = useRef<"replace" | "push">("replace");
   const restoringUrlRef = useRef(false);
+  const pendingPropertyRef = useRef("");
   const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState(""); const [analysisAddressInput, setAnalysisAddressInput] = useState("서울특별시 강남구");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
@@ -1030,7 +1031,9 @@ export default function Home() {
       } else if (viewState.sido && SIDO_ORDER.includes(viewState.sido)) setSelectedMapSido(viewState.sido);
       setSelectedHCode(viewState.hcode || "");
       setSelectedBCode(viewState.bcode || "");
+      pendingPropertyRef.current = viewState.property || "";
       setSelectedKey(viewState.property || "");
+      if (viewState.property) setQuery(viewState.property);
       setArea(viewState.area || "all");
       setTradeAreaFilter(viewState.tradePy || "all");
       if (viewState.lat !== undefined && viewState.lng !== undefined && viewState.level !== undefined) setMapCamera({ contextKey: "url", center: { lat: viewState.lat, lng: viewState.lng }, level: viewState.level, changedBy: "restore" });
@@ -1097,7 +1100,7 @@ export default function Home() {
     const timer = window.setTimeout(() => {
       setLoading(true); setError(""); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all");
       const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 6)), query: submittedQuery });
-      fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { setTrades(data.trades || []); setProperties(data.properties || []); setDataFeedback({ status: data.status || ((data.trades || []).length ? "ok" : "empty"), warnings: data.meta?.warnings || [] }); if (data.properties?.length === 1) setSelectedKey(data.properties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") { setError(publicDataErrorMessage(reason.message)); setDataFeedback({ status: "partial", warnings: [reason.message] }); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { const nextProperties = data.properties || []; setTrades(data.trades || []); setProperties(nextProperties); setDataFeedback({ status: data.status || ((data.trades || []).length ? "ok" : "empty"), warnings: data.meta?.warnings || [] }); const requested = pendingPropertyRef.current; const restored = requested ? nextProperties.find((property: Property) => property.key === requested || property.name === requested || property.name.includes(requested)) : undefined; if (restored) { setSelectedKey(restored.key); setQuery(restored.name); setSubmittedQuery(restored.name); pendingPropertyRef.current = ""; } else if (nextProperties.length === 1) setSelectedKey(nextProperties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") { setError(publicDataErrorMessage(reason.message)); setDataFeedback({ status: "partial", warnings: [reason.message] }); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [type, regionCode, period, submittedQuery, dataRetry]);
@@ -1424,7 +1427,7 @@ export default function Home() {
   const moveSpaceFurniture = (x: number, y: number) => { if (selectedSpaceFurnitureId) setSpaceFurniture((current) => current.map((item) => item.id === selectedSpaceFurnitureId ? { ...item, x, y } : item)); };
   const rotateSpaceFurniture = () => { if (selectedSpaceFurnitureId) setSpaceFurniture((current) => current.map((item) => item.id === selectedSpaceFurnitureId ? { ...item, rotated: !item.rotated } : item)); };
   const removeSpaceFurniture = () => { if (selectedSpaceFurnitureId) { setSpaceFurniture((current) => current.filter((item) => item.id !== selectedSpaceFurnitureId)); setSelectedSpaceFurnitureId(""); } };
-  const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = REGIONS.find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); const nextQuery = query.trim(); setSubmittedQuery(nextQuery); if (nextQuery) changeView("chart"); };
+  const submitSearch = (event: React.FormEvent) => { event.preventDefault(); const exactRegion = REGIONS.find((item) => `${item.sido} ${item.sigungu}` === regionInput); if (exactRegion) setRegionCode(exactRegion.code); const nextQuery = query.trim(); setSubmittedQuery(nextQuery); changeView("chart"); };
   const submitAnalysisSearch = (event: React.FormEvent) => {
     event.preventDefault();
     const rawInput = analysisAddressInput.trim();

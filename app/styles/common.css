@@ -191,6 +191,16 @@ textarea.hmi-field__control { min-height: 7rem; padding-block: var(--hmi-space-3
 /* Progressive mobile controls remain out of desktop layouts. */
 .mobile-sheet-controls { display: none; }
 
+/* Product-wide interaction floor; visual density is controlled with padding, never hit area. */
+.terminal-shell :is(button, select, input, textarea, [role="button"], a) {
+  min-height: var(--hmi-touch-min, 44px);
+}
+
+.terminal-shell .brand {
+  display: inline-flex;
+  align-items: center;
+}
+
 @media (max-width: 47.5rem) {
   .hmi-surface--section { padding: var(--hmi-space-5) var(--hmi-space-4); }
   .hmi-drawer { width: min(100%, 24rem); }
