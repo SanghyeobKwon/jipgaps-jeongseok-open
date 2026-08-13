@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, Baby, BedDouble, Building2, BusFront, CarFront, Drama, Dumbbell, Film, GraduationCap, HeartPulse, Hospital, ImagePlus, Landmark, Library, Mail, MapPin, Monitor, Moon, Move, Pill, Refrigerator, RotateCw, Ruler, School, Search, ShoppingBasket, ShoppingCart, Sofa, Stethoscope, Store, Sun, Table2, TrainFront, Trash2, Trees, Trophy, Upload, WashingMachine, Waves, type LucideIcon } from "lucide-react";
 import regions from "./data/regions.json";
+import { PropertyTypeIcon as AnalysisPropertyTypeIcon, ResearchAnalysisWorkspace, type PriceBucket, type ResearchCell, type ResearchPropertyRow, type ResearchView as AnalysisResearchView } from "./components/analysis";
 import type { MapCamera, MapDataStatus } from "./lib/map/types";
-import type { DataState, SampleStatus } from "./lib/market/types";
+import type { AreaPriceSummary, DataState, ResearchBundle, ResearchMetric, SampleStatus } from "./lib/market/types";
 import { normalizeScreen, readViewState, writeViewState, type ScreenId } from "./lib/navigation/view-state";
 
 type PropertyType = "apt" | "rowhouse" | "house" | "officetel" | "commercial" | "factory";
@@ -476,10 +477,6 @@ function estimatedTravelMinutes(distance: number) {
   };
 }
 
-function legalDongName(value: string) {
-  return value.replace(/(?:본|\d+)동$/, "동");
-}
-
 function geoJsonExtent(data: GeoJsonFeatureCollection) {
   let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
   const walk = (value: unknown) => {
@@ -496,9 +493,9 @@ function geoJsonExtent(data: GeoJsonFeatureCollection) {
 function nearbyDongContext(data: GeoJsonFeatureCollection, selectedBoundaryDong: string, selectedDong: string) {
   const selectedFeatures = data.features.filter((feature) => {
     const name = String(feature.properties.name || "");
-    return selectedBoundaryDong ? name === selectedBoundaryDong : legalDongName(name) === selectedDong;
+    return selectedBoundaryDong ? name === selectedBoundaryDong : name === selectedDong;
   });
-  const targets = selectedFeatures.length ? selectedFeatures : data.features.filter((feature) => legalDongName(String(feature.properties.name || "")) === selectedDong);
+  const targets = selectedFeatures.length ? selectedFeatures : data.features.filter((feature) => String(feature.properties.name || "") === selectedDong);
   const targetExtent = geoJsonExtent({ type: "FeatureCollection", features: targets });
   if (!targetExtent) return { boundaryDongs: [] as string[], legalDongs: [] as string[] };
   const lngPad = Math.max((targetExtent.maxLng - targetExtent.minLng) * .72, .006);
@@ -510,7 +507,7 @@ function nearbyDongContext(data: GeoJsonFeatureCollection, selectedBoundaryDong:
     if (!extent) return false;
     return extent.maxLng >= expanded.minLng && extent.minLng <= expanded.maxLng && extent.maxLat >= expanded.minLat && extent.minLat <= expanded.maxLat;
   }).map((feature) => String(feature.properties.name || "")).filter((name) => name && !selectedNames.has(name));
-  const legalDongs = [...new Set(boundaryDongs.map(legalDongName).filter((name) => name && name !== selectedDong))];
+  const legalDongs: string[] = [];
   return { boundaryDongs, legalDongs };
 }
 
@@ -544,7 +541,7 @@ function compactAdministrativeLabel(name: string, focus: AdministrativeFocus) {
 function visibleAdministrativeLabels(boundaries: ProjectedBoundary[], focus: AdministrativeFocus, selectedCode: string) {
   const occupied: { left: number; right: number; top: number; bottom: number }[] = [];
   const visible = new Set<string>();
-  const limit = focus === "national" ? 9 : focus === "sido" ? 7 : 8;
+  const limit = focus === "national" ? 9 : focus === "sido" ? 16 : 10;
   const candidates = [...boundaries]
     .filter((boundary) => focus !== "national" || boundary.code === selectedCode || NATIONAL_PRIMARY_LABELS.has(boundary.name))
     .sort((a, b) => Number(b.code === selectedCode) - Number(a.code === selectedCode) || b.width * b.height - a.width * a.height);
@@ -632,6 +629,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
 }) {
   const [data, setData] = useState<GeoJsonFeatureCollection | null>(null); const [boundaryError, setBoundaryError] = useState(""); const [boundaryRetry, setBoundaryRetry] = useState(0);
   const [capitalContext, setCapitalContext] = useState<GeoJsonFeatureCollection | null>(null);
+  const [capitalDistrictContext, setCapitalDistrictContext] = useState<GeoJsonFeatureCollection | null>(null);
   const [districtContext, setDistrictContext] = useState<GeoJsonFeatureCollection | null>(null);
   const [neighborDongContext, setNeighborDongContext] = useState<GeoJsonFeatureCollection | null>(null);
   const boundaryUrl = focus === "national" ? "/data/boundaries/sido.json" : focus === "sido" ? `/data/boundaries/sgg/${SIDO_CODES[selectedSido]}.json` : `/data/boundaries/emd/${activeRegion.code}.json`;
@@ -644,12 +642,20 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [active, boundaryRetry, boundaryUrl]);
   useEffect(() => {
-    if (!active || focus !== "sido" || selectedSido !== "서울특별시") return;
+    if (!active || focus !== "sido" || selectedSido !== "서울특별시") {
+      Promise.resolve().then(() => { setCapitalContext(null); setCapitalDistrictContext(null); });
+      return;
+    }
     const controller = new AbortController();
-    fetch("/data/boundaries/sido.json", { signal: controller.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("수도권 경계를 불러오지 못했습니다.")))
-      .then(setCapitalContext)
-      .catch(() => setCapitalContext(null));
+    Promise.all([
+      fetch("/data/boundaries/sido.json", { signal: controller.signal }).then((response) => response.ok ? response.json() as Promise<GeoJsonFeatureCollection> : Promise.reject(new Error("수도권 경계를 불러오지 못했습니다."))),
+      Promise.all(["41", "28"].map((code) => fetch(`/data/boundaries/sgg/${code}.json`, { signal: controller.signal }).then((response) => response.ok ? response.json() as Promise<GeoJsonFeatureCollection> : Promise.reject(new Error("수도권 시·군·구 경계를 불러오지 못했습니다."))))),
+    ])
+      .then(([sido, collections]) => {
+        setCapitalContext(sido);
+        setCapitalDistrictContext({ type: "FeatureCollection", features: collections.flatMap((collection) => collection.features) });
+      })
+      .catch(() => { setCapitalContext(null); setCapitalDistrictContext(null); });
     return () => controller.abort();
   }, [active, focus, selectedSido]);
   useEffect(() => {
@@ -694,6 +700,16 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
     const nearby = { ...capitalContext, features: capitalContext.features.filter((feature) => ["서울특별시", "경기도", "인천광역시"].includes(String(feature.properties.name || ""))) };
     return projectAdministrativeBoundaries(nearby, 760, 560, mapExtent);
   }, [capitalContext, mapExtent]);
+  const capitalDistrictBoundaries = useMemo(() => {
+    if (!capitalDistrictContext || !mapExtent || focus !== "sido" || selectedSido !== "서울특별시") return [];
+    const features = capitalDistrictContext.features.filter((feature) => {
+      const extent = geoJsonExtent({ type: "FeatureCollection", features: [feature] });
+      return extent ? geoExtentsIntersect(extent, mapExtent) : false;
+    });
+    return projectAdministrativeBoundaries({ type: "FeatureCollection", features }, 760, 560, mapExtent)
+      .filter((boundary) => boundary.centerX > -60 && boundary.centerX < 820 && boundary.centerY > -60 && boundary.centerY < 620);
+  }, [capitalDistrictContext, focus, mapExtent, selectedSido]);
+  const capitalDistrictLabels = useMemo(() => visibleAdministrativeLabels(capitalDistrictBoundaries, "sido", ""), [capitalDistrictBoundaries]);
   const neighborDongBoundaries = useMemo(() => {
     if (!neighborDongContext || !mapExtent || !data) return [];
     const activeExtent = geoJsonExtent(data); if (!activeExtent) return [];
@@ -713,7 +729,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
   const stageHint = focus === "national" ? "대표 지역명만 크게 표시했습니다. 모든 경계는 바로 선택할 수 있습니다." : focus === "sido" ? `${selectedSido} 안의 시·군·구를 누르면 다음 지도로 이동합니다.` : `선택 구는 선명하게, 맞닿은 구와 동은 옅게 이어서 보여줍니다. 주변 동도 눌러 이동할 수 있습니다.`;
   const districtValues = Object.values(dongStats).map((stat) => dongMetric === "price" ? stat.median : dongMetric === "py" ? stat.perPy : stat.count).filter((value) => value > 0);
   const districtMid = districtValues.length ? median(districtValues) : 0;
-  const isSelected = (boundary: ProjectedBoundary) => focus === "national" ? boundary.name === selectedSido : focus === "sido" ? boundary.code === activeRegion.code : selectedBoundaryDong ? boundary.name === selectedBoundaryDong : selectedDong !== "all" && legalDongName(boundary.name) === selectedDong;
+  const isSelected = (boundary: ProjectedBoundary) => focus === "national" ? boundary.name === selectedSido : focus === "sido" ? boundary.code === activeRegion.code : selectedBoundaryDong ? boundary.name === selectedBoundaryDong : selectedDong !== "all" && boundary.name === selectedDong;
   const selectedBoundaryCode = boundaries.find(isSelected)?.code || "";
   const visibleLabels = useMemo(() => visibleAdministrativeLabels(boundaries, focus, selectedBoundaryCode), [boundaries, focus, selectedBoundaryCode]);
   const selectBoundary = (boundary: ProjectedBoundary) => {
@@ -730,12 +746,12 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
   };
   const boundaryMetric = (boundary: ProjectedBoundary) => {
     if (focus === "national") { const market = markets.find((item) => item.sido === boundary.name); return market?.changePct !== null && market?.changePct !== undefined ? `${market.changePct >= 0 ? "+" : ""}${market.changePct.toFixed(1)}%` : market ? "표본 부족" : "집계 중"; }
-    if (focus === "district") return formatDongMetric(dongStats[legalDongName(boundary.name)], dongMetric);
+    if (focus === "district") return formatDongMetric(dongStats[boundary.name], dongMetric);
     return boundary.code === activeRegion.code ? "선택됨" : "보기";
   };
   const boundaryTone = (boundary: ProjectedBoundary) => {
     if (focus === "district") {
-      const stat = dongStats[legalDongName(boundary.name)];
+      const stat = dongStats[boundary.name];
       if (!stat?.count || !districtMid) return "no-data";
       const value = dongMetric === "price" ? stat.median : dongMetric === "py" ? stat.perPy : stat.count;
       return value >= districtMid * 1.15 ? "price-high" : value <= districtMid * .85 ? "price-low" : "price-mid";
@@ -750,7 +766,17 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
     {data ? <svg className="administrative-map-svg" viewBox={focus === "national" ? "100 0 560 560" : "0 0 760 560"} role="img" aria-label={`${stageTitle} 행정구역 선택 지도`}>
       {capitalBoundaries.length > 0 && <g className="capital-context" aria-hidden="true">
         {capitalBoundaries.map((boundary) => <path key={boundary.code} className={`capital-context-region context-${boundary.code}`} d={boundary.path} fillRule="evenodd" />)}
-        <g className="capital-context-labels"><text x="690" y="78" textAnchor="middle">경기도</text><text x="72" y="322" textAnchor="middle">인천광역시</text></g>
+      </g>}
+      {capitalDistrictBoundaries.length > 0 && <g className="capital-district-context">
+        {capitalDistrictBoundaries.map((boundary) => {
+          const region = REGIONS.find((item) => item.code === boundary.code);
+          if (!region) return null;
+          return <g key={boundary.code} className="capital-district-region" role="button" tabIndex={0} aria-label={`${region.sido} ${region.sigungu}으로 이동`} onClick={() => onSelectRegion(region)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onSelectRegion(region); } }}>
+            <title>{region.sido} · {region.sigungu}</title>
+            <path d={boundary.path} fillRule="evenodd" />
+          </g>;
+        })}
+        <g className="capital-district-labels" aria-hidden="true">{capitalDistrictBoundaries.map((boundary) => capitalDistrictLabels.has(boundary.code) ? <text key={boundary.code} x={boundary.centerX} y={boundary.centerY} textAnchor="middle" dominantBaseline="middle">{compactAdministrativeLabel(boundary.name, "sido")}</text> : null)}</g>
       </g>}
       {districtContextBoundaries.length > 0 && <g className="district-context" aria-hidden="true">
         {districtContextBoundaries.map((boundary) => <g key={boundary.code} className={boundary.code === activeRegion.code ? "active" : "neighbor"}><path d={boundary.path} fillRule="evenodd" />{boundary.code !== activeRegion.code && <text x={boundary.centerX} y={boundary.centerY} textAnchor="middle">{boundary.name}</text>}</g>)}
@@ -778,7 +804,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
       })}</g>
     </svg> : <div className="administrative-map-loading"><i />행정경계를 조립하고 있습니다.</div>}
     {focus === "district" && parentLocatorBoundaries.length > 0 && <aside className="parent-region-locator" aria-label={`${activeRegion.sido} 안에서 ${activeRegion.sigungu}의 위치`}><span>{activeRegion.sido} 안의 위치</span><b>{activeRegion.sigungu}</b><svg viewBox="0 0 160 112" role="img" aria-label={`${activeRegion.sigungu}가 강조된 ${activeRegion.sido} 지도`}>{parentLocatorBoundaries.map((boundary) => <path key={boundary.code} className={boundary.code === activeRegion.code ? "selected" : ""} d={boundary.path} fillRule="evenodd" />)}</svg></aside>}
-    <div className="administrative-map-foot"><span><i />선택 지역</span><b>{focus === "national" ? selectedSido : focus === "sido" ? activeRegion.sigungu : selectedBoundaryDong || "동을 선택하세요"}</b><small>{focus === "district" ? selectedBoundaryDong ? `${formatDongMetric(dongStats[legalDongName(selectedBoundaryDong)], dongMetric)} · 선택한 뒤 건물 지도를 열 수 있습니다.` : "경계를 누르면 지역명과 실거래 요약을 먼저 확인합니다." : "경계를 누르면 한 단계씩 확대됩니다."}</small>{focus === "district" && selectedBoundaryDong && <button type="button" className="administrative-map-open" disabled={!ROAD_MAP_AVAILABLE} onClick={onOpenBuildings}>{ROAD_MAP_AVAILABLE ? "건물 지도 보기" : "카카오 지도 키 연결 전"}</button>}</div>
+    <div className="administrative-map-foot"><span><i />선택 지역</span><b>{focus === "national" ? selectedSido : focus === "sido" ? activeRegion.sigungu : selectedBoundaryDong || "동을 선택하세요"}</b><small>{focus === "district" ? selectedBoundaryDong ? dongStats[selectedBoundaryDong] ? `${formatDongMetric(dongStats[selectedBoundaryDong], dongMetric)} · 공식 동 이름이 일치하는 거래만 연결합니다.` : "행정동 경계는 선택됐지만 법정동 거래와 자동 합치지 않습니다." : "경계를 누르면 지역명과 실거래 요약을 먼저 확인합니다." : "경계를 누르면 한 단계씩 확대됩니다."}</small>{focus === "district" && selectedBoundaryDong && selectedDong !== "all" && <button type="button" className="administrative-map-open" disabled={!ROAD_MAP_AVAILABLE} onClick={onOpenBuildings}>{ROAD_MAP_AVAILABLE ? "건물 지도 보기" : "카카오 지도 키 연결 전"}</button>}</div>
     {boundaryError && <div className="administrative-map-error" role="status"><b>행정경계를 불러오지 못했습니다.</b><span>{boundaryError}</span><button type="button" onClick={() => setBoundaryRetry((value) => value + 1)}>다시 불러오기</button></div>}
   </div>;
 }
@@ -812,8 +838,8 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   const hostRef = useRef<HTMLDivElement>(null);
   const cameraRef = useRef<{ context: string; lat: number; lng: number; level: number } | null>(null);
   const [mapError, setMapError] = useState("");
-  const stageTitle = focus === "national" ? "대한민국 16개 시·도" : focus === "sido" ? selectedSido : focus === "buildings" ? `${activeRegion.sido} ${activeRegion.sigungu} · ${selectedDong === "all" ? legalDongName(selectedBoundaryDong) : selectedDong}` : `${activeRegion.sido} ${activeRegion.sigungu}${selectedBoundaryDong ? ` · ${selectedBoundaryDong}` : ""}`;
-  const stageHint = focus === "national" ? "시·도 경계를 눌러 다음 단계로 들어가세요." : focus === "sido" ? "시·군·구 경계를 눌러 읍·면·동 지도로 확대하세요." : focus === "buildings" ? buildingsLoading ? "선택한 동과 인접 동의 최근 실거래 건물 좌표를 확인하고 있습니다." : buildingsError ? buildingsError : "건물 아이콘을 누르면 해당 건물의 가격만 열립니다. 다른 건물은 지도에 계속 남습니다." : selectedBoundaryDong ? `${legalDongName(selectedBoundaryDong)} 실거래 조건과 연동했습니다.` : "읍·면·동 경계를 누르면 실거래 건물 지도로 확대됩니다.";
+  const stageTitle = focus === "national" ? "대한민국 16개 시·도" : focus === "sido" ? selectedSido : focus === "buildings" ? `${activeRegion.sido} ${activeRegion.sigungu} · ${selectedDong === "all" ? selectedBoundaryDong : selectedDong}` : `${activeRegion.sido} ${activeRegion.sigungu}${selectedBoundaryDong ? ` · ${selectedBoundaryDong}` : ""}`;
+  const stageHint = focus === "national" ? "시·도 경계를 눌러 다음 단계로 들어가세요." : focus === "sido" ? "시·군·구 경계를 눌러 읍·면·동 지도로 확대하세요." : focus === "buildings" ? buildingsLoading ? "선택한 동의 최근 실거래 건물 좌표를 확인하고 있습니다." : buildingsError ? buildingsError : "건물 아이콘을 누르면 해당 건물의 가격만 열립니다. 다른 건물은 지도에 계속 남습니다." : selectedBoundaryDong ? `${selectedBoundaryDong} 행정경계를 선택했습니다.` : "읍·면·동 경계를 누르면 실거래 건물 지도로 확대됩니다.";
   const fallbackLocation = buildingLocations[0] || SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
   const visibleMapPrices = useMemo(() => buildingLocations.map((building) => building.lastAmount).filter((price) => price > 0), [buildingLocations]);
   const visibleMapPriceBands = useMemo(() => buildMapPriceBands(visibleMapPrices), [visibleMapPrices]);
@@ -878,7 +904,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
         const nearbyBoundarySet = new Set(nearbyBoundaryDongs);
         dongs.features.forEach((feature) => {
           const name = String(feature.properties.name || "");
-          const selected = selectedBoundaryDong ? name === targetDong : legalDongName(name) === selectedDong;
+          const selected = name === targetDong;
           const nearby = nearbyBoundarySet.has(name);
           const geometryType = String(feature.geometry.type || "");
           const rawCoordinates = feature.geometry.coordinates;
@@ -893,12 +919,12 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
         });
         const visibleDongs = dongs.features.filter((feature) => {
           const name = String(feature.properties.name || "");
-          const selected = selectedBoundaryDong ? name === targetDong : legalDongName(name) === selectedDong;
+          const selected = name === targetDong;
           return selected || nearbyBoundarySet.has(name);
         });
         const selectedDongs = visibleDongs.filter((feature) => {
           const name = String(feature.properties.name || "");
-          return selectedBoundaryDong ? name === targetDong : legalDongName(name) === selectedDong;
+          return name === targetDong;
         });
         if (preservedCamera) {
           map.setCenter?.(new maps.LatLng(preservedCamera.lat, preservedCamera.lng));
@@ -961,6 +987,7 @@ export default function Home() {
   const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState(""); const [analysisAddressInput, setAnalysisAddressInput] = useState("서울특별시 강남구");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
+  const [researchBundle, setResearchBundle] = useState<ResearchBundle | null>(null);
   const [selectedDong, setSelectedDong] = useState("all"); const [selectedBuildingDong, setSelectedBuildingDong] = useState(""); const [selectedAreaBucket, setSelectedAreaBucket] = useState<number | null>(null); const [selectedVariantKey, setSelectedVariantKey] = useState("");
   const [area, setArea] = useState("all"); const [tradeAreaFilter, setTradeAreaFilter] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [dataRetry, setDataRetry] = useState(0);
   const [dataFeedback, setDataFeedback] = useState<DataFeedback>({ status: "empty", warnings: [] });
@@ -979,6 +1006,7 @@ export default function Home() {
   const [spacePlanUrl, setSpacePlanUrl] = useState(""); const [spacePlanName, setSpacePlanName] = useState(""); const [spacePlanError, setSpacePlanError] = useState("");
   const [spaceFurniture, setSpaceFurniture] = useState<PlacedFurniture[]>([]); const [selectedSpaceFurnitureId, setSelectedSpaceFurnitureId] = useState("");
   const [researchCategory, setResearchCategory] = useState("price"); const [researchTool, setResearchTool] = useState("recent-fall");
+  const [researchLimit, setResearchLimit] = useState(30);
   const [communityCategory, setCommunityCategory] = useState("living"); const [communityBoard, setCommunityBoard] = useState("전체");
   const [showStudyWriter, setShowStudyWriter] = useState(false); const [studyTitle, setStudyTitle] = useState(""); const [studyBody, setStudyBody] = useState(""); const [draftSaved, setDraftSaved] = useState(false);
   const [propertyLocation, setPropertyLocation] = useState<PropertyLocation | null>(null); const [locationLoading, setLocationLoading] = useState(false); const [locationError, setLocationError] = useState("");
@@ -1023,20 +1051,26 @@ export default function Home() {
       const legacyMapLink = legacyHash === "map";
       const viewState = readViewState(url);
       const requestedMode: AnalysisMode = legacyFieldLink || params.get("analysis") === "field" ? "field" : "price";
+      const defaultRegion = REGIONS.find((region) => region.code === "11680") || REGIONS[0];
       const requestedRegion = viewState.sigungu ? REGIONS.find((region) => region.code === viewState.sigungu) : undefined;
-      if (requestedRegion) {
-        setRegionCode(requestedRegion.code);
-        setRegionInput(`${requestedRegion.sido} ${requestedRegion.sigungu}`);
-        setSelectedMapSido(requestedRegion.sido);
-      } else if (viewState.sido && SIDO_ORDER.includes(viewState.sido)) setSelectedMapSido(viewState.sido);
+      const requestedSido = viewState.sido && SIDO_ORDER.includes(viewState.sido) ? viewState.sido : undefined;
+      const restoredRegion = requestedRegion || (requestedSido ? REGIONS.find((region) => region.sido === requestedSido) : undefined) || defaultRegion;
+      setRegionCode(restoredRegion.code);
+      setRegionInput(`${restoredRegion.sido} ${restoredRegion.sigungu}`);
+      setSelectedMapSido(requestedSido || restoredRegion.sido);
+      setSelectedDong("all");
+      setSelectedBoundaryDong("");
+      setMapPickerDong("");
+      setMapFocus(requestedRegion ? "district" : requestedSido ? "sido" : "district");
       setSelectedHCode(viewState.hcode || "");
       setSelectedBCode(viewState.bcode || "");
       pendingPropertyRef.current = viewState.property || "";
       setSelectedKey(viewState.property || "");
-      if (viewState.property) setQuery(viewState.property);
+      setQuery(viewState.property || "");
       setArea(viewState.area || "all");
       setTradeAreaFilter(viewState.tradePy || "all");
       if (viewState.lat !== undefined && viewState.lng !== undefined && viewState.level !== undefined) setMapCamera({ contextKey: "url", center: { lat: viewState.lat, lng: viewState.lng }, level: viewState.level, changedBy: "restore" });
+      else setMapCamera(null);
       setActiveSection(legacyFieldLink ? "chart" : legacyMapLink ? "research" : next);
       if (legacyFieldLink || next === "chart") {
         setAnalysisMode(requestedMode);
@@ -1100,7 +1134,7 @@ export default function Home() {
     const timer = window.setTimeout(() => {
       setLoading(true); setError(""); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all");
       const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 6)), query: submittedQuery });
-      fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { const nextProperties = data.properties || []; setTrades(data.trades || []); setProperties(nextProperties); setDataFeedback({ status: data.status || ((data.trades || []).length ? "ok" : "empty"), warnings: data.meta?.warnings || [] }); const requested = pendingPropertyRef.current; const restored = requested ? nextProperties.find((property: Property) => property.key === requested || property.name === requested || property.name.includes(requested)) : undefined; if (restored) { setSelectedKey(restored.key); setQuery(restored.name); setSubmittedQuery(restored.name); pendingPropertyRef.current = ""; } else if (nextProperties.length === 1) setSelectedKey(nextProperties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") { setError(publicDataErrorMessage(reason.message)); setDataFeedback({ status: "partial", warnings: [reason.message] }); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { const nextProperties = data.properties || []; setTrades(data.trades || []); setProperties(nextProperties); setResearchBundle(data.research || null); setDataFeedback({ status: data.status || ((data.trades || []).length ? "ok" : "empty"), warnings: data.meta?.warnings || [] }); const requested = pendingPropertyRef.current; const restored = requested ? nextProperties.find((property: Property) => property.key === requested || property.name === requested || property.name.includes(requested)) : undefined; if (restored) { setSelectedKey(restored.key); setQuery(restored.name); setSubmittedQuery(restored.name); pendingPropertyRef.current = ""; } else if (nextProperties.length === 1) setSelectedKey(nextProperties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") { setResearchBundle(null); setError(publicDataErrorMessage(reason.message)); setDataFeedback({ status: "partial", warnings: [reason.message] }); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [type, regionCode, period, submittedQuery, dataRetry]);
@@ -1175,6 +1209,69 @@ export default function Home() {
       : base.sort((a, b) => b.quarterCount - a.quarterCount || b.count - a.count);
     return rows.slice(0, 8);
   }, [propertyRows, scoredCandidates, researchTool]);
+  const analysisResearchView: AnalysisResearchView = researchTool === "record-high" ? "record-high" : researchTool === "top-rise" ? "growth-leaders" : researchTool === "price-compare" ? "price-per-pyeong" : researchTool === "price-change" ? "price-trend" : researchTool === "multi-compare" ? "complex-compare" : "recent-decline";
+  const researchMetricKey: ResearchMetric = analysisResearchView === "record-high" ? "highest_price" : analysisResearchView === "growth-leaders" ? "top_growth" : analysisResearchView === "price-per-pyeong" ? "price_per_pyeong" : analysisResearchView === "price-trend" ? "price_change" : analysisResearchView === "complex-compare" ? "complex_compare" : "recent_decline";
+  const activeResearchDataView = researchBundle?.views[researchMetricKey];
+  const researchRowIndex = useMemo(() => new Map((researchBundle?.rows || []).map((row) => [row.id, row])), [researchBundle]);
+  const researchPriceBuckets = useMemo(() => {
+    const values = (researchBundle?.rows || []).map((row) => row.currentQuarter.medianAmountManwon ?? row.latestTrade?.amountManwon ?? 0).filter((value) => value > 0).sort((a, b) => a - b);
+    return (value: number | null): PriceBucket => {
+      if (!value || !values.length) return null;
+      const rank = values.findIndex((candidate) => candidate >= value);
+      return Math.min(5, Math.max(1, Math.floor((Math.max(rank, 0) / values.length) * 5) + 1)) as PriceBucket;
+    };
+  }, [researchBundle]);
+  const formatResearchCell = useCallback((row: AreaPriceSummary, key: string): string => {
+    const price = (value: number | null | undefined) => value === null || value === undefined ? "표본 부족" : formatPrice(value);
+    const percent = (value: number | null | undefined) => value === null || value === undefined ? "표본 부족" : `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+    if (key === "area") return `${row.representativeAreaM2.toFixed(1)}㎡ · ${row.pyeongEquivalent.toFixed(1)}평`;
+    if (key === "areaM2") return `${row.representativeAreaM2.toFixed(1)}㎡`;
+    if (key === "areaPyeong") return `${row.pyeongEquivalent.toFixed(1)}평`;
+    if (key === "buildingDong") return row.buildingDongs.join("·") || "동 정보 없음";
+    if (key === "currentMedian") return price(row.currentQuarter.medianAmountManwon);
+    if (key === "previousMedian") return price(row.previousQuarter.medianAmountManwon);
+    if (key === "changeAmount") return price(row.changeAmountManwon);
+    if (key === "changePct") return percent(row.changePct);
+    if (key === "volume") return `${row.currentQuarter.volume}건`;
+    if (key === "sample") return `${row.currentQuarter.volume}건 / ${row.previousQuarter.volume}건`;
+    if (key === "highestAmount") return price(row.highestTrade?.amountManwon);
+    if (key === "highestDate") return row.highestTrade?.date || "확인 필요";
+    if (key === "floor") return row.highestTrade?.floor === null || row.highestTrade?.floor === undefined ? "-" : `${row.highestTrade.floor}층`;
+    if (key === "highestPerPyeong") return row.highestTrade?.pricePerPyeongManwon ? `${Math.round(row.highestTrade.pricePerPyeongManwon).toLocaleString()}만원/평` : "확인 필요";
+    if (key === "latestAmount") return price(row.latestTrade?.amountManwon);
+    if (key === "medianPerPyeong") return row.period.medianPerPyeongManwon ? `${Math.round(row.period.medianPerPyeongManwon).toLocaleString()}만원/평` : "표본 부족";
+    if (key === "regionDelta") return percent(row.regionDeltaPct);
+    if (key === "latestDate") return row.latestTrade?.date || "확인 필요";
+    if (key === "movingMedian") return price(row.trend.slice(-3).map((point) => point.medianAmountManwon).filter((value): value is number => value !== null).length ? median(row.trend.slice(-3).flatMap((point) => point.medianAmountManwon === null ? [] : [point.medianAmountManwon])) : null);
+    if (key === "lowestAmount") return price(row.lowestTrade?.amountManwon);
+    return "-";
+  }, []);
+  const analysisResearchRows = useMemo<ResearchPropertyRow[]>(() => {
+    if (!activeResearchDataView) return [];
+    return activeResearchDataView.rowIds.slice(0, researchLimit).flatMap((id, index) => {
+      const row = researchRowIndex.get(id);
+      if (!row) return [];
+      const currentPrice = row.currentQuarter.medianAmountManwon ?? row.latestTrade?.amountManwon ?? null;
+      const cells: ResearchCell[] = activeResearchDataView.columns.filter((column) => !["rank", "propertyName"].includes(column.key)).map((column, columnIndex) => ({
+        key: column.key,
+        label: column.label,
+        value: formatResearchCell(row, column.key),
+        numeric: column.kind !== "text" && column.kind !== "date",
+        mobilePriority: columnIndex < 2 ? columnIndex === 0 ? "primary" : "secondary" : "detail",
+        tone: column.key === "changePct" || column.key === "changeAmount" || column.key === "regionDelta" ? row.changePct === null ? "muted" : row.changePct >= 0 ? "up" : "down" : "neutral",
+      }));
+      return [{ key: row.id, rank: index + 1, name: row.propertyName, dong: `${row.dong} · ${row.pyeongEquivalent.toFixed(1)}평`, propertyType: row.propertyType, priceBucket: researchPriceBuckets(currentPrice), selected: selectedKey === row.propertyKey, sample: row.sample, cells }];
+    });
+  }, [activeResearchDataView, formatResearchCell, researchLimit, researchPriceBuckets, researchRowIndex, selectedKey]);
+  const analysisResearchColumns = useMemo(() => activeResearchDataView?.columns.filter((column) => !["rank", "propertyName"].includes(column.key)).map((column) => column.key) || [], [activeResearchDataView]);
+  const changeAnalysisResearchView = useCallback((view: AnalysisResearchView) => {
+    const next = view === "record-high" ? "record-high" : view === "growth-leaders" ? "top-rise" : view === "price-per-pyeong" ? "price-compare" : view === "price-trend" ? "price-change" : view === "complex-compare" ? "multi-compare" : "recent-fall";
+    setResearchTool(next); setResearchLimit(30);
+  }, []);
+  const selectAnalysisResearchProperty = useCallback((rowId: string) => {
+    const row = researchRowIndex.get(rowId); if (!row) return;
+    setSelectedKey(row.propertyKey); setSelectedBuildingDong(row.buildingDongs[0] || ""); setSelectedAreaBucket(Math.round(row.pyeongEquivalent)); setSelectedVariantKey(propertyRows.find((candidate) => candidate.propertyKey === row.propertyKey && Math.abs(candidate.areaMedian - row.representativeAreaM2) < 0.6)?.key || ""); setArea("all");
+  }, [propertyRows, researchRowIndex]);
   const activeCommunityCategory = COMMUNITY_CATEGORIES.find((category) => category.id === communityCategory) || COMMUNITY_CATEGORIES[0];
   const visibleCommunityGuides = COMMUNITY_GUIDES.filter((guide) => guide.category === communityCategory && (communityBoard === "전체" || guide.board === communityBoard));
   const selectedProperty = properties.find((property) => property.key === selectedKey); const selectedVariant = propertyRows.find((property) => property.key === selectedVariantKey); const variantSuffix = selectedVariant ? `${dongLabel(selectedVariant.buildingDong)}${selectedVariant.buildingDong ? " · " : ""}전용 ${selectedVariant.areaBucket}평` : ""; const displayName = selectedProperty ? `${selectedProperty.name}${variantSuffix ? ` · ${variantSuffix}` : ""}` : (submittedQuery ? `${submittedQuery} 검색 결과` : `${activeRegion.sigungu} 전체`);
@@ -1257,7 +1354,7 @@ export default function Home() {
     return () => controller.abort();
   }, [activeRegion.code, selectedBoundaryDong, selectedDong]);
   const mapDongChoices = boundaryDongOptions.length ? boundaryDongOptions : dongOptions;
-  const finderDongOptions = useMemo(() => [...new Set([...dongOptions, ...boundaryDongOptions.map(legalDongName), ...(selectedDong === "all" ? [] : [selectedDong])].filter(Boolean))].sort(), [boundaryDongOptions, dongOptions, selectedDong]);
+  const finderDongOptions = useMemo(() => [...new Set([...dongOptions, ...(selectedDong === "all" ? [] : [selectedDong])].filter(Boolean))].sort(), [dongOptions, selectedDong]);
   const mapDongStats = useMemo(() => {
     const groups = new Map<string, Trade[]>();
     trades.forEach((trade) => { if (trade.dong && latestQuarterMonths.includes(trade.date.slice(0, 7))) groups.set(trade.dong, [...(groups.get(trade.dong) || []), trade]); });
@@ -1346,7 +1443,18 @@ export default function Home() {
     if (next) { setRegionCode(next.code); setRegionInput(`${next.sido} ${next.sigungu}`); }
   }, [resetPropertySelection]);
   const chooseMapRegion = useCallback((region: Region) => chooseRegion(region, false), [chooseRegion]);
-  const chooseMapDong = useCallback((dong: string) => { historyModeRef.current = "push"; const legalDong = legalDongName(dong); setSelectedHCode(""); setSelectedBCode(""); setSelectedBoundaryDong(dong); setMapPickerDong(dong); setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); setMapCamera(null); resetPropertySelection(); setSelectedDong(legalDong || dong); }, [resetPropertySelection]);
+  const chooseMapDong = useCallback((dong: string) => {
+    historyModeRef.current = "push";
+    const exactLegalDong = dongOptions.includes(dong) ? dong : "all";
+    setSelectedHCode("");
+    setSelectedBCode("");
+    setSelectedBoundaryDong(dong);
+    setMapPickerDong(dong);
+    setMapFocus(ROAD_MAP_AVAILABLE && exactLegalDong !== "all" ? "buildings" : "district");
+    setMapCamera(null);
+    resetPropertySelection();
+    setSelectedDong(exactLegalDong);
+  }, [dongOptions, resetPropertySelection]);
   const openMapBuildings = useCallback(() => { if (ROAD_MAP_AVAILABLE && selectedDong !== "all") setMapFocus("buildings"); }, [selectedDong]);
   const chooseMapProperty = useCallback((key: string) => { historyModeRef.current = "push"; const property = properties.find((item) => item.key === key); setSelectedKey(key); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); setMapFocus("buildings"); if (property) setQuery(property.name); }, [properties]);
   const openSelectedPropertyMap = useCallback(() => {
@@ -1442,7 +1550,7 @@ export default function Home() {
   const mapLocationTitle = mapFocus === "national" ? "대한민국 전체" : mapFocus === "sido" ? selectedMapSido : `${activeRegion.sido} › ${activeRegion.sigungu}${selectedDong !== "all" ? ` › ${selectedDong}` : ""}`;
   const mapLocationDescription = mapFocus === "national" ? "전국 16개 시·도의 최근 3개월 시장 흐름" : mapFocus === "sido" ? `${selectedMapSido} 시·군·구 선택 단계` : `${PROPERTY_TYPES.find((item) => item.key === type)?.label} · 최근 3개월 실거래 기준`;
   const selectedMapMarket = markets.find((market) => market.sido === selectedMapSido);
-  const selectedMapDongStat = selectedDong !== "all" ? mapDongStats[legalDongName(selectedBoundaryDong || selectedDong)] : undefined;
+  const selectedMapDongStat = selectedDong !== "all" ? mapDongStats[selectedDong] : undefined;
   const mapBuildingRows = useMemo(() => [...buildingLocations].sort((a, b) => Number(b.scope === "selected") - Number(a.scope === "selected") || b.count - a.count || b.lastAmount - a.lastAmount), [buildingLocations]);
   const selectedMapProperty = mapBuildingRows.find((building) => building.key === selectedKey) || null;
   const selectedMapBuildingCount = mapBuildingRows.filter((building) => building.scope === "selected").length;
@@ -1496,12 +1604,12 @@ export default function Home() {
     {SHOW_OPPORTUNITY_SECTION && <section className="opportunity-section" aria-label="매수 검토 후보"><div className="opportunity-head"><div><p>검토 후보</p><h2>{activeRegion.sigungu}에서 먼저 볼 후보</h2><span>면적별 가격 45% · 거래량 35% · 가격 흐름 20%를 합산한 탐색 점수입니다.</span></div><b>추천이 아닌 검토 우선순위</b></div><div className="opportunity-grid">{loading ? <div className="opportunity-empty">후보를 계산하고 있습니다…</div> : scoredCandidates.length ? scoredCandidates.slice(0, 3).map((candidate, index) => <button key={candidate.key} onClick={() => selectCandidate(candidate)}><span className="candidate-rank">0{index + 1}</span><div><em>{candidate.tag}</em><h3>{candidate.name}</h3><p>{candidate.dong} · {dongLabel(candidate.buildingDong) || "동 정보 없음"} · 전용 {candidate.areaBucket}평</p></div><strong>{candidate.score}<small>/100</small><i>{formatPrice(candidate.current)}</i></strong></button>) : <div className="opportunity-empty"><b>이 지역은 아직 표본이 부족합니다.</b><span>아파트 또는 거래가 활발한 지역을 선택하면 검토할 후보를 확인할 수 있습니다.</span></div>}</div>{savedHomes.length > 0 && <div className="saved-shelf"><span>내 관심 후보</span>{savedHomes.map((home) => <article key={home.id}><div><b>{home.name}</b><small>{home.region} · {home.area}평</small></div><strong>{home.score}점 · {formatPrice(home.price)}</strong><button aria-label={`${home.name} 관심 후보에서 삭제`} onClick={() => { const next = savedHomes.filter((item) => item.id !== home.id); setSavedHomes(next); try { window.localStorage.setItem("jipgaps:saved-homes", JSON.stringify(next)); } catch { /* device storage is optional */ } }}>×</button></article>)}</div>}</section>}
 
     <section className="analysis-command" id="chart" aria-labelledby="analysis-command-title">
-      <div className="analysis-command-head"><div><span>상세 분석</span><h1 id="analysis-command-title">{activeRegion.sido} · {activeRegion.sigungu}{selectedDong !== "all" ? ` · ${selectedDong}` : ""}{selectedProperty ? ` · ${selectedProperty.name}` : ""}</h1></div><button type="button" className="map-jump" onClick={() => { if (analysisMode === "field") { setAnalysisMode("price"); window.requestAnimationFrame(() => facilityPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })); return; } setAnalysisMode("field"); window.requestAnimationFrame(() => fieldSelectorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })); }}>{analysisMode === "field" ? <Building2 size={17} strokeWidth={1.9} aria-hidden="true" /> : <MapPin size={17} strokeWidth={1.9} aria-hidden="true" />}{analysisMode === "field" ? "가격·생활 보기" : "지도에서 선택"}</button></div>
+      <div className="analysis-command-head"><div><h1 id="analysis-command-title">주소로 검색</h1><p>지역이나 단지·건물명을 검색하세요.</p></div><button type="button" className="map-jump" onClick={() => { if (analysisMode === "field") { setAnalysisMode("price"); window.requestAnimationFrame(() => facilityPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })); return; } setAnalysisMode("field"); window.requestAnimationFrame(() => fieldSelectorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })); }}>{analysisMode === "field" ? <Building2 size={17} strokeWidth={1.9} aria-hidden="true" /> : <MapPin size={17} strokeWidth={1.9} aria-hidden="true" />}{analysisMode === "field" ? "가격·생활 보기" : "지도에서 선택"}</button></div>
       <form className="analysis-search-console" onSubmit={submitAnalysisSearch}>
         <label><span>시·도</span><select value={activeRegion.sido} onChange={(event) => selectSido(event.target.value)} aria-label="상세 분석 시도 선택">{sidoOptions.map((sido) => <option key={sido} value={sido}>{sido}</option>)}</select></label>
         <label><span>시·군·구</span><select value={regionCode} onChange={(event) => selectSigungu(event.target.value)} aria-label="상세 분석 시군구 선택">{sigunguOptions.map((region) => <option key={region.code} value={region.code}>{region.sigungu}</option>)}</select></label>
         <label><span>읍·면·동</span><select value={selectedDong} onChange={(event) => { const dong = event.target.value; setSelectedHCode(""); setSelectedBCode(""); setSelectedDong(dong); setSelectedBoundaryDong(""); resetPropertySelection(); if (dong !== "all") setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); }} aria-label="상세 분석 읍면동 선택"><option value="all">전체 읍·면·동</option>{finderDongOptions.map((dong) => <option key={dong} value={dong}>{dong}</option>)}</select></label>
-        <label className="analysis-address-search"><span>주소·단지·건물명</span><input value={analysisAddressInput} onChange={(event) => setAnalysisAddressInput(event.target.value)} placeholder="예: 대치동 316 또는 은마" aria-label="주소 또는 단지 건물명 검색" /></label>
+        <label className="analysis-address-search"><span>주소·단지·건물명</span><input value={analysisAddressInput} onChange={(event) => setAnalysisAddressInput(event.target.value)} placeholder="예: 서울특별시 강남구 청담동, 은마아파트" aria-label="주소 또는 단지 건물명 검색" /></label>
         <button type="submit"><Search size={17} strokeWidth={2} aria-hidden="true" />검색</button>
       </form>
     </section>
@@ -1511,13 +1619,9 @@ export default function Home() {
         <div className="watch-head"><div><h2>{activeRegion.sigungu} 동·평형별 최근 3개월 순위</h2></div><span>{Math.min(propertyLimit, visibleProperties.length)}/{visibleProperties.length}</span></div>
         <div className="watch-filters"><select value={buildingSort} onChange={(event) => { setBuildingSort(event.target.value as typeof buildingSort); setPropertyLimit(30); }} aria-label="건물 목록 정렬"><option value="volume">3개월 거래량순</option><option value="price">3개월 중위가순</option><option value="rise">직전 분기 대비 상승순</option><option value="fall">직전 분기 대비 하락순</option></select><select value={minVolume} onChange={(event) => { setMinVolume(Number(event.target.value)); setPropertyLimit(30); }} aria-label="최소 거래량"><option value="0">거래량 전체</option><option value="1">3개월 1건 이상</option><option value="3">3개월 3건 이상</option><option value="5">3개월 5건 이상</option></select></div>
         <div className="watch-columns"><span>건물 / 단지</span><span>최근가</span></div>
-        {loading ? <div className="watch-state">전체 실거래 목록을 불러오는 중…</div> : error ? <div className="watch-state error"><b>실거래 목록을 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : visibleProperties.length ? <div className="watch-scroll">{renderedProperties.map((property, index) => <button key={property.key} className={selectedVariantKey === property.key ? "selected" : ""} onClick={() => { setSelectedKey(property.propertyKey); setSelectedBuildingDong(property.buildingDong); setSelectedAreaBucket(property.areaBucket); setSelectedVariantKey(property.key); setArea("all"); }}>
-          <i className={`building-icon tone-${index % 5}`}>{property.name.slice(0, 1)}</i><div><b>{property.name}</b><small>{property.dong} · {dongLabel(property.buildingDong) || "동 정보 없음"} · 전용 {property.areaBucket}평 ({property.areaMedian.toFixed(1)}㎡)</small></div><strong>{formatPrice(property.current)}{property.change === null ? <em className="sample-low">표본 부족 · 3개월 {property.quarterCount}건</em> : <em className={property.change >= 0 ? "up" : "down"}>{property.change >= 0 ? "+" : ""}{property.change.toFixed(1)}% · 3개월 {property.quarterCount}건</em>}</strong>
+        {loading ? <div className="watch-state">전체 실거래 목록을 불러오는 중…</div> : error ? <div className="watch-state error"><b>실거래 목록을 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : visibleProperties.length ? <div className="watch-scroll">{renderedProperties.map((property) => <button key={property.key} className={selectedVariantKey === property.key ? "selected" : ""} onClick={() => { setSelectedKey(property.propertyKey); setSelectedBuildingDong(property.buildingDong); setSelectedAreaBucket(property.areaBucket); setSelectedVariantKey(property.key); setArea("all"); }}>
+          <AnalysisPropertyTypeIcon type={type} priceBucket={researchPriceBuckets(property.current)} selected={selectedVariantKey === property.key} size="sm" /><div><b>{property.name}</b><small>{property.dong} · {dongLabel(property.buildingDong) || "동 정보 없음"} · 전용 {property.areaBucket}평 ({property.areaMedian.toFixed(1)}㎡)</small></div><strong>{formatPrice(property.current)}{property.change === null ? <em className="sample-low">표본 부족 · 3개월 {property.quarterCount}건</em> : <em className={property.change >= 0 ? "up" : "down"}>{property.change >= 0 ? "+" : ""}{property.change.toFixed(1)}% · 3개월 {property.quarterCount}건</em>}</strong>
         </button>)}{renderedProperties.length < visibleProperties.length && <button type="button" className="watch-more" onClick={() => setPropertyLimit((value) => value + 30)}><b>30개 더 보기</b><span>{renderedProperties.length.toLocaleString()}개 표시 중 · 전체 {visibleProperties.length.toLocaleString()}개</span></button>}</div> : <div className="watch-state">이 조건의 신고 거래가 없습니다.<button onClick={() => { setQuery(""); setSubmittedQuery(""); setPropertyLimit(30); }}>전체 목록 보기</button></div>}
-        <section className="watch-chart" aria-label={`${displayName} 가격 차트`}>
-          <div className="chart-toolbar"><div className="period-switch">{PERIODS.map((item) => <button key={item.value} className={period === item.value ? "active" : ""} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div><div className="view-switch"><select value={area} onChange={(event) => setArea(event.target.value)} aria-label="전용면적 선택"><option value="all">전체 면적</option>{areas.map((value) => <option key={value} value={value}>전용 {value}㎡ ({(value / 3.3058).toFixed(1)}평)</option>)}</select><button className={unit === "price" ? "active" : ""} onClick={() => setUnit("price")}>실거래가</button><button className={unit === "py" ? "active" : ""} onClick={() => setUnit("py")}>평당가</button></div></div>
-          <article className="chart-card"><div className="chart-legend"><span><i className="price-dot" />월 중위가격</span><span><i className="ma-dot" />3개월 이동평균</span><span><i className="volume-dot" />거래량</span></div><div className={`canvas-wrap${error ? " has-error" : ""}`}>{loading ? <div className="state"><i /> 실거래 데이터를 불러오는 중입니다</div> : error ? <div className="state error"><b>실거래 데이터를 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : chartPoints.length ? <PriceChart points={chartPoints} unit={unit} theme={resolvedTheme} /> : <div className="state"><b>선택 조건의 거래가 없습니다</b><span>위 목록에서 다른 건물을 선택하거나 전체 면적을 선택하세요.</span></div>}</div></article>
-        </section>
       </aside>
 
       <div className="detail-terminal">
@@ -1527,6 +1631,10 @@ export default function Home() {
           {showPriceLocationMap && <div className="price-location-map">{locationLoading ? <div className="price-location-state"><i />건물 좌표를 확인하고 있습니다.</div> : propertyLocation ? <KakaoPlaceMap location={propertyLocation} title={selectedProperty.name} places={[]} radius={300} active={activeSection === "chart"} /> : <div className="price-location-state error" role="status"><b>건물 위치를 표시하지 못했습니다.</b><span>{locationError || `${placeAddressQuery} 주소의 좌표를 찾지 못했습니다.`}</span><button type="button" onClick={openSelectedPropertyMap}>동 단위 지도에서 찾기</button></div>}</div>}
         </section>}
         <div className="stat-strip"><article><span>최근 월 중위가</span><strong>{formatPrice(latest)}</strong></article><article><span>기간 최고 / 최저</span><strong>{compactPrice(high)} <em>/</em> {compactPrice(low)}</strong></article><article><span>실거래 건수</span><strong>{filteredTrades.length.toLocaleString()}<em>건</em></strong></article><article><span>시장 신호</span><strong className={!chartChangeComparable ? "" : change >= 0 ? "up" : "down"}>{!chartChangeComparable ? "표본 부족" : change > 2 ? "매수 우위" : change < -2 ? "조정 구간" : "보합 구간"}</strong></article></div>
+        <section className="watch-chart" aria-label={`${displayName} 가격 차트`}>
+          <div className="chart-toolbar"><div className="period-switch">{PERIODS.map((item) => <button key={item.value} className={period === item.value ? "active" : ""} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div><div className="view-switch"><select value={area} onChange={(event) => setArea(event.target.value)} aria-label="전용면적 선택"><option value="all">전체 면적</option>{areas.map((value) => <option key={value} value={value}>전용 {value}㎡ ({(value / 3.305785).toFixed(1)}평)</option>)}</select><button className={unit === "price" ? "active" : ""} onClick={() => setUnit("price")}>실거래가</button><button className={unit === "py" ? "active" : ""} onClick={() => setUnit("py")}>평당가</button></div></div>
+          <article className="chart-card"><div className="chart-legend"><span><i className="price-dot" />월 중위가격</span><span><i className="ma-dot" />3개월 이동중위</span><span><i className="volume-dot" />거래량</span></div><div className={`canvas-wrap${error ? " has-error" : ""}`}>{loading ? <div className="state"><i /> 실거래 데이터를 불러오는 중입니다</div> : error ? <div className="state error"><b>실거래 데이터를 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : chartPoints.length ? <PriceChart points={chartPoints} unit={unit} theme={resolvedTheme} /> : <div className="state"><b>선택 조건의 거래가 없습니다</b><span>위 목록에서 다른 건물을 선택하거나 전체 면적을 선택하세요.</span></div>}</div></article>
+        </section>
         <section className="valuation-panel">
           {selectedKey && targetTrade && peerPyeongPrice ? <>
             <div className="valuation-score"><p>면적 보정 가격</p><strong>{valuationScore}<em>/100</em></strong><span className={valuationGap <= -5 ? "value-low" : valuationGap >= 5 ? "value-high" : "value-fair"}>{valuationLabel}</span></div>
@@ -1646,7 +1754,19 @@ export default function Home() {
         <aside className="research-axis" aria-label="리서치 대분류">
           {RESEARCH_CATEGORIES.map((category) => <button key={category.id} className={researchCategory === category.id ? "active" : ""} aria-pressed={researchCategory === category.id} onClick={() => { setResearchCategory(category.id); setResearchTool(category.tools[0].id); }}><em>{category.number}</em><span><b>{category.label}</b><small>{category.short}</small></span><i>{category.tools.length}</i></button>)}
         </aside>
-        <div className="research-workspace">
+        {researchCategory === "price" ? <ResearchAnalysisWorkspace
+          view={analysisResearchView}
+          onViewChange={changeAnalysisResearchView}
+          rows={analysisResearchRows}
+          columnOrder={analysisResearchColumns}
+          onSelectProperty={selectAnalysisResearchProperty}
+          visibleCount={analysisResearchRows.length}
+          totalCount={activeResearchDataView?.rowIds.length || 0}
+          onLoadMore={() => setResearchLimit((value) => value + 30)}
+          state={loading ? "loading" : error ? "error" : researchBundle?.status === "partial" ? "partial" : "ready"}
+          stateMessage={error || (researchBundle?.status === "partial" ? "일부 월의 응답이 지연되어 확인된 거래만 표시합니다." : undefined)}
+          onRetry={() => setDataRetry((value) => value + 1)}
+        /> : <div className="research-workspace">
           <div className="research-category-head"><div><span>{activeResearchCategory.short}</span><h3>{activeResearchCategory.label}</h3><p>{activeResearchCategory.description}</p></div><b>{activeResearchCategory.tools.filter((tool) => tool.mode === "live").length}개 사용 가능</b></div>
           <div className="research-tool-grid">{activeResearchCategory.tools.map((tool) => <button key={tool.id} className={researchTool === tool.id ? "active" : ""} aria-pressed={researchTool === tool.id} onClick={() => setResearchTool(tool.id)}><span>{tool.label}</span><small className={tool.mode}>{tool.mode === "live" ? "사용 가능" : "데이터 준비 중"}</small></button>)}</div>
           <article className="research-output">
@@ -1656,7 +1776,7 @@ export default function Home() {
               {loading ? <div className="research-state"><i />선택 지역의 실거래를 계산하고 있습니다.</div> : error ? <div className="research-state error"><b>실거래 분석을 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : researchRows.length ? researchRows.map((row, index) => <button key={row.key} onClick={() => selectCandidate(row)}><em>{String(index + 1).padStart(2, "0")}</em><span className={`research-building tone-${index % 5}`}>{row.name.slice(0, 1)}</span><b>{row.name}<small>{row.dong} · {dongLabel(row.buildingDong) || "동 정보 없음"} · 전용 {row.areaBucket}평 · {row.quarterCount}건</small></b><span>{formatPrice(row.current)}</span><strong className={researchTool === "record-high" || researchTool === "multi-compare" || researchTool === "most-bought" || researchTool === "volume" ? "" : researchTool === "price-compare" ? row.gap >= 0 ? "up" : "down" : (row.change ?? 0) >= 0 ? "up" : "down"}>{researchMetric(row)}</strong></button>) : <div className="research-state"><b>이 조건에서 비교 가능한 표본이 없습니다.</b><span>시·군·구 전체 또는 다른 주택 유형으로 범위를 넓혀보세요.</span></div>}
             </div> : <div className="research-connect-state"><div><span>데이터 준비 중</span><strong>확인된 공식 데이터만<br/>분석에 연결합니다.</strong><p>{activeResearchTool.label}에는 현재 실거래 외에 <b>{activeResearchTool.source}</b> 데이터가 필요합니다. 연결 전에는 임의의 값을 표시하지 않습니다.</p></div><ol><li><em>1</em><b>출처 확인</b><span>공식 기관과 갱신 주기 확인</span></li><li><em>2</em><b>지역 코드 통합</b><span>시·군·구·읍·면·동 연결</span></li><li><em>3</em><b>교차 분석</b><span>실거래와 같은 화면에서 비교</span></li></ol></div>}
           </article>
-        </div>
+        </div>}
       </div>
       <p className="research-note">가격·거래량 분석은 현재 선택 지역의 신고 실거래로 계산합니다. 매물·전세·공급·인구·학군처럼 추가 공식 데이터가 필요한 기능은 준비 중으로 구분했습니다.</p>
     </section>
@@ -1672,7 +1792,7 @@ export default function Home() {
         <div aria-live="polite"><span>현재 범위</span><b>{mapLocationTitle}</b><small>{mapLocationDescription}</small></div>
         <label><span>시·도</span><select value={selectedMapSido} onChange={(event) => chooseMapSido(event.target.value)}>{sidoOptions.map((sido) => <option key={sido} value={sido}>{sido}</option>)}</select></label>
         <label><span>시·군·구</span><select value={selectedMapSido === activeRegion.sido ? regionCode : ""} onChange={(event) => { const next = REGIONS.find((region) => region.code === event.target.value); if (next) chooseMapRegion(next); }}><option value="" disabled>시·군·구 선택</option>{mapDistricts.map((region) => <option key={region.code} value={region.code}>{region.sigungu}</option>)}</select></label>
-        <label><span>읍·면·동</span><select value={mapDongChoices.includes(mapPickerDong) ? mapPickerDong : ""} disabled={!mapDongChoices.length} onChange={(event) => setMapPickerDong(event.target.value)}><option value="" disabled>{mapDongChoices.length ? "읍·면·동 선택" : "동 목록 불러오는 중"}</option>{mapDongChoices.map((dong) => <option key={dong} value={dong}>{dong} · {formatDongMetric(mapDongStats[legalDongName(dong)], dongMetric)}</option>)}</select></label>
+        <label><span>읍·면·동</span><select value={mapDongChoices.includes(mapPickerDong) ? mapPickerDong : ""} disabled={!mapDongChoices.length} onChange={(event) => setMapPickerDong(event.target.value)}><option value="" disabled>{mapDongChoices.length ? "읍·면·동 선택" : "동 목록 불러오는 중"}</option>{mapDongChoices.map((dong) => <option key={dong} value={dong}>{dong} · {formatDongMetric(mapDongStats[dong], dongMetric)}</option>)}</select></label>
         <button type="button" disabled={!mapPickerDong || !mapDongChoices.includes(mapPickerDong)} onClick={() => chooseMapDong(mapPickerDong)}>{mapPickerDong ? `${mapPickerDong} 선택` : "동을 선택하세요"}</button>
       </div>}
       <div className="map-layout"><KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "research"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} nearbyBoundaryDongs={nearbyBoundaryDongs} nearbyLegalDongs={nearbyLegalDongs} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} camera={mapCamera} onCameraChange={setMapCamera} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />

@@ -7,6 +7,7 @@ import "./styles/common.css";
 import "./styles/responsive-web.css";
 import "./styles/responsive-tablet.css";
 import "./styles/responsive-mobile.css";
+import "./styles/research-analysis.css";
 
 const themeBootstrap = `(() => {
   try {
@@ -25,8 +26,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host") || "jipgaps-jeongseok.sueb4509.chatgpt.site";
   const protocol = requestHeaders.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
   const origin = `${protocol}://${host}`;
-  const title = "집값의 정석 PRO | 전국 부동산 실거래 투자 분석";
-  const description = "전국 실거래를 분기 단위로 비교하고 동·평형별 가격 매력, 거래량, 가격 흐름을 한눈에 확인하는 부동산 분석 서비스입니다.";
+  const title = "집값의 정석 | 전국 부동산 실거래와 생활권 분석";
+  const description = "전국 실거래를 분기 단위로 비교하고 지역·단지·평형별 가격과 주변 생활권을 함께 확인하는 부동산 분석 서비스입니다.";
   return {
     metadataBase: new URL(origin),
     title,

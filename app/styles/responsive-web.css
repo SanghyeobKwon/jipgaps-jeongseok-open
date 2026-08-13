@@ -95,8 +95,8 @@
     #price-analysis
     .watch-chart
     .canvas-wrap {
-    height: clamp(320px, 38vw, 520px) !important;
-    min-height: 320px !important;
+    height: clamp(300px, 26vw, 360px) !important;
+    min-height: 300px !important;
   }
 
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]

@@ -355,6 +355,9 @@ html[data-theme="dark"] .district-context path{fill:#17232e;stroke:#405365}html[
 .administrative-label-name { fill: #102a43 !important; stroke: rgba(255, 255, 255, .96) !important; }
 .capital-context-region { fill: #d7e0e8 !important; stroke: #9fb0bf !important; }
 .capital-context-region.context-11 { fill: #e5ebf0 !important; }
+.capital-district-region{cursor:pointer;outline:none}.capital-district-region path{fill:#dce5ec;stroke:#aebdca;stroke-width:1;vector-effect:non-scaling-stroke;transition:fill .16s ease-out,stroke .16s ease-out}.capital-district-region:hover path,.capital-district-region:focus-visible path{fill:#c9dfee;stroke:#0071e3;stroke-width:2}.capital-district-labels{pointer-events:none}.capital-district-labels text{fill:#536b7e;font-family:"Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif;font-size:11px;font-weight:800;paint-order:stroke;stroke:#f4f7fa;stroke-width:4px;stroke-linejoin:round}.level-sido .administrative-region-surface{fill:#edf3f7}.level-sido .administrative-region.selected .administrative-region-surface{fill:#8fc0e5!important}
+.terminal-shell[data-view="chart"] .detail-terminal .canvas-wrap{height:340px!important;min-height:300px!important}
+@media(max-width:760px){.terminal-shell[data-view="chart"] .detail-terminal .canvas-wrap{height:260px!important;min-height:240px!important}}
 .administrative-map-key i.price-low { background: #c8dcea !important; }
 .administrative-map-key i.price-mid { background: #91bddb !important; }
 .administrative-map-key i.price-high { background: #4389bb !important; }
@@ -1576,3 +1579,7 @@ html[data-theme="dark"] .level-district .district-active-outline path{stroke:#67
   .field-region-redirect{grid-template-columns:auto minmax(0,1fr);padding:15px}
   .field-region-redirect button{grid-column:1/-1;width:100%}
 }
+
+/* Final compact chart contract: keep the price graph useful without pushing 생활권 below the fold. */
+.terminal-shell[data-view="chart"] .watch-chart .canvas-wrap{height:340px!important;min-height:300px!important}
+@media(max-width:760px){.terminal-shell[data-view="chart"] .watch-chart .canvas-wrap{height:260px!important;min-height:240px!important}}
