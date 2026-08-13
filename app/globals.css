@@ -923,6 +923,7 @@ html[data-theme="dark"] .field-score-radar-note{border-color:var(--border-subtle
 .site-footer{min-height:76px;height:auto;padding-top:14px;padding-bottom:14px;gap:32px}
 .site-footer>div:first-child{display:flex;align-items:center;gap:28px;min-width:max-content}
 .site-footer p{margin:0!important;font-size:11px!important;line-height:1.45!important}
+.footer-build{color:var(--text-tertiary);font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .footer-data-sources{max-width:760px;margin-left:auto;text-align:right}
 .site-footer .footer-data-sources>b,.site-footer .footer-data-sources>span{display:block;font-size:9px!important;line-height:1.5!important}
 .footer-data-sources>b{margin-bottom:3px;color:#7b8794!important;font-weight:800!important}
