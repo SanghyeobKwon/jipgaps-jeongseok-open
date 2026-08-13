@@ -26,7 +26,6 @@ export interface PropertyTypeIconProps {
   size?: "sm" | "md";
   className?: string;
 }
-
 export function PropertyTypeIcon({ type, priceBucket = null, selected = false, size = "md", className }: PropertyTypeIconProps) {
   const meta = PROPERTY_META[type];
   const Icon = meta.icon;
@@ -55,4 +54,3 @@ export function PriceBucketLegend() {
     </div>
   );
 }
-

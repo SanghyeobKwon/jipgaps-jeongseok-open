@@ -22,7 +22,6 @@ export interface ResearchCell {
   sortDirection?: "ascending" | "descending" | "none";
   tone?: ResearchValueTone;
 }
-
 export interface ResearchPropertyRow {
   key: string;
   rank: number;
@@ -87,4 +86,3 @@ export interface PropertyDecisionData {
   metrics: PropertyMetric[];
   areaPrices: AreaPriceRow[];
 }
-

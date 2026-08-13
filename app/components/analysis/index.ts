@@ -13,4 +13,3 @@ export type {
   ResearchValueTone,
   ResearchView,
 } from "./types";
-
