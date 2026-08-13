@@ -15,16 +15,18 @@ export interface TabsProps<Value extends string = string> {
   value: Value;
   onValueChange: (value: Value) => void;
   label: string;
+  loading?: boolean;
   className?: string;
 }
 
-export function Tabs<Value extends string>({ items, value, onValueChange, label, className }: TabsProps<Value>) {
+export function Tabs<Value extends string>({ items, value, onValueChange, label, loading = false, className }: TabsProps<Value>) {
   const generatedId = useId();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const requestedIndex = items.findIndex((item) => item.value === value && !item.disabled);
   const selectedIndex = requestedIndex >= 0 ? requestedIndex : items.findIndex((item) => !item.disabled);
 
   function moveFocus(event: KeyboardEvent<HTMLButtonElement>, currentIndex: number) {
+    if (loading) return;
     const enabledIndexes = items.map((item, index) => item.disabled ? -1 : index).filter((index) => index >= 0);
     if (!enabledIndexes.length) return;
     const enabledPosition = enabledIndexes.indexOf(currentIndex);
@@ -45,7 +47,7 @@ export function Tabs<Value extends string>({ items, value, onValueChange, label,
   const activeItem = items[selectedIndex];
 
   return (
-    <div className={joinClassNames("hmi-tabs", className)}>
+    <div className={joinClassNames("hmi-tabs", className)} aria-busy={loading || undefined}>
       <div className="hmi-tabs__list" role="tablist" aria-label={label}>
         {items.map((item, index) => {
           const selected = item.value === activeItem?.value;
@@ -60,7 +62,7 @@ export function Tabs<Value extends string>({ items, value, onValueChange, label,
               aria-selected={selected}
               aria-controls={`${generatedId}-panel-${index}`}
               tabIndex={selected ? 0 : -1}
-              disabled={item.disabled}
+              disabled={item.disabled || loading}
               onClick={() => onValueChange(item.value)}
               onKeyDown={(event) => moveFocus(event, index)}
             >

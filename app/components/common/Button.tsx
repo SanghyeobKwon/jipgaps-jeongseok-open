@@ -9,6 +9,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   loading?: boolean;
   loadingLabel?: string;
+  selected?: boolean;
   wide?: boolean;
   leadingIcon?: ReactNode;
   trailingIcon?: ReactNode;
@@ -19,6 +20,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     variant = "primary",
     loading = false,
     loadingLabel = "처리 중",
+    selected,
     wide = false,
     leadingIcon,
     trailingIcon,
@@ -39,6 +41,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       disabled={isDisabled}
       aria-busy={loading || undefined}
+      aria-pressed={selected}
       className={joinClassNames(
         "hmi-button",
         `hmi-button--${variant}`,

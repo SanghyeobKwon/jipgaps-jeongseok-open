@@ -30,19 +30,20 @@ export interface FieldProps {
   error?: ReactNode;
   required?: boolean;
   disabled?: boolean;
+  loading?: boolean;
   id?: string;
   className?: string;
 }
 
-export function Field({ label, children, hint, error, required, disabled, id, className }: FieldProps) {
+export function Field({ label, children, hint, error, required, disabled, loading = false, id, className }: FieldProps) {
   const generatedId = useId();
   const controlId = id ?? `hmi-field-${generatedId}`;
   const descriptionId = hint ? `${controlId}-hint` : undefined;
   const errorId = error ? `${controlId}-error` : undefined;
 
   return (
-    <FieldContext.Provider value={{ controlId, descriptionId, errorId, invalid: Boolean(error), disabled: Boolean(disabled), required: Boolean(required) }}>
-      <div className={joinClassNames("hmi-field", className)} data-disabled={disabled || undefined} data-invalid={Boolean(error) || undefined}>
+    <FieldContext.Provider value={{ controlId, descriptionId, errorId, invalid: Boolean(error), disabled: Boolean(disabled || loading), required: Boolean(required) }}>
+      <div className={joinClassNames("hmi-field", className)} data-disabled={disabled || loading || undefined} data-invalid={Boolean(error) || undefined} aria-busy={loading || undefined}>
         <label className="hmi-field__label" htmlFor={controlId}>
           {label}
           {required && <span className="hmi-field__required" aria-hidden="true">*</span>}

@@ -117,6 +117,7 @@ textarea.hmi-field__control { min-height: 7rem; padding-block: var(--hmi-space-3
 }
 .hmi-chip:hover:not(:disabled) { border-color: var(--hmi-action); color: var(--hmi-ink); }
 .hmi-chip[aria-pressed="true"] { border-color: var(--hmi-action); background: var(--hmi-surface-selected); color: var(--hmi-action); }
+.hmi-chip--loading { cursor: wait; }
 
 .hmi-tabs { min-width: 0; }
 .hmi-tabs__list { display: flex; gap: var(--hmi-space-4); overflow-x: auto; border-bottom: 1px solid var(--hmi-border); scrollbar-width: thin; }

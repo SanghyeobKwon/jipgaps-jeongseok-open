@@ -42,3 +42,12 @@ test("Drawer와 비동기 상태가 필수 접근성 계약을 선언한다", ()
   assert.match(asyncSource, /aria-live=/);
   assert.match(asyncSource, /onRetry/);
 });
+
+test("공통 입력 계열이 disabled, loading, selected 상태 계약을 노출한다", () => {
+  const sources = ["Button.tsx", "Field.tsx", "Chip.tsx", "Tabs.tsx"].map((file) => read(`../app/components/common/${file}`)).join("\n");
+  assert.match(sources, /disabled/);
+  assert.match(sources, /loading/);
+  assert.match(sources, /selected/);
+  assert.match(sources, /aria-busy/);
+  assert.match(sources, /aria-pressed|aria-selected/);
+});
