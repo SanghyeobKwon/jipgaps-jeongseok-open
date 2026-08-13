@@ -1,0 +1,21 @@
+{
+  "name": "집값의 정석",
+  "short_name": "집값의 정석",
+  "description": "대한민국 부동산 실거래와 생활권을 함께 비교하는 의사결정 서비스",
+  "lang": "ko-KR",
+  "start_url": "/#home",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f3f6fa",
+  "theme_color": "#155bd7",
+  "categories": ["finance", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

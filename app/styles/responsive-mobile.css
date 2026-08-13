@@ -1,0 +1,409 @@
+/*
+ * Mobile stabilization contract (360-767px).
+ *
+ * This file intentionally builds on the incumbent selectors. The integration
+ * owner should import it after globals.css so the fixes can be adopted without
+ * rewriting page.tsx or the global stylesheet.
+ */
+
+@media (max-width: 767px) {
+  :root {
+    --mobile-page-gutter: 12px;
+    --mobile-touch-size: 44px;
+    --mobile-nav-height: 64px;
+    --mobile-sheet-collapsed: 76px;
+    --mobile-sheet-peek: min(44dvh, 390px);
+    --mobile-sheet-expanded: min(78dvh, 680px);
+  }
+
+  html,
+  body,
+  .terminal-shell {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  .terminal-shell {
+    padding-bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+  }
+
+  /* Theme choice must remain reachable on phones even when the desktop nav is hidden. */
+  .topbar .theme-switcher {
+    display: flex !important;
+    margin-left: auto;
+  }
+
+  .topbar .theme-switcher button {
+    width: var(--mobile-touch-size) !important;
+    min-width: var(--mobile-touch-size) !important;
+    min-height: var(--mobile-touch-size) !important;
+  }
+
+  /* The product contract has exactly five destinations. */
+  .mobile-primary-nav {
+    height: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+    padding: 0 max(6px, env(safe-area-inset-left)) env(safe-area-inset-bottom)
+      max(6px, env(safe-area-inset-right));
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .mobile-primary-nav > a {
+    min-width: 0;
+    min-height: var(--mobile-touch-size);
+    padding: 8px 3px 6px;
+    text-align: center;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
+  .mobile-primary-nav > a.active::before,
+  .mobile-primary-nav > a[aria-current="page"]::before {
+    right: 20%;
+    left: 20%;
+    height: 3px;
+  }
+
+  .mobile-primary-nav > a:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--atlas-blue, #155bd7) 42%, transparent);
+    outline-offset: -3px;
+  }
+
+  /* Region search: two compact columns, then address and action at full width. */
+  :is(.finder-panel, .analysis-command) {
+    width: calc(100% - (var(--mobile-page-gutter) * 2));
+    max-width: calc(100% - (var(--mobile-page-gutter) * 2));
+    min-width: 0;
+    margin-inline: auto;
+  }
+
+  :is(.search-console, .analysis-search-console) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  :is(.search-console, .analysis-search-console) > label {
+    width: 100%;
+    min-width: 0;
+    min-height: 58px;
+  }
+
+  :is(.search-console, .analysis-search-console) :is(input, select) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  :is(.search-console .property-search, .analysis-search-console .analysis-address-search),
+  :is(.search-console, .analysis-search-console) > button {
+    grid-column: 1 / -1;
+  }
+
+  :is(.search-console, .analysis-search-console) > button,
+  .screen-context-actions > button,
+  .map-direct-picker > button,
+  .map-path > button,
+  .trade-area-tabs > button,
+  .price-location-panel button,
+  .area-trade-bars > button {
+    min-height: var(--mobile-touch-size);
+  }
+
+  .analysis-command-head,
+  .analysis-command-head > div,
+  .analysis-search-console,
+  .analysis-search-console > label,
+  .analysis-search-console .analysis-address-search {
+    min-width: 0;
+  }
+
+  .analysis-command-head h1 {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  /* Map remains primary; the selection result follows it as a sheet surface. */
+  .terminal-shell[data-view="research"] .map-layout {
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    overflow: visible;
+  }
+
+  .terminal-shell[data-view="research"] .map-layout > :first-child {
+    min-width: 0;
+    min-height: clamp(420px, 58dvh, 560px);
+  }
+
+  .terminal-shell[data-view="research"] .map-ranking {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin-top: -18px;
+    border-radius: 18px 18px 0 0;
+    background: var(--atlas-surface, #fff);
+    box-shadow: 0 -12px 34px rgba(23, 43, 77, 0.12);
+  }
+
+  .terminal-shell[data-view="research"] .mobile-sheet-controls {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    padding: 4px 12px 8px;
+    background: var(--atlas-surface, #fff);
+  }
+
+  .terminal-shell[data-view="research"] .mobile-sheet-controls button {
+    min-height: var(--mobile-touch-size);
+    border: 1px solid var(--atlas-line, #d9e1eb);
+    background: transparent;
+    color: var(--atlas-muted, #617086);
+  }
+
+  .terminal-shell[data-view="research"] .mobile-sheet-controls button[aria-pressed="true"] {
+    border-color: var(--atlas-blue, #155bd7);
+    background: var(--atlas-blue-soft, #eaf2ff);
+    color: var(--atlas-blue, #155bd7);
+    font-weight: 700;
+  }
+
+  /*
+   * Integration contract: set data-sheet-state on .map-ranking.
+   * collapsed = selection summary, peek = shortlist, expanded = full list.
+   */
+  .terminal-shell[data-view="research"] .map-ranking[data-sheet-state] {
+    position: sticky;
+    z-index: 24;
+    bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    overscroll-behavior: contain;
+  }
+
+  .terminal-shell[data-view="research"] .map-ranking[data-sheet-state]::before {
+    content: "";
+    flex: 0 0 auto;
+    width: 42px;
+    height: 4px;
+    margin: 8px auto 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--atlas-muted, #617086) 36%, transparent);
+  }
+
+  .terminal-shell[data-view="research"] .map-ranking[data-sheet-state="collapsed"] {
+    max-height: var(--mobile-sheet-collapsed);
+  }
+
+  .terminal-shell[data-view="research"] .map-ranking[data-sheet-state="peek"] {
+    max-height: var(--mobile-sheet-peek);
+  }
+
+  .terminal-shell[data-view="research"] .map-ranking[data-sheet-state="expanded"] {
+    max-height: var(--mobile-sheet-expanded);
+  }
+
+  .terminal-shell[data-view="research"]
+    .map-ranking[data-sheet-state]
+    :is(.map-ranking-list, .building-list) {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .terminal-shell[data-view="research"] .map-context-foot {
+    position: sticky;
+    bottom: 0;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    background: var(--atlas-surface, #fff);
+  }
+
+  /* Mobile analysis reading order: selector, chart, metrics, then map/life detail. */
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .terminal-shell[data-view="chart"] > .analysis-command {
+    order: 10;
+  }
+
+  .terminal-shell[data-view="chart"] > #price-analysis {
+    order: 20;
+  }
+
+  .terminal-shell[data-view="chart"] > #field {
+    order: 30;
+  }
+
+  .terminal-shell[data-view="chart"] > #transactions {
+    order: 40;
+  }
+
+  .watch-chart {
+    scroll-margin-top: 72px;
+  }
+
+  /* Recent trades become a concise two-column summary instead of a 780px table. */
+  .trade-section {
+    overflow: visible;
+  }
+
+  .trade-analysis-layout {
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .trade-analysis-layout > .trade-table {
+    width: 100%;
+    min-width: 0;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .trade-section .table-head {
+    display: none;
+  }
+
+  .trade-section .table-row {
+    min-width: 0 !important;
+    min-height: 76px;
+    padding: 13px 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "building amount"
+      "date pyeong";
+    gap: 7px 12px;
+    align-items: center;
+    font-family: inherit;
+  }
+
+  .trade-section .table-row > b {
+    grid-area: building;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .trade-section .table-row > strong {
+    grid-area: amount;
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .trade-section .table-row > span:nth-of-type(1) {
+    grid-area: date;
+  }
+
+  .trade-section .table-row > span:nth-of-type(3) {
+    grid-area: pyeong;
+    text-align: right;
+  }
+
+  .trade-section .table-row > span:nth-of-type(2),
+  .trade-section .table-row > span:nth-of-type(4),
+  .trade-section .table-row > span:nth-of-type(5) {
+    display: none;
+  }
+
+  /* Integration contract: a row control toggles data-expanded or aria-expanded. */
+  .trade-section
+    .table-row:is([data-expanded="true"], [aria-expanded="true"]) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "building amount"
+      "date pyeong"
+      "area floor"
+      "unit unit";
+  }
+
+  .trade-section
+    .table-row:is([data-expanded="true"], [aria-expanded="true"])
+    > span:nth-of-type(2) {
+    grid-area: area;
+    display: block;
+  }
+
+  .trade-section
+    .table-row:is([data-expanded="true"], [aria-expanded="true"])
+    > span:nth-of-type(4) {
+    grid-area: floor;
+    display: block;
+    text-align: right;
+  }
+
+  .trade-section
+    .table-row:is([data-expanded="true"], [aria-expanded="true"])
+    > span:nth-of-type(5) {
+    grid-area: unit;
+    display: block;
+    padding-top: 8px;
+    border-top: 1px solid var(--atlas-line, #d9e1eb);
+  }
+
+  .trade-section .table-row[role="button"] {
+    cursor: pointer;
+  }
+
+  .trade-section .table-row[role="button"]:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--atlas-blue, #155bd7) 38%, transparent);
+    outline-offset: -3px;
+  }
+
+  .area-trade-chart {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* PWA/offline UI contract for the integration owner. */
+  :is(.pwa-offline-state, .pwa-install-state) {
+    width: min(100%, 560px);
+    min-height: 132px;
+    margin: 16px auto;
+    padding: 18px;
+    display: grid;
+    align-content: center;
+    gap: 8px;
+    border: 1px solid var(--atlas-line, #d9e1eb);
+    border-radius: 14px;
+    background: var(--atlas-surface, #fff);
+    color: var(--atlas-ink, #0c1c32);
+  }
+
+  :is(.pwa-offline-state, .pwa-install-state) > p {
+    margin: 0;
+    color: var(--atlas-muted, #617086);
+  }
+
+  :is(.pwa-offline-state, .pwa-install-state) button {
+    width: 100%;
+    min-height: var(--mobile-touch-size);
+  }
+}
+
+@media (max-width: 390px) {
+  .analysis-search-console,
+  .search-console {
+    gap: 7px;
+  }
+
+  .mobile-primary-nav > a {
+    font-size: 11px;
+  }
+
+  .trade-area-tabs {
+    margin-inline: -2px;
+    padding-inline: 2px;
+  }
+}

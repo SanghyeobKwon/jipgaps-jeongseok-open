@@ -1,0 +1,141 @@
+/*
+ * Desktop analysis workspace
+ *
+ * This is deliberately layered on top of the legacy selectors. Import it
+ * after globals.css while the analysis screen is migrated component by
+ * component. No mobile or tablet behavior is changed here.
+ */
+
+@media (min-width: 1200px) {
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    > #price-analysis.market-browser {
+    --web-candidate-width: clamp(320px, 25vw, 360px);
+    display: grid !important;
+    grid-template-columns: var(--web-candidate-width) minmax(0, 1fr) !important;
+    grid-template-rows: auto auto auto minmax(360px, 56vh) auto;
+    column-gap: var(--space-3, 12px);
+    row-gap: 0;
+    align-items: start;
+    overflow: visible;
+    overflow-anchor: none;
+  }
+
+  /* Flatten only the layout wrapper so its chart can occupy the right pane. */
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    > #price-analysis.market-browser
+    > .watchlist {
+    display: contents !important;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    .watch-head {
+    grid-column: 1;
+    grid-row: 1;
+    display: flex !important;
+    min-width: 0;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    .watch-filters {
+    grid-column: 1;
+    grid-row: 2;
+    display: grid !important;
+    min-width: 0;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    .watch-columns {
+    grid-column: 1;
+    grid-row: 3;
+    display: grid !important;
+    min-width: 0;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    :is(.watch-scroll, .watch-state) {
+    grid-column: 1;
+    grid-row: 4;
+    display: block !important;
+    min-width: 0;
+    width: 100%;
+    height: auto !important;
+    max-height: 56vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    overflow-anchor: none;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    .watch-scroll
+    > button {
+    min-width: 0;
+    scroll-margin-block: 72px;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    .watch-chart {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    min-width: 0;
+    align-self: stretch;
+    border: 1px solid var(--atlas-line, #d9e1eb);
+    border-radius: var(--radius-lg, 16px);
+    overflow: clip;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    .watch-chart
+    .canvas-wrap {
+    height: clamp(320px, 38vw, 520px) !important;
+    min-height: 320px !important;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    > #price-analysis.market-browser
+    > .detail-terminal {
+    grid-column: 2;
+    grid-row: 5;
+    min-width: 0;
+    margin-top: var(--space-3, 12px);
+    scroll-margin-top: 88px;
+    overflow-anchor: none;
+  }
+
+  /* Keep the candidate rail visually connected without obscuring content. */
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    :is(.watch-head, .watch-filters, .watch-columns, .watch-scroll, .watch-state) {
+    border-inline: 1px solid var(--atlas-line, #d9e1eb);
+    background: var(--atlas-surface, #fff);
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    .watch-head {
+    border-top: 1px solid var(--atlas-line, #d9e1eb);
+    border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    :is(.watch-scroll, .watch-state) {
+    border-bottom: 1px solid var(--atlas-line, #d9e1eb);
+    border-radius: 0 0 var(--radius-lg, 16px) var(--radius-lg, 16px);
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    :is(button, select):focus-visible {
+    outline: 3px solid var(--focus-ring, #3b82f6);
+    outline-offset: -3px;
+  }
+}

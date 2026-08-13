@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">집값의 정석</title>
+  <desc id="desc">집과 가격 흐름을 함께 나타낸 앱 아이콘</desc>
+  <rect width="512" height="512" rx="112" fill="#155bd7"/>
+  <path d="M112 252 256 132l144 120v142a34 34 0 0 1-34 34H146a34 34 0 0 1-34-34Z" fill="#fff"/>
+  <path d="M177 338h54l44-72 42 33 49-80" fill="none" stroke="#0d9f8a" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m341 219 35-5-9 34" fill="none" stroke="#0d9f8a" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
