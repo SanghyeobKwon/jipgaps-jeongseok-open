@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
+import "./styles/tokens.css";
+import "./styles/themes.css";
+import "./styles/common.css";
 
 const themeBootstrap = `(() => {
   try {
