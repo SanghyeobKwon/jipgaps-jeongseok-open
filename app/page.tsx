@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, Baby, BedDouble, Building2, BusFront, CarFront, Drama, Dumbbell, Film, GraduationCap, HeartPulse, Hospital, ImagePlus, Landmark, Library, Mail, MapPin, Monitor, Moon, Move, Pill, Refrigerator, RotateCw, Ruler, School, Search, ShoppingBasket, ShoppingCart, Sofa, Stethoscope, Store, Sun, Table2, TrainFront, Trash2, Trees, Trophy, Upload, WashingMachine, Waves, type LucideIcon } from "lucide-react";
 import regions from "./data/regions.json";
-import type { MapCamera } from "./lib/map/types";
+import type { MapCamera, MapDataStatus } from "./lib/map/types";
+import type { DataState, SampleStatus } from "./lib/market/types";
 import { normalizeScreen, readViewState, writeViewState, type ScreenId } from "./lib/navigation/view-state";
 
 type PropertyType = "apt" | "rowhouse" | "house" | "officetel" | "commercial" | "factory";
@@ -13,18 +14,21 @@ type Region = { code: string; sido: string; sigungu: string };
 type Trade = { id: string; date: string; amount: number; area: number; floor: number | null; name: string; propertyKey: string; dong: string; buildingDong: string; jibun: string; buildYear: number | null; dealingType: string; cancelled: boolean };
 type Property = { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; areas: number[] };
 type ChartPoint = { month: string; price: number; average: number; volume: number };
-type OverviewMarket = { short: string; sido: string; code: string; count: number; median: number; change: number };
+type OverviewMarket = { short: string; sido: string; code: string; count: number; median: number; change: number; medianAmountManwon?: number | null; changePct?: number | null; sample?: SampleStatus; status?: DataState };
+type DataFeedback = { status: DataState; warnings: string[] };
+type OverviewFeedback = DataFeedback & { scopeLabel: string; nationwide: boolean };
 type PolicyItem = { date: string; tone: string; label: string; scope: string; title: string; summary: string; url: string };
 type SavedHome = { id: string; name: string; region: string; area: number; price: number; score: number; savedAt: string };
 type ResearchMode = "live" | "connect";
 type AnalysisMode = "price" | "field";
+type MobileSheetState = "collapsed" | "peek" | "expanded";
 type ResearchTool = { id: string; label: string; description: string; mode: ResearchMode; source: string };
 type ResearchCategory = { id: string; number: string; label: string; short: string; description: string; tools: ResearchTool[] };
 type CommunityCategory = { id: string; number: string; label: string; description: string; boards: string[] };
 type CommunityGuide = { id: string; category: string; board: string; tag: string; title: string; summary: string; evidence: string };
 type FieldFeature = { id: string; group: string; title: string; information: string; value: string; importance: 4 | 5; status: "live" | "beta" | "connect"; source: string };
-type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAddress: string };
-type PropertyMapLocation = PropertyLocation & { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; propertyType: PropertyType; scope: "selected" | "nearby" };
+type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAddress: string; codes?: { adminDongCode?: string; legalDongCode?: string } };
+type PropertyMapLocation = PropertyLocation & { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; propertyType: PropertyType; scope: "selected" | "nearby"; validation?: "verified" };
 type NearbyPlace = { id: string; name: string; category: string; subCategory: string; distance: number; walkingMinutes: number; lat: number; lng: number; detail: string };
 type CommuteEstimate = { destination: string; address: string; distance: number; walkingMinutes: number; drivingMinutes: number; transitMinutes: number };
 type FurnitureKind = "single-bed" | "queen-bed" | "sofa" | "dining" | "desk" | "wardrobe" | "fridge";
@@ -725,7 +729,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
     onSelectDong(meta.name);
   };
   const boundaryMetric = (boundary: ProjectedBoundary) => {
-    if (focus === "national") { const market = markets.find((item) => item.sido === boundary.name); return market ? `${market.change >= 0 ? "+" : ""}${market.change.toFixed(1)}%` : "집계 중"; }
+    if (focus === "national") { const market = markets.find((item) => item.sido === boundary.name); return market?.changePct !== null && market?.changePct !== undefined ? `${market.changePct >= 0 ? "+" : ""}${market.changePct.toFixed(1)}%` : market ? "표본 부족" : "집계 중"; }
     if (focus === "district") return formatDongMetric(dongStats[legalDongName(boundary.name)], dongMetric);
     return boundary.code === activeRegion.code ? "선택됨" : "보기";
   };
@@ -737,7 +741,8 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
       return value >= districtMid * 1.15 ? "price-high" : value <= districtMid * .85 ? "price-low" : "price-mid";
     }
     if (focus !== "national") return "neutral";
-    const change = markets.find((item) => item.sido === boundary.name)?.change || 0;
+    const change = markets.find((item) => item.sido === boundary.name)?.changePct;
+    if (change === null || change === undefined) return "neutral";
     return change > 1 ? "hot" : change < -1 ? "cold" : "flat";
   };
   return <div className={`administrative-market-map level-${focus}`}>
@@ -952,13 +957,14 @@ export default function Home() {
   const spaceFurnitureSequenceRef = useRef(0);
   const historyModeRef = useRef<"replace" | "push">("replace");
   const restoringUrlRef = useRef(false);
-  const pendingAdminDongCodeRef = useRef("");
   const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState(""); const [analysisAddressInput, setAnalysisAddressInput] = useState("서울특별시 강남구");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
   const [selectedDong, setSelectedDong] = useState("all"); const [selectedBuildingDong, setSelectedBuildingDong] = useState(""); const [selectedAreaBucket, setSelectedAreaBucket] = useState<number | null>(null); const [selectedVariantKey, setSelectedVariantKey] = useState("");
   const [area, setArea] = useState("all"); const [tradeAreaFilter, setTradeAreaFilter] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [dataRetry, setDataRetry] = useState(0);
+  const [dataFeedback, setDataFeedback] = useState<DataFeedback>({ status: "empty", warnings: [] });
   const [markets, setMarkets] = useState<OverviewMarket[]>([]); const [marketMonth, setMarketMonth] = useState(""); const [marketError, setMarketError] = useState(""); const [marketRetry, setMarketRetry] = useState(0);
+  const [overviewFeedback, setOverviewFeedback] = useState<OverviewFeedback>({ status: "empty", warnings: [], scopeLabel: "16개 대표 시군구 표본", nationwide: false });
   const [buildingSort, setBuildingSort] = useState<"volume" | "price" | "rise" | "fall">("volume"); const [minVolume, setMinVolume] = useState(0); const [propertyLimit, setPropertyLimit] = useState(30);
   const [policyItems, setPolicyItems] = useState<readonly PolicyItem[]>(POLICIES); const [policyUpdated, setPolicyUpdated] = useState("");
   const [activeSection, setActiveSection] = useState<ScreenId>("home"); const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("price"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
@@ -977,12 +983,16 @@ export default function Home() {
   const [propertyLocation, setPropertyLocation] = useState<PropertyLocation | null>(null); const [locationLoading, setLocationLoading] = useState(false); const [locationError, setLocationError] = useState("");
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]); const [nearbyLoading, setNearbyLoading] = useState(false); const [nearbyError, setNearbyError] = useState(""); const [nearbyCategory, setNearbyCategory] = useState("전체"); const [nearbySubtype, setNearbySubtype] = useState("전체"); const [nearbyRadius, setNearbyRadius] = useState(500);
   const [buildingLocations, setBuildingLocations] = useState<PropertyMapLocation[]>([]); const [buildingsLoading, setBuildingsLoading] = useState(false); const [buildingsError, setBuildingsError] = useState("");
+  const [buildingStatus, setBuildingStatus] = useState<MapDataStatus>("empty"); const [nearbyStatus, setNearbyStatus] = useState<MapDataStatus>("empty");
+  const [mobileSheetState, setMobileSheetState] = useState<MobileSheetState>("peek"); const [expandedTradeIds, setExpandedTradeIds] = useState<Set<string>>(() => new Set()); const [online, setOnline] = useState(true);
   const [urlHydrated, setUrlHydrated] = useState(false); const [releaseInfo, setReleaseInfo] = useState<ReleaseInfo | null>(null);
+  const [selectedHCode, setSelectedHCode] = useState(""); const [selectedBCode, setSelectedBCode] = useState("");
   const activeRegion = REGIONS.find((item) => item.code === regionCode) || REGIONS[0];
-  const selectedAdminDongCode = boundaryDongs.find((dong) => dong.name === selectedBoundaryDong)?.code;
+  const selectedBoundaryCode = boundaryDongs.find((dong) => dong.name === selectedBoundaryDong)?.code;
   const chooseThemePreference = (next: ThemePreference) => { themeInteractedRef.current = true; try { window.localStorage.setItem("jipgaps:theme", next); } catch { /* device storage is optional */ } setThemePreference(next); };
 
   useEffect(() => { const timer = window.setTimeout(() => { try { const stored = window.localStorage.getItem("jipgaps:saved-homes"); if (stored) setSavedHomes(JSON.parse(stored)); const draft = window.localStorage.getItem("jipgaps:study-draft"); if (draft) { const parsed = JSON.parse(draft); setStudyTitle(parsed.title || ""); setStudyBody(parsed.body || ""); } } catch { /* device storage is optional */ } }, 0); return () => window.clearTimeout(timer); }, []);
+  useEffect(() => { const update = () => setOnline(window.navigator.onLine); update(); window.addEventListener("online", update); window.addEventListener("offline", update); return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); }; }, []);
   useEffect(() => { const timer = window.setTimeout(() => { try { const stored = window.localStorage.getItem("jipgaps:theme"); if (stored === "light" || stored === "dark" || stored === "system") setThemePreference(stored); } catch { /* device storage is optional */ } }, 0); return () => window.clearTimeout(timer); }, []);
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -1018,7 +1028,8 @@ export default function Home() {
         setRegionInput(`${requestedRegion.sido} ${requestedRegion.sigungu}`);
         setSelectedMapSido(requestedRegion.sido);
       } else if (viewState.sido && SIDO_ORDER.includes(viewState.sido)) setSelectedMapSido(viewState.sido);
-      pendingAdminDongCodeRef.current = viewState.hcode || "";
+      setSelectedHCode(viewState.hcode || "");
+      setSelectedBCode(viewState.bcode || "");
       setSelectedKey(viewState.property || "");
       setArea(viewState.area || "all");
       setTradeAreaFilter(viewState.tradePy || "all");
@@ -1058,7 +1069,8 @@ export default function Home() {
       screen: activeSection,
       sido: selectedMapSido,
       sigungu: regionCode,
-      hcode: selectedAdminDongCode,
+      hcode: selectedHCode || undefined,
+      bcode: selectedBCode || undefined,
       property: selectedKey || undefined,
       area: area === "all" ? undefined : area,
       tradePy: tradeAreaFilter === "all" ? undefined : tradeAreaFilter,
@@ -1072,7 +1084,7 @@ export default function Home() {
     historyModeRef.current = "replace";
     if (mode === "push") window.history.pushState(null, "", nextUrl);
     else window.history.replaceState(null, "", nextUrl);
-  }, [activeSection, area, mapCamera, regionCode, selectedAdminDongCode, selectedKey, selectedMapSido, tradeAreaFilter, urlHydrated]);
+  }, [activeSection, area, mapCamera, regionCode, selectedBCode, selectedHCode, selectedKey, selectedMapSido, tradeAreaFilter, urlHydrated]);
 
   useEffect(() => {
     const nav = navRef.current; const link = nav?.querySelector<HTMLAnchorElement>(`a[data-view="${activeSection}"]`); if (!nav || !link) return;
@@ -1085,14 +1097,14 @@ export default function Home() {
     const timer = window.setTimeout(() => {
       setLoading(true); setError(""); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all");
       const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 6)), query: submittedQuery });
-      fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { setTrades(data.trades); setProperties(data.properties); if (data.properties.length === 1) setSelectedKey(data.properties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") setError(publicDataErrorMessage(reason.message)); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { setTrades(data.trades || []); setProperties(data.properties || []); setDataFeedback({ status: data.status || ((data.trades || []).length ? "ok" : "empty"), warnings: data.meta?.warnings || [] }); if (data.properties?.length === 1) setSelectedKey(data.properties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") { setError(publicDataErrorMessage(reason.message)); setDataFeedback({ status: "partial", warnings: [reason.message] }); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [type, regionCode, period, submittedQuery, dataRetry]);
 
   useEffect(() => {
     const controller = new AbortController();
-    const timer = window.setTimeout(() => { setMarketError(""); fetch(`/api/overview?type=${type}&basis=quarter-v2`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error || !data.markets) throw new Error(data.error || "전국 실거래 집계를 불러오지 못했습니다."); return data; }).then((data) => { setMarkets(data.markets); setMarketMonth(data.month); }).catch((reason) => { if (reason.name !== "AbortError") setMarketError(publicDataErrorMessage(reason.message)); }); }, marketRetry ? 0 : 3000);
+    const timer = window.setTimeout(() => { setMarketError(""); fetch(`/api/overview?type=${type}&basis=quarter-v2`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error || !data.markets) throw new Error(data.error || "대표 지역 실거래 집계를 불러오지 못했습니다."); return data; }).then((data) => { setMarkets(data.markets); setMarketMonth(data.month); setOverviewFeedback({ status: data.status || "empty", warnings: data.meta?.warnings || [], scopeLabel: data.meta?.scope?.label || "대표 지역 표본", nationwide: data.meta?.scope?.nationwide === true }); }).catch((reason) => { if (reason.name !== "AbortError") setMarketError(publicDataErrorMessage(reason.message)); }); }, marketRetry ? 0 : 3000);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [type, marketRetry]);
 
@@ -1175,19 +1187,21 @@ export default function Home() {
       if (!placePropertyKey) { setPropertyLocation(null); setLocationError(""); setLocationLoading(false); return; }
       setLocationLoading(true); setLocationError("");
       const params = new URLSearchParams({ query: placeAddressQuery, sido: activeRegion.sido, sigungu: activeRegion.sigungu, dong: placePropertyDong });
-      fetch(`/api/geocode?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "단지 위치를 확인하지 못했습니다."); return data; }).then((data) => setPropertyLocation({ lat: data.lat, lng: data.lng, roadAddress: data.roadAddress || "", jibunAddress: data.jibunAddress || "" })).catch((reason) => { if (reason.name !== "AbortError") { setLocationError(reason.message); setPropertyLocation(null); } }).finally(() => { if (!controller.signal.aborted) setLocationLoading(false); });
+      params.set("sidoCode", activeRegion.code.slice(0, 2)); params.set("sigunguCode", activeRegion.code); params.set("legalDong", placePropertyDong); if (selectedBoundaryCode) params.set("boundaryCode", selectedBoundaryCode); if (selectedHCode) params.set("hCode", selectedHCode); if (selectedBCode) params.set("bCode", selectedBCode);
+      fetch(`/api/geocode?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error || data.mapFallback?.markerAllowed === false || data.validation !== "verified") throw new Error(data.error || "선택 범위에서 검증된 단지 좌표를 찾지 못했습니다."); return data; }).then((data) => { setPropertyLocation({ lat: data.lat, lng: data.lng, roadAddress: data.roadAddress || "", jibunAddress: data.jibunAddress || "", codes: data.codes }); setSelectedHCode(data.codes?.adminDongCode || ""); setSelectedBCode(data.codes?.legalDongCode || ""); }).catch((reason) => { if (reason.name !== "AbortError") { setLocationError(reason.message); setPropertyLocation(null); } }).finally(() => { if (!controller.signal.aborted) setLocationLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [activeRegion.sigungu, activeRegion.sido, placeAddressQuery, placePropertyDong, placePropertyKey]);
+  }, [activeRegion.code, activeRegion.sigungu, activeRegion.sido, placeAddressQuery, placePropertyDong, placePropertyKey, selectedBCode, selectedBoundaryCode, selectedHCode]);
   useEffect(() => {
     const controller = new AbortController(); const timer = window.setTimeout(() => {
       if (!propertyLocation) { setNearbyPlaces([]); setNearbyError(""); return; }
       setNearbyLoading(true); setNearbyError(""); setNearbyCategory("전체"); setNearbySubtype("전체");
       const nearbyArea = `${placeRegion} ${placePropertyDong}`.trim();
-      fetch(`/api/nearby?taxonomy=2&lat=${propertyLocation.lat}&lng=${propertyLocation.lng}&area=${encodeURIComponent(nearbyArea)}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "주변 시설을 불러오지 못했습니다."); return data; }).then((data) => setNearbyPlaces(data.places || [])).catch((reason) => { if (reason.name !== "AbortError") setNearbyError(reason.message); }).finally(() => { if (!controller.signal.aborted) setNearbyLoading(false); });
+      const params = new URLSearchParams({ taxonomy: "2", lat: String(propertyLocation.lat), lng: String(propertyLocation.lng), area: nearbyArea, sidoCode: activeRegion.code.slice(0, 2), sigunguCode: activeRegion.code, sido: activeRegion.sido, sigungu: activeRegion.sigungu, legalDong: placePropertyDong }); if (selectedBoundaryCode) params.set("boundaryCode", selectedBoundaryCode); if (selectedHCode) params.set("hCode", selectedHCode); if (selectedBCode) params.set("bCode", selectedBCode);
+      fetch(`/api/nearby?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error || data.mapFallback?.markerAllowed === false) throw new Error(data.error || "주변 시설을 불러오지 못했습니다."); return data; }).then((data) => { setNearbyPlaces(data.places || []); setNearbyStatus(data.status || ((data.places || []).length ? "success" : "empty")); if (data.status === "partial") setNearbyError("일부 시설 제공처 응답이 지연되어 확인된 결과만 표시합니다."); }).catch((reason) => { if (reason.name !== "AbortError") { setNearbyError(reason.message); setNearbyStatus("error"); } }).finally(() => { if (!controller.signal.aborted) setNearbyLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [propertyLocation, placeRegion, placePropertyDong]);
+  }, [activeRegion.code, activeRegion.sigungu, activeRegion.sido, propertyLocation, placeRegion, placePropertyDong, selectedBCode, selectedBoundaryCode, selectedHCode]);
   const latestQuarterTrades = scopedTrades.filter((trade) => latestQuarterMonths.includes(trade.date.slice(0, 7)));
   const activeFacilityCategory = NEARBY_CATEGORIES.find((category) => category.label === nearbyCategory); const nearbySubtypeOptions = activeFacilityCategory ? ["전체", ...activeFacilityCategory.subtypes] : [];
   const nearbyRadiusPlaces = nearbyPlaces.filter((place) => place.distance <= nearbyRadius);
@@ -1212,7 +1226,7 @@ export default function Home() {
   const risingCount = propertyRows.filter((property) => property.change !== null && property.change > 0).length; const fallingCount = propertyRows.filter((property) => property.change !== null && property.change < 0).length;
   const visibleProperties = useMemo(() => propertyRows.filter((property) => property.quarterCount >= minVolume).sort((a, b) => buildingSort === "price" ? b.current - a.current : buildingSort === "rise" ? (b.change ?? -Infinity) - (a.change ?? -Infinity) : buildingSort === "fall" ? (a.change ?? Infinity) - (b.change ?? Infinity) : b.quarterCount - a.quarterCount), [propertyRows, buildingSort, minVolume]);
   const renderedProperties = visibleProperties.slice(0, propertyLimit);
-  const nationalDeals = markets.reduce((sum, market) => sum + market.count, 0); const activeMarkets = markets.filter((market) => market.median > 0); const nationalMedian = activeMarkets.length ? median(activeMarkets.map((market) => market.median)) : 0; const nationalChange = nationalDeals ? markets.reduce((sum, market) => sum + market.change * market.count, 0) / nationalDeals : 0;
+  const nationalDeals = markets.reduce((sum, market) => sum + market.count, 0); const activeMarkets = markets.filter((market) => (market.medianAmountManwon ?? market.median) > 0); const nationalMedian = activeMarkets.length ? median(activeMarkets.map((market) => market.medianAmountManwon ?? market.median)) : 0; const comparableMarkets = markets.filter((market) => market.changePct !== null && market.changePct !== undefined && market.count > 0); const comparableDeals = comparableMarkets.reduce((sum, market) => sum + market.count, 0); const nationalChange = comparableDeals ? comparableMarkets.reduce((sum, market) => sum + (market.changePct ?? 0) * market.count, 0) / comparableDeals : null;
   const sidoOptions = useMemo(() => SIDO_ORDER.filter((sido) => REGIONS.some((region) => region.sido === sido)), []);
   const sigunguOptions = REGIONS.filter((region) => region.sido === activeRegion.sido).sort(sortRegions);
   const mapDistricts = useMemo(() => REGIONS.filter((region) => region.sido === selectedMapSido).sort(sortRegions), [selectedMapSido]);
@@ -1223,14 +1237,6 @@ export default function Home() {
       const nextDongs = data.features.map((feature) => ({ code: String(feature.properties.code || ""), name: String(feature.properties.name || "") })).filter((dong) => dong.code && dong.name);
       setBoundaryDongs(nextDongs);
       setBoundaryDongOptions(nextDongs.map((dong) => dong.name));
-      const requestedDong = nextDongs.find((dong) => dong.code === pendingAdminDongCodeRef.current);
-      pendingAdminDongCodeRef.current = "";
-      if (requestedDong) {
-        setSelectedBoundaryDong(requestedDong.name);
-        setMapPickerDong(requestedDong.name);
-        setSelectedDong(legalDongName(requestedDong.name) || requestedDong.name);
-        setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district");
-      }
     }).catch((error) => { if (error instanceof Error && error.name !== "AbortError") { setBoundaryDongs([]); setBoundaryDongOptions([]); } });
     return () => controller.abort();
   }, [activeRegion.code]);
@@ -1268,7 +1274,7 @@ export default function Home() {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       if (mapFocus !== "buildings" || selectedDong === "all" || !buildingCandidates.length) {
-        setBuildingLocations([]); setBuildingsError(""); setBuildingsLoading(false); return;
+        setBuildingLocations([]); setBuildingsError(""); setBuildingStatus("empty"); setBuildingsLoading(false); return;
       }
       setBuildingsLoading(true); setBuildingsError("");
       fetch("/api/property-locations", {
@@ -1278,20 +1284,23 @@ export default function Home() {
           sido: activeRegion.sido,
           sigungu: activeRegion.sigungu,
           dong: selectedDong,
+          scope: { sidoCode: activeRegion.code.slice(0, 2), sidoName: activeRegion.sido, sigunguCode: activeRegion.code, sigunguName: activeRegion.sigungu, adminDongCode: selectedHCode || undefined, legalDongCode: selectedBCode || undefined, legalDongName: selectedDong, boundaryAdminCode: selectedBoundaryCode },
           properties: buildingCandidates.map((property) => ({ key: property.key, name: property.name, dong: property.dong, jibun: property.jibun, count: property.count, lastAmount: property.lastAmount, propertyType: type })),
         }),
         signal: controller.signal,
-      }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "건물 위치를 불러오지 못했습니다."); return data; })
+      }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error || data.mapFallback?.markerAllowed === false) throw new Error(data.error || "건물 위치를 불러오지 못했습니다."); return data; })
         .then((data) => {
-          const locations = (data.locations || []).map((location: Omit<PropertyMapLocation, "scope">) => ({ ...location, scope: location.dong === selectedDong ? "selected" as const : "nearby" as const }));
+          const locations = (data.locations || []).filter((location: PropertyMapLocation) => location.validation === "verified").map((location: Omit<PropertyMapLocation, "scope">) => ({ ...location, scope: location.dong === selectedDong ? "selected" as const : "nearby" as const }));
           setBuildingLocations(locations);
+          setBuildingStatus(data.status || (locations.length ? "success" : "empty"));
+          if (data.status === "partial") setBuildingsError(`일부 주소를 검증하지 못해 확인된 ${locations.length}개 건물만 표시합니다.`);
           if (!locations.length) setBuildingsError("선택한 동과 주변 동의 거래 건물 주소를 지도 좌표와 연결하지 못했습니다.");
         })
-        .catch((reason) => { if (reason.name !== "AbortError") { setBuildingLocations([]); setBuildingsError(reason.message); } })
+        .catch((reason) => { if (reason.name !== "AbortError") { setBuildingLocations([]); setBuildingsError(reason.message); setBuildingStatus("error"); } })
         .finally(() => { if (!controller.signal.aborted) setBuildingsLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [activeRegion.sigungu, activeRegion.sido, buildingCandidates, mapFocus, selectedDong, type]);
+  }, [activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingCandidates, mapFocus, selectedBCode, selectedBoundaryCode, selectedDong, selectedHCode, type]);
   const targetTrade = filteredTrades.at(-1); const targetArea = area === "all" ? targetTrade?.area || 0 : Number(area);
   const subjectPerPy = filteredTrades.filter((trade) => trade.area > 0 && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15)).slice(-20).map((trade) => trade.amount / (trade.area / 3.3058));
   const latestPeers = scopedTrades.filter((trade) => trade.propertyKey !== selectedKey && trade.area > 0 && trade.date.startsWith(latestMonth) && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15));
@@ -1326,15 +1335,15 @@ export default function Home() {
   const selectedSpaceFurniture = spaceFurnitureLayouts.find((item) => item.id === selectedSpaceFurnitureId) || null;
   const occupiedSpaceArea = spaceFurnitureLayouts.reduce((sum, item) => sum + item.width * item.depth / 10000, 0);
   const resetPropertySelection = useCallback(() => { setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); setPropertyLocation(null); setPropertyLimit(30); }, []);
-  const chooseRegion = useCallback((region: Region, scrollToTop = true) => { historyModeRef.current = "push"; setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedMapSido(region.sido); setMapFocus("district"); setMapCamera(null); setSelectedBoundaryDong(""); setMapPickerDong(""); setSelectedDong("all"); resetPropertySelection(); setSubmittedQuery(""); setQuery(""); if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" }); }, [resetPropertySelection]);
+  const chooseRegion = useCallback((region: Region, scrollToTop = true) => { historyModeRef.current = "push"; setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedMapSido(region.sido); setMapFocus("district"); setMapCamera(null); setSelectedHCode(""); setSelectedBCode(""); setSelectedBoundaryDong(""); setMapPickerDong(""); setSelectedDong("all"); resetPropertySelection(); setSubmittedQuery(""); setQuery(""); if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" }); }, [resetPropertySelection]);
   const chooseMapSido = useCallback((sido: string) => {
     historyModeRef.current = "push";
     const next = REGIONS.filter((region) => region.sido === sido).sort(sortRegions)[0];
-    setSelectedMapSido(sido); setMapFocus("sido"); setMapCamera(null); setSelectedBoundaryDong(""); setMapPickerDong(""); setSelectedDong("all"); resetPropertySelection(); setSubmittedQuery(""); setQuery("");
+    setSelectedMapSido(sido); setMapFocus("sido"); setMapCamera(null); setSelectedHCode(""); setSelectedBCode(""); setSelectedBoundaryDong(""); setMapPickerDong(""); setSelectedDong("all"); resetPropertySelection(); setSubmittedQuery(""); setQuery("");
     if (next) { setRegionCode(next.code); setRegionInput(`${next.sido} ${next.sigungu}`); }
   }, [resetPropertySelection]);
   const chooseMapRegion = useCallback((region: Region) => chooseRegion(region, false), [chooseRegion]);
-  const chooseMapDong = useCallback((dong: string) => { historyModeRef.current = "push"; const legalDong = legalDongName(dong); setSelectedBoundaryDong(dong); setMapPickerDong(dong); setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); setMapCamera(null); resetPropertySelection(); setSelectedDong(legalDong || dong); }, [resetPropertySelection]);
+  const chooseMapDong = useCallback((dong: string) => { historyModeRef.current = "push"; const legalDong = legalDongName(dong); setSelectedHCode(""); setSelectedBCode(""); setSelectedBoundaryDong(dong); setMapPickerDong(dong); setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); setMapCamera(null); resetPropertySelection(); setSelectedDong(legalDong || dong); }, [resetPropertySelection]);
   const openMapBuildings = useCallback(() => { if (ROAD_MAP_AVAILABLE && selectedDong !== "all") setMapFocus("buildings"); }, [selectedDong]);
   const chooseMapProperty = useCallback((key: string) => { historyModeRef.current = "push"; const property = properties.find((item) => item.key === key); setSelectedKey(key); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); setMapFocus("buildings"); if (property) setQuery(property.name); }, [properties]);
   const openSelectedPropertyMap = useCallback(() => {
@@ -1347,11 +1356,12 @@ export default function Home() {
   const selectSido = (sido: string) => { const next = REGIONS.filter((region) => region.sido === sido).sort(sortRegions)[0]; if (next) chooseRegion(next); };
   const selectSigungu = (code: string) => { const next = REGIONS.find((region) => region.code === code); if (next) chooseRegion(next); };
   const changeAnalysisMode = (mode: AnalysisMode, featureId = fieldFeatureId, scrollToTop = true) => {
-    historyModeRef.current = "push"; setActiveSection("chart"); setAnalysisMode(mode);
+    historyModeRef.current = "replace"; setActiveSection("chart"); setAnalysisMode(mode);
     const url = new URL(window.location.href);
     if (mode === "field") { url.searchParams.set("analysis", "field"); url.searchParams.set("feature", featureId); }
     else { url.searchParams.delete("analysis"); url.searchParams.delete("feature"); }
-    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    url.hash = "chart";
+    window.history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
     if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const scrollToFieldContent = (target: HTMLElement | null, block: ScrollLogicalPosition = "start") => {
@@ -1376,7 +1386,7 @@ export default function Home() {
     if (view === "field") { changeAnalysisMode("field"); return; }
     if (view === "chart") { changeAnalysisMode("price"); return; }
     const nextView = normalizeScreen(view);
-    historyModeRef.current = "push"; setActiveSection(nextView); const url = new URL(window.location.href); url.searchParams.delete("analysis"); url.searchParams.delete("feature"); window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`); window.scrollTo({ top: 0, behavior: "smooth" });
+    historyModeRef.current = "replace"; setActiveSection(nextView); const url = new URL(window.location.href); url.searchParams.delete("analysis"); url.searchParams.delete("feature"); url.hash = nextView; window.history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`); window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const calculateCommute = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -1454,7 +1464,8 @@ export default function Home() {
       </div>
       <button className="saved-badge" onClick={() => changeView("chart")}>관심 후보 <b>{savedHomes.length}</b></button><div className="live"><i /> 실거래 연동</div>
     </header>
-    <nav className="mobile-primary-nav" aria-label="주요 화면">{NAV_ITEMS.map((item) => <a key={item.id} aria-label={item.label} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={(event) => { event.preventDefault(); changeView(item.id); }}>{item.mobileLabel}</a>)}</nav>
+    {!online && <div className="offline-state" role="status"><b>오프라인 상태입니다.</b><span>기존 화면은 볼 수 있지만 실거래와 지도 데이터는 연결 후 갱신됩니다.</span></div>}
+    <nav className="mobile-primary-nav" aria-label="주요 화면">{NAV_ITEMS.map((item) => <a key={item.id} aria-label={item.label} aria-current={activeSection === item.id ? "page" : undefined} className={activeSection === item.id ? "active" : ""} href={`#${item.id}`} onClick={(event) => { event.preventDefault(); changeView(item.id); }}>{item.mobileLabel}</a>)}</nav>
     {activeSection !== "home" && activeSection !== "chart" && <div className="screen-context"><div><span>{NAV_ITEMS.find((item) => item.id === activeSection)?.label}</span><b>{activeRegion.sido} · {activeRegion.sigungu}{selectedDong !== "all" ? ` · ${selectedDong}` : ""}{selectedProperty ? ` · ${selectedProperty.name}` : ""}</b></div><div className="screen-context-actions" aria-label="지역과 건물 선택"><button type="button" className={activeSection === "research" ? "active" : ""} aria-pressed={activeSection === "research"} onClick={() => changeView("research")}><MapPin size={15} strokeWidth={1.9} aria-hidden="true" />지도·리서치</button><button type="button" aria-pressed="false" onClick={() => changeView("chart")}><Building2 size={15} strokeWidth={1.9} aria-hidden="true" />상세 분석</button></div></div>}
     <section className="command app-view view-home" id="top">
       <div className="hero-copy"><div><h1>사는 집도, 투자하는 집도<br/><span>숫자로 먼저 고르세요.</span></h1><b>전국 실거래를 최근 3개월 단위로 비교하고, 면적별 가격과 거래 흐름까지 한 번에 확인합니다.</b></div><div className="hero-proof"><span><i>01</i>실거래 원문 기반</span><span><i>02</i>동·면적 단위 비교</span><span><i>03</i>판단 근거 공개</span></div></div>
@@ -1462,21 +1473,21 @@ export default function Home() {
       <form className="search-console" onSubmit={submitSearch}>
         <label><span>시·도</span><select value={activeRegion.sido} onChange={(event) => selectSido(event.target.value)} aria-label="시도 선택">{sidoOptions.map((sido) => <option key={sido} value={sido}>{sido}</option>)}</select></label>
         <label><span>시·군·구</span><select value={regionCode} onChange={(event) => selectSigungu(event.target.value)} aria-label="시군구 선택">{sigunguOptions.map((region) => <option key={region.code} value={region.code}>{region.sigungu}</option>)}</select></label>
-        <label><span>읍·면·동</span><select value={selectedDong} onChange={(event) => { const dong = event.target.value; setSelectedDong(dong); setSelectedBoundaryDong(""); resetPropertySelection(); if (dong !== "all") setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); }} aria-label="읍면동 선택"><option value="all">전체 읍·면·동</option>{finderDongOptions.map((dong) => <option key={dong} value={dong}>{dong}</option>)}</select></label>
+        <label><span>읍·면·동</span><select value={selectedDong} onChange={(event) => { const dong = event.target.value; setSelectedHCode(""); setSelectedBCode(""); setSelectedDong(dong); setSelectedBoundaryDong(""); resetPropertySelection(); if (dong !== "all") setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); }} aria-label="읍면동 선택"><option value="all">전체 읍·면·동</option>{finderDongOptions.map((dong) => <option key={dong} value={dong}>{dong}</option>)}</select></label>
         <label className="property-search"><span>단지·건물명 · 비워두면 전체</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 행당대림, 서울숲리버뷰" aria-label="단지 또는 건물명" /></label>
         <button type="submit">실거래 확인 <b aria-hidden="true">→</b></button>
       </form>
       </div>
     </section>
 
-    <section className="national-overview" id="national"><div><h1>전국 최근 3개월 요약</h1><span>대표 권역의 최근 3개월과 직전 3개월 가격 방향을 비교합니다.</span></div><article><span>최근 3개월 표본 거래</span><strong>{markets.length ? nationalDeals.toLocaleString() : marketError ? "확인 필요" : "집계 중"}{markets.length > 0 && <em>건</em>}</strong><small>{markets.length ? `${marketMonth} 기준 대표 권역` : marketError ? "전국 실거래 연결 상태를 확인해주세요." : "공공데이터 확인 중"}</small></article><article><span>전국 중위가격</span><strong>{markets.length ? formatPrice(nationalMedian) : "-"}</strong><small>16개 대표 권역 중위값</small></article><article><span>직전 3개월 대비</span><strong className={markets.length ? nationalChange >= 0 ? "up" : "down" : ""}>{markets.length ? `${nationalChange >= 0 ? "+" : ""}${nationalChange.toFixed(2)}%` : "-"}</strong><small>거래량 가중 변화율</small></article><a href="#research" onClick={(event) => { event.preventDefault(); changeView("research"); }}>지도·리서치 보기 →</a></section>
+    <section className="national-overview" id="national"><div><h1>{overviewFeedback.scopeLabel} 최근 3개월 요약</h1><span>대표 권역 표본의 최근 3개월과 직전 3개월 가격 방향을 비교합니다.</span>{overviewFeedback.status === "partial" && <small role="status">일부 지역 수집이 지연되어 확인된 표본만 표시합니다.</small>}</div><article><span>최근 3개월 표본 거래</span><strong>{markets.length ? nationalDeals.toLocaleString() : marketError ? "확인 필요" : "집계 중"}{markets.length > 0 && <em>건</em>}</strong><small>{markets.length ? `${marketMonth} 기준 · ${overviewFeedback.scopeLabel}` : marketError ? "대표 지역 실거래 연결 상태를 확인해주세요." : "공공데이터 확인 중"}</small></article><article><span>표본 중위가격</span><strong>{activeMarkets.length ? formatPrice(nationalMedian) : "표본 부족"}</strong><small>{overviewFeedback.scopeLabel} 중 거래 표본이 있는 권역</small></article><article><span>직전 3개월 대비</span><strong className={nationalChange === null ? "" : nationalChange >= 0 ? "up" : "down"}>{nationalChange === null ? "표본 부족" : `${nationalChange >= 0 ? "+" : ""}${nationalChange.toFixed(2)}%`}</strong><small>비교 가능한 권역의 거래량 가중 변화율</small></article><a href="#research" onClick={(event) => { event.preventDefault(); changeView("research"); }}>지도·리서치 보기 →</a></section>
 
     <section className="monthly-board" id="market">
       <div className="month-intro"><h1>{activeRegion.sigungu} 최근 3개월</h1><span>{latestMonth ? `${PROPERTY_TYPES.find((item) => item.key === type)?.label} 실거래 신고 기준 · ${latestQuarterMonths[2]} ~ ${latestQuarterMonths[0]}` : `${PROPERTY_TYPES.find((item) => item.key === type)?.label} 실거래 연결 후 조회 기간을 표시합니다.`}</span></div>
-      <article><span>최근 3개월 거래</span><strong>{error ? "-" : latestQuarterTrades.length.toLocaleString()}{!error && <em>건</em>}</strong><small>{error ? "실거래 연결 확인 필요" : `전체 ${trades.length.toLocaleString()}건 조회`}</small></article>
+      <article><span>최근 3개월 거래</span><strong>{error ? "-" : latestQuarterTrades.length.toLocaleString()}{!error && <em>건</em>}</strong><small>{error ? "실거래 연결 확인 필요" : dataFeedback.status === "partial" ? `일부 수집 · 확인된 전체 ${trades.length.toLocaleString()}건` : `전체 ${trades.length.toLocaleString()}건 조회`}</small></article>
       <article><span>거래 건물</span><strong>{error ? "-" : new Set(latestQuarterTrades.map((trade) => trade.propertyKey)).size.toLocaleString()}{!error && <em>곳</em>}</strong><small>{error ? "실거래 연결 확인 필요" : "최근 3개월 거래 건물"}</small></article>
       <article><span>상승 / 하락</span><strong className="split">{error ? "-" : <><b>{risingCount}</b><i>/</i><em>{fallingCount}</em></>}</strong><small>{error ? "실거래 연결 확인 필요" : "최근 3개월과 직전 3개월 비교"}</small></article>
-      <article><span>최근 3개월 중위가격</span><strong>{error ? "-" : formatPrice(median(latestQuarterTrades.map((trade) => trade.amount)))}</strong><small>{error ? "실거래 연결 확인 필요" : "극단값 영향을 줄인 대표값"}</small></article>
+      <article><span>최근 3개월 중위가격</span><strong>{error ? "-" : latestQuarterTrades.length ? formatPrice(median(latestQuarterTrades.map((trade) => trade.amount))) : "거래 없음"}</strong><small>{error ? "실거래 연결 확인 필요" : latestQuarterTrades.length ? "극단값 영향을 줄인 대표값" : "과거 거래를 최근 가격으로 대체하지 않습니다"}</small></article>
     </section>
 
     {SHOW_OPPORTUNITY_SECTION && <section className="opportunity-section" aria-label="매수 검토 후보"><div className="opportunity-head"><div><p>검토 후보</p><h2>{activeRegion.sigungu}에서 먼저 볼 후보</h2><span>면적별 가격 45% · 거래량 35% · 가격 흐름 20%를 합산한 탐색 점수입니다.</span></div><b>추천이 아닌 검토 우선순위</b></div><div className="opportunity-grid">{loading ? <div className="opportunity-empty">후보를 계산하고 있습니다…</div> : scoredCandidates.length ? scoredCandidates.slice(0, 3).map((candidate, index) => <button key={candidate.key} onClick={() => selectCandidate(candidate)}><span className="candidate-rank">0{index + 1}</span><div><em>{candidate.tag}</em><h3>{candidate.name}</h3><p>{candidate.dong} · {dongLabel(candidate.buildingDong) || "동 정보 없음"} · 전용 {candidate.areaBucket}평</p></div><strong>{candidate.score}<small>/100</small><i>{formatPrice(candidate.current)}</i></strong></button>) : <div className="opportunity-empty"><b>이 지역은 아직 표본이 부족합니다.</b><span>아파트 또는 거래가 활발한 지역을 선택하면 검토할 후보를 확인할 수 있습니다.</span></div>}</div>{savedHomes.length > 0 && <div className="saved-shelf"><span>내 관심 후보</span>{savedHomes.map((home) => <article key={home.id}><div><b>{home.name}</b><small>{home.region} · {home.area}평</small></div><strong>{home.score}점 · {formatPrice(home.price)}</strong><button aria-label={`${home.name} 관심 후보에서 삭제`} onClick={() => { const next = savedHomes.filter((item) => item.id !== home.id); setSavedHomes(next); try { window.localStorage.setItem("jipgaps:saved-homes", JSON.stringify(next)); } catch { /* device storage is optional */ } }}>×</button></article>)}</div>}</section>}
@@ -1486,7 +1497,7 @@ export default function Home() {
       <form className="analysis-search-console" onSubmit={submitAnalysisSearch}>
         <label><span>시·도</span><select value={activeRegion.sido} onChange={(event) => selectSido(event.target.value)} aria-label="상세 분석 시도 선택">{sidoOptions.map((sido) => <option key={sido} value={sido}>{sido}</option>)}</select></label>
         <label><span>시·군·구</span><select value={regionCode} onChange={(event) => selectSigungu(event.target.value)} aria-label="상세 분석 시군구 선택">{sigunguOptions.map((region) => <option key={region.code} value={region.code}>{region.sigungu}</option>)}</select></label>
-        <label><span>읍·면·동</span><select value={selectedDong} onChange={(event) => { const dong = event.target.value; setSelectedDong(dong); setSelectedBoundaryDong(""); resetPropertySelection(); if (dong !== "all") setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); }} aria-label="상세 분석 읍면동 선택"><option value="all">전체 읍·면·동</option>{finderDongOptions.map((dong) => <option key={dong} value={dong}>{dong}</option>)}</select></label>
+        <label><span>읍·면·동</span><select value={selectedDong} onChange={(event) => { const dong = event.target.value; setSelectedHCode(""); setSelectedBCode(""); setSelectedDong(dong); setSelectedBoundaryDong(""); resetPropertySelection(); if (dong !== "all") setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); }} aria-label="상세 분석 읍면동 선택"><option value="all">전체 읍·면·동</option>{finderDongOptions.map((dong) => <option key={dong} value={dong}>{dong}</option>)}</select></label>
         <label className="analysis-address-search"><span>주소·단지·건물명</span><input value={analysisAddressInput} onChange={(event) => setAnalysisAddressInput(event.target.value)} placeholder="예: 대치동 316 또는 은마" aria-label="주소 또는 단지 건물명 검색" /></label>
         <button type="submit"><Search size={17} strokeWidth={2} aria-hidden="true" />검색</button>
       </form>
@@ -1549,6 +1560,7 @@ export default function Home() {
             <div className="facility-layout">
             <div className="facility-map">{locationLoading ? <div className="facility-state"><i />단지 좌표를 확인하고 있습니다.</div> : propertyLocation ? <><KakaoPlaceMap location={propertyLocation} title={selectedProperty.name} places={visibleNearbyPlaces} radius={nearbyRadius} active={activeSection === "chart"} /><span className="facility-address">{propertyLocation.roadAddress || propertyLocation.jibunAddress || placeAddressQuery}</span><div className="radius-key"><span><i />{nearbyRadius.toLocaleString()}m 생활권</span></div></> : <div className="facility-state error"><b>지도 위치를 표시하지 못했습니다.</b><span>{locationError || "선택 지역과 일치하는 주소 좌표가 없습니다."}</span></div>}</div>
             <div className="nearby-browser">
+              {nearbyStatus === "partial" && <div className="nearby-state" role="status"><b>일부 시설만 확인됐습니다.</b><span>외부 지도 응답이 지연되어 검증된 결과만 표시합니다.</span></div>}
               {activeFacilityCategory && <div className="nearby-subtype-tabs" aria-label={`${activeFacilityCategory.label} 세부 유형`}>{nearbySubtypeOptions.map((subtype) => <button key={subtype} className={nearbySubtype === subtype ? "active" : ""} aria-pressed={nearbySubtype === subtype} onClick={() => setNearbySubtype(subtype)}><FacilityIcon name={subtype === "전체" ? activeFacilityCategory.label : subtype} size={14} /><span>{subtype === "전체" ? `${activeFacilityCategory.label} 전체` : subtype}</span><small>{subtype === "전체" ? nearbyRadiusPlaces.filter((place) => place.category === nearbyCategory).length : nearbyRadiusPlaces.filter((place) => place.category === nearbyCategory && place.subCategory === subtype).length}</small></button>)}</div>}
               {nearbyLoading ? <div className="nearby-state"><i />1km 안 생활시설을 세부 유형별로 찾고 있습니다.</div> : nearbyError ? <div className="nearby-state error"><b>주변 시설을 불러오지 못했습니다.</b><span>{nearbyError}</span></div> : visibleNearbyPlaces.length ? <div className="nearby-list">{visibleNearbyPlaces.map((place) => { const meta = NEARBY_CATEGORIES.find((item) => item.label === place.category); return <article key={place.id} style={{ "--facility-color": meta?.color || "#526173" } as React.CSSProperties}><i className="nearby-place-icon"><FacilityIcon name={place.subCategory || place.category} size={17} /></i><div><em>{place.subCategory || place.category}</em><b>{place.name}</b><span>{place.category} · 선택 반경 안</span></div><strong>{place.distance.toLocaleString()}m<small>직선거리</small></strong><p>도보 약 {place.walkingMinutes}분<small>경로 보정 추정</small></p></article>; })}</div> : <div className="nearby-state"><b>{nearbySubtype === "전체" ? `${nearbyRadius.toLocaleString()}m 안에 등록된 시설이 없습니다.` : `${nearbyRadius.toLocaleString()}m 안에 확인된 ${nearbySubtype}이 없습니다.`}</b><span>반경을 넓히거나 다른 세부 유형을 함께 비교해보세요.</span></div>}
             </div>
@@ -1661,17 +1673,19 @@ export default function Home() {
         <button type="button" disabled={!mapPickerDong || !mapDongChoices.includes(mapPickerDong)} onClick={() => chooseMapDong(mapPickerDong)}>{mapPickerDong ? `${mapPickerDong} 선택` : "동을 선택하세요"}</button>
       </div>}
       <div className="map-layout"><KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "research"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} nearbyBoundaryDongs={nearbyBoundaryDongs} nearbyLegalDongs={nearbyLegalDongs} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} camera={mapCamera} onCameraChange={setMapCamera} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />
-        <aside className={`map-ranking${mapFocus === "buildings" ? "" : " map-selection-summary"}`} aria-label={mapFocus === "buildings" ? "선택 동과 주변 동의 최근 실거래 건물" : "선택 지역 요약"}>
+        <aside className={`map-ranking${mapFocus === "buildings" ? "" : " map-selection-summary"}`} data-sheet-state={mobileSheetState} aria-label={mapFocus === "buildings" ? "선택 동과 주변 동의 최근 실거래 건물" : "선택 지역 요약"}>
+          <div className="mobile-sheet-controls" role="group" aria-label="지도 결과 패널 높이"><button type="button" aria-pressed={mobileSheetState === "collapsed"} onClick={() => setMobileSheetState("collapsed")}>요약</button><button type="button" aria-pressed={mobileSheetState === "peek"} onClick={() => setMobileSheetState("peek")}>목록</button><button type="button" aria-pressed={mobileSheetState === "expanded"} onClick={() => setMobileSheetState("expanded")}>전체</button></div>
           {mapFocus === "buildings" ? <>
             <div className="map-inspector-scope"><span>{selectedMapProperty ? "선택 건물 가격" : "선택 동과 주변 생활권"}</span><h3>{selectedMapProperty ? selectedMapProperty.name : mapLocationTitle}</h3><p>{selectedMapProperty ? `${selectedMapProperty.dong} ${selectedMapProperty.jibun || "지번 확인 중"} · 최근 실거래 ${formatPrice(selectedMapProperty.lastAmount)} · ${selectedMapProperty.count}건 · 다른 아이콘을 눌러 계속 비교할 수 있습니다.` : nearbyLegalDongs.length ? `${nearbyLegalDongs.slice(0, 4).join(" · ")}${nearbyLegalDongs.length > 4 ? ` 외 ${nearbyLegalDongs.length - 4}곳` : ""}의 거래 건물도 함께 봅니다.` : "선택 동의 최근 실거래 건물을 지도에 표시합니다."}</p></div>
             <div className="map-market-summary"><div><span>{selectedDong} 건물</span><strong>{selectedMapBuildingCount}곳</strong></div><div><span>주변 동 건물</span><strong>{nearbyMapBuildingCount}곳</strong></div><div><span>표시 건물 중위가</span><strong>{mapBuildingMedian ? formatPrice(mapBuildingMedian) : buildingsLoading ? "확인 중" : buildingsError ? "좌표 확인 불가" : "데이터 없음"}</strong></div></div>
             <div className="map-ranking-head"><div><b>지도에 표시된 거래 건물</b><span>선택 동을 먼저, 인접 동을 다음에 보여줍니다.</span></div></div>
             <div className="ranking-labels building-labels"><span>구분</span><span>건물</span><span>최근 거래가</span><span>거래</span></div>
+            {buildingStatus === "partial" && <div className="map-summary-loading" role="status">일부 주소 검증이 완료되지 않아 확인된 건물만 표시합니다.</div>}
             <div className="map-ranking-list building-list">{buildingsLoading ? <div className="ranking-loading">선택 동과 주변 동의 건물 좌표를 확인하고 있습니다.</div> : mapBuildingRows.length ? mapBuildingRows.map((building) => { const activeBuilding = building.key === selectedKey; return <button key={building.key} className={`${building.scope === "selected" ? "selected" : "nearby"}${activeBuilding ? " active-building" : ""}`} aria-pressed={activeBuilding} onClick={() => chooseMapProperty(building.key)}><em>{activeBuilding ? "선택됨" : building.scope === "selected" ? "선택 동" : "주변"}</em><b>{building.name}<small>{building.dong} · {PROPERTY_MAP_META[building.propertyType].short}</small></b><span>{formatPrice(building.lastAmount)}</span><strong>{building.count}건</strong></button>; }) : <div className="ranking-loading">{buildingsError || "이 범위에서 지도 좌표가 확인된 거래 건물이 없습니다."}</div>}</div>
             <div className="map-example-links map-context-foot"><span>지도 아이콘을 누르면 가격이 열립니다. 선택 후에도 다른 건물 아이콘은 유지됩니다.</span></div>
           </> : <>
             <div className="map-inspector-scope"><span>선택 지역</span><h3>{mapLocationTitle}</h3><p>{mapLocationDescription}</p></div>
-            {selectedMapDongStat?.count ? <div className="map-market-summary"><div><span>동 중위가격</span><strong>{formatPrice(selectedMapDongStat.median)}</strong></div><div><span>동 평당가</span><strong>{compactPrice(selectedMapDongStat.perPy)}/평</strong></div><div><span>최근 거래</span><strong>{selectedMapDongStat.count.toLocaleString()}건</strong></div></div> : selectedMapMarket ? <div className="map-market-summary"><div><span>시·도 중위가격</span><strong>{formatPrice(selectedMapMarket.median)}</strong></div><div><span>직전 3개월 대비</span><strong className={selectedMapMarket.change >= 0 ? "up" : "down"}>{selectedMapMarket.change >= 0 ? "+" : ""}{selectedMapMarket.change.toFixed(2)}%</strong></div><div><span>최근 거래</span><strong>{selectedMapMarket.count.toLocaleString()}건</strong></div></div> : marketError ? <div className="map-summary-loading error"><b>전국 실거래를 불러오지 못했습니다.</b><span>{publicDataErrorMessage(marketError)}</span><button type="button" onClick={() => setMarketRetry((value) => value + 1)}>다시 불러오기</button></div> : <div className="map-summary-loading">선택 지역의 실거래를 집계하고 있습니다.</div>}
+            {selectedMapDongStat?.count ? <div className="map-market-summary"><div><span>동 중위가격</span><strong>{formatPrice(selectedMapDongStat.median)}</strong></div><div><span>동 평당가</span><strong>{compactPrice(selectedMapDongStat.perPy)}/평</strong></div><div><span>최근 거래</span><strong>{selectedMapDongStat.count.toLocaleString()}건</strong></div></div> : selectedMapMarket ? <div className="map-market-summary"><div><span>대표 지역 중위가격</span><strong>{selectedMapMarket.medianAmountManwon ? formatPrice(selectedMapMarket.medianAmountManwon) : "표본 부족"}</strong></div><div><span>직전 3개월 대비</span><strong className={selectedMapMarket.changePct === null || selectedMapMarket.changePct === undefined ? "" : selectedMapMarket.changePct >= 0 ? "up" : "down"}>{selectedMapMarket.changePct === null || selectedMapMarket.changePct === undefined ? "표본 부족" : `${selectedMapMarket.changePct >= 0 ? "+" : ""}${selectedMapMarket.changePct.toFixed(2)}%`}</strong></div><div><span>최근 거래</span><strong>{selectedMapMarket.count.toLocaleString()}건</strong></div></div> : marketError ? <div className="map-summary-loading error"><b>대표 지역 실거래를 불러오지 못했습니다.</b><span>{publicDataErrorMessage(marketError)}</span><button type="button" onClick={() => setMarketRetry((value) => value + 1)}>다시 불러오기</button></div> : <div className="map-summary-loading">선택 지역의 실거래를 집계하고 있습니다.</div>}
             <div className="map-example-links"><span>빠른 예시</span><div><button type="button" onClick={openGangnamMap}>강남구</button><button type="button" onClick={openHaengdangMap}>행당동</button></div></div>
           </>}
         </aside>
@@ -1682,7 +1696,7 @@ export default function Home() {
       <div className="section-title wide"><div><h2>{displayName} 최근 실거래</h2><span>평수를 선택하면 같은 면적대의 거래만 모아봅니다.</span></div><span>단위: 만원 · 최대 30건 표시</span></div>
       <nav className="trade-area-tabs" aria-label="평수별 최근 실거래 필터"><button type="button" className={activeTradeAreaFilter === "all" ? "active" : ""} aria-pressed={activeTradeAreaFilter === "all"} onClick={() => setTradeAreaFilter("all")}>전체 <small>{propertyTrades.length}건</small></button>{tradeAreaGroups.map((group) => <button type="button" key={group.pyeong} className={activeTradeAreaFilter === String(group.pyeong) ? "active" : ""} aria-pressed={activeTradeAreaFilter === String(group.pyeong)} onClick={() => setTradeAreaFilter(String(group.pyeong))}>{group.pyeong}평 <small>{group.rows.length}건</small></button>)}</nav>
       <div className="trade-analysis-layout">
-        <div className="trade-table" role="region" aria-label={`${displayName} ${activeTradeAreaFilter === "all" ? "전체 평수" : `${activeTradeAreaFilter}평`} 최근 실거래`}><div className="table-head"><span>계약일</span><span>건물명</span><span>전용면적</span><span>평수</span><span>층</span><span>거래금액</span><span>평당가</span></div>{recentTradeRows.map((trade) => <div className="table-row" key={trade.id}><span>{trade.date.replaceAll("-", ".")}</span><b>{trade.name}</b><span>{trade.area ? `${trade.area.toFixed(1)}㎡` : "-"}</span><span>{trade.area ? `${(trade.area / 3.3058).toFixed(1)}평` : "-"}</span><span>{trade.floor === null ? "-" : `${trade.floor}층`}</span><strong>{formatPrice(trade.amount)}</strong><span>{trade.area ? `${Math.round(trade.amount / (trade.area / 3.3058)).toLocaleString()}만` : "-"}</span></div>)}{!recentTradeRows.length && <div className="trade-empty">선택한 평수의 실거래가 없습니다.</div>}</div>
+        <div className="trade-table" role="region" aria-label={`${displayName} ${activeTradeAreaFilter === "all" ? "전체 평수" : `${activeTradeAreaFilter}평`} 최근 실거래`}><div className="table-head"><span>계약일</span><span>건물명</span><span>전용면적</span><span>평수</span><span>층</span><span>거래금액</span><span>평당가</span></div>{recentTradeRows.map((trade) => { const expanded = expandedTradeIds.has(trade.id); return <button type="button" className="table-row" key={trade.id} aria-expanded={expanded} data-expanded={expanded} onClick={() => setExpandedTradeIds((current) => { const next = new Set(current); if (next.has(trade.id)) next.delete(trade.id); else next.add(trade.id); return next; })}><span>{trade.date.replaceAll("-", ".")}</span><b>{trade.name}</b><span>{trade.area ? `${trade.area.toFixed(1)}㎡` : "-"}</span><span>{trade.area ? `${(trade.area / 3.3058).toFixed(1)}평` : "-"}</span><span>{trade.floor === null ? "-" : `${trade.floor}층`}</span><strong>{formatPrice(trade.amount)}</strong><span>{trade.area ? `${Math.round(trade.amount / (trade.area / 3.3058)).toLocaleString()}만` : "-"}</span></button>; })}{!recentTradeRows.length && <div className="trade-empty">선택한 평수의 실거래가 없습니다.</div>}</div>
         <aside className="area-trade-chart" aria-label="면적별 전체 거래 차트"><header><div><span>면적별 전체 거래</span><h3>평수별 가격과 거래량</h3></div><small>중위가격 기준</small></header><div className="area-trade-bars">{tradeAreaGroups.length ? tradeAreaGroups.map((group) => <button type="button" key={group.pyeong} className={activeTradeAreaFilter === String(group.pyeong) ? "active" : ""} onClick={() => setTradeAreaFilter(String(group.pyeong))} aria-label={`${group.pyeong}평, 중위가격 ${formatPrice(group.median)}, ${group.rows.length}건`}><span><b>{group.pyeong}평</b><small>{group.areaMedian.toFixed(1)}㎡</small></span><i><em style={{ width: `${Math.max(8, group.median / maxAreaMedian * 100)}%` }} /></i><strong>{formatPrice(group.median)}<small>{group.rows.length}건</small></strong></button>) : <div className="trade-empty">면적별로 집계할 실거래가 없습니다.</div>}</div><p>막대 길이는 각 평수의 중위 거래가격이며, 오른쪽 숫자는 신고 거래 건수입니다.</p></aside>
       </div>
     </section>
