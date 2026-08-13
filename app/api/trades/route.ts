@@ -1,64 +1,29 @@
+import { combineDataState, monthlySeries, rollingQuarter } from "../../lib/market/aggregate.ts";
+import { fetchAllMolitPages, type MolitCollection, UpstreamDataError } from "../../lib/market/molit.ts";
+import { normalizeMolitTrade } from "../../lib/market/normalize.ts";
+import type { PropertySummary, PropertyType, TradeRecord, TradesResponse } from "../../lib/market/types";
+
 export const dynamic = "force-dynamic";
 
 const API_ROOT = "https://apis.data.go.kr/1613000";
-const SERVICES = {
+const SERVICES: Record<PropertyType, readonly [string, string]> = {
   apt: ["RTMSDataSvcAptTradeDev", "getRTMSDataSvcAptTradeDev"],
   rowhouse: ["RTMSDataSvcRHTrade", "getRTMSDataSvcRHTrade"],
   house: ["RTMSDataSvcSHTrade", "getRTMSDataSvcSHTrade"],
   officetel: ["RTMSDataSvcOffiTrade", "getRTMSDataSvcOffiTrade"],
   commercial: ["RTMSDataSvcNrgTrade", "getRTMSDataSvcNrgTrade"],
   factory: ["RTMSDataSvcInduTrade", "getRTMSDataSvcInduTrade"],
-} as const;
-
-type PropertyType = keyof typeof SERVICES;
-type RawFields = Record<string, string>;
-
-type Trade = {
-  id: string;
-  date: string;
-  amount: number;
-  area: number;
-  floor: number | null;
-  name: string;
-  propertyKey: string;
-  dong: string;
-  buildingDong: string;
-  jibun: string;
-  buildYear: number | null;
-  propertyType: PropertyType;
-  dealingType: string;
-  cancelled: boolean;
 };
 
 function serviceKey() {
-  const value = process.env.MOLIT_SERVICE_KEY || process.env.REB_API_KEY;
+  const value = process.env.MOLIT_SERVICE_KEY;
   if (!value) throw new Error("국토교통부 API 키가 설정되지 않았습니다.");
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
+  try { return decodeURIComponent(value); } catch { return value; }
 }
 
-function decodeXml(value: string) {
-  return value
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'")
-    .replaceAll("&amp;", "&");
-}
-
-function parseItems(xml: string): RawFields[] {
-  const blocks = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
-  return blocks.map((block) => {
-    const fields: RawFields = {};
-    const inner = block.slice("<item>".length, -"</item>".length);
-    for (const match of inner.matchAll(/<([A-Za-z0-9_]+)>([\s\S]*?)<\/\1>/g)) {
-      fields[match[1]] = decodeXml(match[2].trim());
-    }
-    return fields;
-  });
+function numeric(value = "") {
+  const parsed = Number(value.replaceAll(",", "").trim());
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function monthIds(count: number) {
@@ -69,73 +34,62 @@ function monthIds(count: number) {
   }).reverse();
 }
 
-async function fetchMonth(type: PropertyType, lawd: string, month: string) {
+function displayMonth(month: string) {
+  return `${month.slice(0, 4)}-${month.slice(4)}`;
+}
+
+async function fetchMonth(type: PropertyType, lawd: string, month: string): Promise<MolitCollection> {
   const [service, operation] = SERVICES[type];
   const url = new URL(`${API_ROOT}/${service}/${operation}`);
   url.searchParams.set("LAWD_CD", lawd);
   url.searchParams.set("DEAL_YMD", month);
-  url.searchParams.set("pageNo", "1");
   url.searchParams.set("numOfRows", "1000");
   url.searchParams.set("serviceKey", serviceKey());
-  const response = await fetch(url, { headers: { Accept: "application/xml" } });
-  if (!response.ok) throw new Error(`실거래가 API 응답 오류 (${response.status})`);
-  const xml = await response.text();
-  if (/SERVICE_ACCESS_DENIED|PERMISSION_DENIED|SERVICE_KEY_IS_NOT_REGISTERED/.test(xml)) {
-    throw new Error("실거래가 API 권한을 확인해주세요.");
-  }
-  const firstPage = parseItems(xml);
-  const totalCount = numeric(xml.match(/<totalCount>(.*?)<\/totalCount>/)?.[1] || String(firstPage.length));
-  const pages = Math.min(5, Math.ceil(totalCount / 1000));
-  if (pages <= 1) return firstPage;
-  const remaining = await Promise.all(Array.from({ length: pages - 1 }, async (_, index) => {
-    const nextUrl = new URL(url); nextUrl.searchParams.set("pageNo", String(index + 2));
-    const nextResponse = await fetch(nextUrl, { headers: { Accept: "application/xml" } });
-    return nextResponse.ok ? parseItems(await nextResponse.text()) : [];
-  }));
-  return firstPage.concat(...remaining);
+  return fetchAllMolitPages(url);
 }
 
-async function fetchInBatches(type: PropertyType, lawd: string, months: string[]) {
-  const rows: RawFields[] = [];
+async function fetchMonths(type: PropertyType, lawd: string, months: string[]) {
+  const collections = new Map<string, MolitCollection>();
+  const failures = new Map<string, unknown>();
   for (let index = 0; index < months.length; index += 6) {
-    const batch = await Promise.all(months.slice(index, index + 6).map((month) => fetchMonth(type, lawd, month)));
-    batch.forEach((items) => rows.push(...items));
+    const batchMonths = months.slice(index, index + 6);
+    const settled = await Promise.allSettled(batchMonths.map((month) => fetchMonth(type, lawd, month)));
+    settled.forEach((result, resultIndex) => {
+      const month = batchMonths[resultIndex];
+      if (result.status === "fulfilled") collections.set(month, result.value);
+      else failures.set(month, result.reason);
+    });
   }
-  return rows;
+  if (!collections.size && failures.size) throw failures.values().next().value;
+  return { collections, failures };
 }
 
-function numeric(value = "") {
-  return Number(value.replaceAll(",", "").trim()) || 0;
-}
-
-function normalize(row: RawFields, type: PropertyType, index: number): Trade {
-  const year = row.dealYear || "";
-  const month = String(row.dealMonth || "").padStart(2, "0");
-  const day = String(row.dealDay || "").padStart(2, "0");
-  const dong = row.umdNm || "";
-  const buildingDong = row.aptDong || "";
-  const jibun = row.jibun || "";
-  const suppliedName = row.aptNm || row.mhouseNm || row.offiNm || "";
-  const usage = row.buildingUse || row.buildingType || row.houseType || "건물";
-  const name = suppliedName || `${dong} ${jibun} ${usage}`.replace(/\s+/g, " ").trim();
-  const area = numeric(row.excluUseAr || row.totalFloorAr || row.buildingAr || row.plottageAr);
-  const propertyKey = `${name}|${dong}|${jibun}`;
-  return {
-    id: `${type}-${year}${month}${day}-${row.sggCd || ""}-${index}-${numeric(row.dealAmount)}`,
-    date: `${year}-${month}-${day}`,
-    amount: numeric(row.dealAmount),
-    area,
-    floor: row.floor ? numeric(row.floor) : null,
-    name,
-    propertyKey,
-    dong,
-    buildingDong,
-    jibun,
-    buildYear: row.buildYear ? numeric(row.buildYear) : null,
-    propertyType: type,
-    dealingType: row.dealingGbn || "",
-    cancelled: row.cdealType === "O",
-  };
+function propertySummaries(trades: TradeRecord[]): PropertySummary[] {
+  const properties = new Map<string, PropertySummary & { areaSet: Set<number>; areaKindSet: Set<TradeRecord["areaMeasurement"]["kind"]> }>();
+  for (const trade of trades) {
+    const current = properties.get(trade.propertyKey) ?? {
+      key: trade.propertyKey,
+      name: trade.name,
+      dong: trade.dong,
+      jibun: trade.jibun,
+      count: 0,
+      lastAmount: 0,
+      areas: [],
+      areaKinds: [],
+      areaSet: new Set<number>(),
+      areaKindSet: new Set<TradeRecord["areaMeasurement"]["kind"]>(),
+    };
+    current.count += 1;
+    current.lastAmount = trade.amount;
+    if (trade.area > 0) current.areaSet.add(Math.round(trade.area * 10) / 10);
+    current.areaKindSet.add(trade.areaMeasurement.kind);
+    properties.set(trade.propertyKey, current);
+  }
+  return [...properties.values()].map(({ areaSet, areaKindSet, ...property }) => ({
+    ...property,
+    areas: [...areaSet].sort((a, b) => a - b),
+    areaKinds: [...areaKindSet],
+  })).sort((a, b) => b.count - a.count);
 }
 
 export async function GET(request: Request) {
@@ -146,12 +100,21 @@ export async function GET(request: Request) {
     const type = requestedType as PropertyType;
     const lawd = (params.get("lawd") || "11680").replace(/\D/g, "").slice(0, 5);
     if (lawd.length !== 5) return Response.json({ error: "시군구 코드를 확인해주세요." }, { status: 400 });
-    const months = Math.min(60, Math.max(3, numeric(params.get("months") || "12")));
+    const monthCount = Math.min(60, Math.max(3, numeric(params.get("months") || "12")));
+    const requestedMonths = monthIds(monthCount);
     const query = (params.get("query") || "").trim().toLocaleLowerCase("ko");
     const exact = params.get("exact") === "1";
-
-    const rows = await fetchInBatches(type, lawd, monthIds(months));
-    let trades = rows.map((row, index) => normalize(row, type, index)).filter((trade) => trade.amount > 0 && trade.date.length === 10 && !trade.cancelled);
+    const { collections, failures } = await fetchMonths(type, lawd, requestedMonths);
+    const partialMonthIds = [
+      ...failures.keys(),
+      ...[...collections].filter(([, collection]) => collection.partial).map(([month]) => month),
+    ];
+    const partialMonths = new Set<string>(partialMonthIds.map(displayMonth));
+    const rawRows = [...collections.values()].flatMap((collection) => collection.rows);
+    const normalized = rawRows.map((row, index) => normalizeMolitTrade(row, type, index));
+    const invalidRows = normalized.filter((trade) => trade === null).length;
+    const cancelledRows = normalized.filter((trade) => trade?.cancelled).length;
+    let trades = normalized.filter((trade): trade is TradeRecord => Boolean(trade && !trade.cancelled));
     if (query) {
       trades = trades.filter((trade) => {
         const haystack = `${trade.name} ${trade.dong} ${trade.buildingDong} ${trade.jibun}`.toLocaleLowerCase("ko");
@@ -160,23 +123,46 @@ export async function GET(request: Request) {
     }
     trades.sort((a, b) => a.date.localeCompare(b.date));
 
-    const propertyMap = new Map<string, { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; areas: Set<number> }>();
-    for (const trade of trades) {
-      const current = propertyMap.get(trade.propertyKey) || { key: trade.propertyKey, name: trade.name, dong: trade.dong, jibun: trade.jibun, count: 0, lastAmount: 0, areas: new Set<number>() };
-      current.count += 1;
-      current.lastAmount = trade.amount;
-      if (trade.area) current.areas.add(Math.round(trade.area * 10) / 10);
-      propertyMap.set(trade.propertyKey, current);
-    }
-    const properties = [...propertyMap.values()]
-      .map((property) => ({ ...property, areas: [...property.areas].sort((a, b) => a - b) }))
-      .sort((a, b) => b.count - a.count);
-
-    return Response.json({ trades, properties, months, lawd, type, source: "국토교통부 실거래가 공개시스템" }, {
-      headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" },
-    });
+    const successfulMonths = [...collections.keys()];
+    const failedMonths = [...failures.keys()];
+    const fetchedPages = [...collections.values()].reduce((sum, collection) => sum + collection.fetchedPages, 0);
+    const totalCount = [...collections.values()].reduce((sum, collection) => sum + collection.totalCount, 0);
+    const warnings = [
+      ...[...collections].flatMap(([month, collection]) => collection.warnings.map((warning) => `${month}: ${warning}`)),
+      ...failedMonths.map((month) => `${month}: 해당 월을 수집하지 못했습니다.`),
+      ...(invalidRows ? [`필수 필드가 잘못된 ${invalidRows}건을 제외했습니다.`] : []),
+      ...(cancelledRows ? [`취소 신고 ${cancelledRows}건을 제외했습니다.`] : []),
+    ];
+    const status = combineDataState(successfulMonths.length, failedMonths.length + [...collections.values()].filter((collection) => collection.partial).length, trades.length);
+    const from = displayMonth(requestedMonths[0]);
+    const to = displayMonth(requestedMonths.at(-1)!);
+    const response: TradesResponse = {
+      trades,
+      properties: propertySummaries(trades),
+      months: monthCount,
+      lawd,
+      type,
+      source: "국토교통부 실거래가 공개시스템",
+      status,
+      aggregates: {
+        monthly: monthlySeries(trades, from, to, 2, partialMonths),
+        rollingQuarter: rollingQuarter(trades, to, 3, partialMonths),
+      },
+      meta: {
+        requestedMonths,
+        successfulMonths,
+        failedMonths,
+        fetchedPages,
+        totalCount,
+        warnings,
+        areaKinds: [...new Set(trades.map((trade) => trade.areaMeasurement.kind))],
+        period: { from, to, basis: "calendar-month", completeness: "provisional" },
+      },
+    };
+    return Response.json(response, { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "실거래가를 불러오지 못했습니다.";
-    return Response.json({ error: message }, { status: 502 });
+    const status = error instanceof UpstreamDataError && error.kind === "timeout" ? 504 : 502;
+    return Response.json({ error: message }, { status });
   }
 }

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response><header><resultCode>00</resultCode><resultMsg>NORMAL SERVICE.</resultMsg></header><body><items>
+<item><dealAmount>100,000</dealAmount><dealYear>2026</dealYear><dealMonth>3</dealMonth><dealDay>2</dealDay><aptNm>정석아파트</aptNm><umdNm>대치동</umdNm><jibun>1</jibun><excluUseAr>84.50</excluUseAr><floor>10</floor><sggCd>11680</sggCd></item>
+</items><numOfRows>1000</numOfRows><pageNo>1</pageNo><totalCount>1</totalCount></body></response>
