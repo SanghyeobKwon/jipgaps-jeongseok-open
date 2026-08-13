@@ -8,6 +8,7 @@
 2. `PRODUCT.md`: 제품 포지셔닝과 핵심 원칙
 3. `DESIGN.md`: 시각·반응형·상호작용 기준
 4. `README.md`: 실행 방법과 기술 환경
+5. `AGENT_TEAM.md`: 여러 Agent를 병렬로 운영할 때의 역할, 파일 소유권과 병합 순서
 
 문서 간 충돌이 있으면 사용자 최신 요청을 최우선으로 하고, 그다음 `AGENTS.md`, `BUSINESS.md`, `PRODUCT.md`, `DESIGN.md` 순서로 판단한다.
 
