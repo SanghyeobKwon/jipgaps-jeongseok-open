@@ -27,3 +27,19 @@ test("reselecting the same region preserves camera/history contract", () => {
   assert.equal(change.history, "replace");
   assert.deepEqual(change.selection.camera, current.camera);
 });
+
+test("serializes SGIS boundary code separately from Kakao hcode and bcode", () => {
+  const params = selectionToQuery({
+    level: "emd",
+    sidoCode: "11",
+    sidoName: "서울특별시",
+    sigunguCode: "11680",
+    sigunguName: "강남구",
+    boundaryAdminCode: "11230640",
+    adminDongCode: "1168064000",
+    legalDongCode: "1168010100",
+  });
+  assert.equal(params.get("boundary"), "11230640");
+  assert.equal(params.get("hcode"), "1168064000");
+  assert.equal(params.get("bcode"), "1168010100");
+});

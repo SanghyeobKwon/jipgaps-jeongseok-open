@@ -1,0 +1,81 @@
+.map-region-label-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-map-labels, 12);
+  pointer-events: none;
+}
+
+.map-region-label {
+  border: 0;
+  border-radius: 10px;
+  padding: 6px 9px;
+  color: var(--ink, #0c1c32);
+  background: color-mix(in srgb, var(--surface, #fff) 90%, transparent);
+  box-shadow: 0 4px 14px rgb(12 28 50 / 12%);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 750;
+  line-height: 1.15;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.map-region-label:hover {
+  color: var(--action-blue, #155bd7);
+  background: var(--action-tint, #eaf2ff);
+}
+
+.map-region-label:focus-visible,
+.map-region-fallback-list button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--action-blue, #155bd7) 34%, transparent);
+  outline-offset: 2px;
+}
+
+.map-region-label.is-selected {
+  z-index: 2;
+  color: #fff;
+  background: var(--selected-dossier, #0d2038);
+}
+
+.map-region-fallback-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+  border-top: 1px solid var(--hairline, #d9e1eb);
+}
+
+.map-region-fallback-list button {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--hairline, #d9e1eb);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--ink, #0c1c32);
+  background: var(--surface, #fff);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (max-width: 767px) {
+  .map-region-label {
+    min-width: 44px;
+    min-height: 44px;
+    padding-inline: 7px;
+    font-size: 0.75rem;
+  }
+
+  .map-region-fallback-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+[data-theme="dark"] .map-region-label,
+[data-theme="dark"] .map-region-fallback-list button {
+  color: var(--ink, #e8f0fb);
+  background: color-mix(in srgb, var(--surface, #0d1a2a) 92%, transparent);
+}

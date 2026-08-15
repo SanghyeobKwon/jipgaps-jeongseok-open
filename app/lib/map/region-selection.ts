@@ -30,6 +30,7 @@ export function selectionToQuery(selection: RegionSelection) {
   // boundaryAdminCode: Kakao h_code and SGIS codes are distinct systems.
   params.set("sido", selection.sidoName);
   if (selection.sigunguCode) params.set("sigungu", selection.sigunguCode);
+  if (selection.boundaryAdminCode) params.set("boundary", selection.boundaryAdminCode);
   if (selection.adminDongCode) params.set("hcode", selection.adminDongCode);
   if (selection.legalDongCode) params.set("bcode", selection.legalDongCode);
   if (selection.propertyKey) params.set("property", selection.propertyKey);

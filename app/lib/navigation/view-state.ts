@@ -6,6 +6,8 @@ export type ViewState = {
   screen: ScreenId;
   sido?: string;
   sigungu?: string;
+  /** SGIS administrative-boundary feature code. Never use this as Kakao hcode. */
+  boundary?: string;
   hcode?: string;
   bcode?: string;
   property?: string;
@@ -16,11 +18,16 @@ export type ViewState = {
   level?: number;
 };
 
-const QUERY_KEYS = ["sido", "sigungu", "hcode", "bcode", "property", "area", "tradePy", "lat", "lng", "level"] as const;
+const QUERY_KEYS = ["sido", "sigungu", "boundary", "hcode", "bcode", "property", "area", "tradePy", "lat", "lng", "level"] as const;
 
 function safeText(value: string | null, maxLength: number) {
   const normalized = value?.trim();
   return normalized && normalized.length <= maxLength ? normalized : undefined;
+}
+
+function safeCode(value: string | null, length: number) {
+  const normalized = value?.trim();
+  return normalized && new RegExp(`^\\d{${length}}$`).test(normalized) ? normalized : undefined;
 }
 
 function safeNumber(value: string | null, minimum: number, maximum: number) {
@@ -40,9 +47,10 @@ export function readViewState(url: URL): ViewState {
   return {
     screen: normalizeScreen(url.hash),
     sido: safeText(url.searchParams.get("sido"), 20),
-    sigungu: safeText(url.searchParams.get("sigungu"), 10),
-    hcode: safeText(url.searchParams.get("hcode"), 16),
-    bcode: safeText(url.searchParams.get("bcode"), 16),
+    sigungu: safeCode(url.searchParams.get("sigungu"), 5),
+    boundary: safeCode(url.searchParams.get("boundary"), 8),
+    hcode: safeCode(url.searchParams.get("hcode"), 10),
+    bcode: safeCode(url.searchParams.get("bcode"), 10),
     property: safeText(url.searchParams.get("property"), 240),
     area: safeText(url.searchParams.get("area"), 16),
     tradePy: safeText(url.searchParams.get("tradePy"), 16),
@@ -62,4 +70,3 @@ export function writeViewState(current: URL, state: ViewState) {
   }
   return `${url.pathname}${url.search}${url.hash}`;
 }
-
