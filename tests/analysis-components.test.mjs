@@ -13,12 +13,15 @@ test("리서치 탭은 여섯 분석 목적을 고정한다", () => {
 });
 test("주택 유형은 아이콘, 가격은 다섯 구간, 선택은 별도 상태로 표현한다", () => {
   const source = read("../app/components/analysis/PropertyVisual.tsx");
+  const page = read("../app/page.tsx");
   const css = read("../app/styles/research-analysis.css");
   assert.match(source, /PROPERTY_META/);
   assert.match(source, /priceBucket/);
   assert.match(source, /selected/);
   for (const bucket of [1, 2, 3, 4, 5]) assert.match(css, new RegExp(`is-bucket-${bucket}`));
   assert.match(css, /analysis-property-icon\.is-selected/);
+  assert.match(page, /<AnalysisPropertyTypeIcon type=\{type\} priceBucket=\{researchPriceBuckets\(row\.current\)\}/);
+  assert.doesNotMatch(page, /research-building tone-\$\{index % 5\}/);
 });
 
 test("차트 높이와 반응형 생활권 작업면 계약을 유지한다", () => {

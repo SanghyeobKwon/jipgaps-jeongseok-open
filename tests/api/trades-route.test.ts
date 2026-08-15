@@ -8,6 +8,11 @@ import { parseMolitPage } from "../../app/lib/market/molit.ts";
 
 const fixture = (name: string) => readFile(new URL(`../market/fixtures/${name}`, import.meta.url), "utf8");
 
+test("기본 3년과 최대 5년 조회도 월·묶음 캐시를 사용한다", async () => {
+  const source = await readFile(new URL("../../app/api/trades/route.ts", import.meta.url), "utf8");
+  assert.match(source, /monthCount <= 60/);
+});
+
 async function withEnvironment(fetchImpl: typeof fetch, run: () => Promise<void>) {
   const originalFetch = globalThis.fetch;
   const originalMolit = process.env.MOLIT_SERVICE_KEY;

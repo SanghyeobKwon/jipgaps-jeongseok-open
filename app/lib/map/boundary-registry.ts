@@ -41,7 +41,15 @@ export function buildBoundaryRegistry(collection: BoundaryFeatureCollection, lev
     const sigunguName = text(properties.sigunguName || (level === "sigungu" ? name : ""));
     if (!feature.geometry || !["Polygon", "MultiPolygon"].includes(feature.geometry.type)) { issues.push({ index, code, reason: "invalid_geometry" }); return; }
     if (code.length !== expectedLength(level)) { issues.push({ index, code, reason: "invalid_code" }); return; }
-    if (code.slice(0, 2) !== sidoCode || (level !== "sido" && code.slice(0, 5) !== sigunguCode && level === "sigungu")) {
+    // EMD geometry uses the SGIS eight-digit boundary code. It is a separate
+    // namespace from the MOIS/Kakao sido, sigungu, h_code and b_code values,
+    // so an EMD code must never be rejected only because its prefix differs.
+    const hierarchyMismatch = level === "sido"
+      ? code !== sidoCode
+      : level === "sigungu"
+        ? code.slice(0, 2) !== sidoCode || code !== sigunguCode
+        : !/^\d{2}$/.test(sidoCode) || !/^\d{5}$/.test(sigunguCode);
+    if (hierarchyMismatch) {
       issues.push({ index, code, reason: "code_hierarchy_mismatch" }); return;
     }
     if (!name || !sidoName || (level !== "sido" && !sigunguName)) { issues.push({ index, code, reason: "missing_name" }); return; }

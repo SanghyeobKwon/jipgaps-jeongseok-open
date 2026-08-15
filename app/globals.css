@@ -1583,3 +1583,10 @@ html[data-theme="dark"] .level-district .district-active-outline path{stroke:#67
 /* Final compact chart contract: keep the price graph useful without pushing 생활권 below the fold. */
 .terminal-shell[data-view="chart"] .watch-chart .canvas-wrap{height:340px!important;min-height:300px!important}
 @media(max-width:760px){.terminal-shell[data-view="chart"] .watch-chart .canvas-wrap{height:260px!important;min-height:240px!important}}
+
+/* Keep every recent-trade row on the same seven-column track as its header. */
+.trade-section .trade-table{width:100%}
+.trade-section .table-head,.trade-section .table-row{width:100%;box-sizing:border-box}
+.trade-section .table-row{border-inline:0;background:transparent;text-align:left;font-variant-numeric:tabular-nums}
+.trade-section .table-head>span:nth-child(n+3),.trade-section .table-row>:nth-child(n+3){text-align:right}
+@media(min-width:1200px){.trade-analysis-layout>.trade-table .table-head,.trade-analysis-layout>.trade-table .table-row{min-width:720px}}

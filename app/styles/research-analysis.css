@@ -63,6 +63,22 @@
 .analysis-price-legend li:first-child { border-radius: 999px 0 0 999px; }
 .analysis-price-legend li:last-child { border-radius: 0 999px 999px 0; }
 
+/* Legacy non-price research boards share the same housing shape and price
+   palette as the map and the dedicated price workspace. */
+.research-live-board > button > span.analysis-property-icon {
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  text-align: initial;
+  color: var(--analysis-bucket-color);
+  font: inherit;
+}
+
+.research-live-board > button > span.analysis-property-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 .analysis-research-table { min-width: 0; overflow-x: auto; border-block: 1px solid var(--hmi-border); font-size: var(--hmi-type-200); scrollbar-gutter: stable; }
 .analysis-research-table__head,
 .analysis-research-table__body > button {

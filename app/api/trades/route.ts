@@ -207,7 +207,10 @@ export async function GET(request: Request) {
     const requestedMonths = monthIds(monthCount);
     const query = (params.get("query") || "").trim().toLocaleLowerCase("ko");
     const exact = params.get("exact") === "1";
-    const useMonthCache = !query && monthCount <= 12;
+    // The UI defaults to a three-year view. Cache the monthly pieces and the
+    // exact bundle for up to five years so repeat regional analysis does not
+    // fan out to dozens of public API calls on every visit.
+    const useMonthCache = !query && monthCount <= 60;
     const { collections, failures, bundleCache } = await fetchMonths(type, lawd, requestedMonths, useMonthCache);
     const partialMonthIds = [
       ...failures.keys(),

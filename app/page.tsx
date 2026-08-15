@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- local floor-plan previews use browser-only object URLs */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, Baby, BedDouble, Building2, BusFront, CarFront, Drama, Dumbbell, Film, GraduationCap, HeartPulse, Hospital, ImagePlus, Landmark, Library, Mail, MapPin, Monitor, Moon, Move, Pill, Refrigerator, RotateCw, Ruler, School, Search, ShoppingBasket, ShoppingCart, Sofa, Stethoscope, Store, Sun, Table2, TrainFront, Trash2, Trees, Trophy, Upload, WashingMachine, Waves, type LucideIcon } from "lucide-react";
+import { Archive, Baby, BedDouble, Building2, BusFront, CarFront, Drama, Dumbbell, Film, GraduationCap, HeartPulse, Hospital, ImagePlus, Landmark, Library, Mail, MapPin, Maximize2, Monitor, Moon, Move, Pill, Refrigerator, RotateCw, Ruler, School, Search, ShoppingBasket, ShoppingCart, Sofa, Stethoscope, Store, Sun, Table2, TrainFront, Trash2, Trees, Trophy, Upload, WashingMachine, Waves, ZoomIn, ZoomOut, type LucideIcon } from "lucide-react";
 import regions from "./data/regions.json";
 import { PropertyTypeIcon as AnalysisPropertyTypeIcon, ResearchAnalysisWorkspace, type PriceBucket, type ResearchCell, type ResearchPropertyRow, type ResearchView as AnalysisResearchView } from "./components/analysis";
 import { geometryLabelPoint, type SupportedGeometry } from "./lib/map/geometry";
@@ -37,7 +37,7 @@ type CommuteEstimate = { destination: string; address: string; distance: number;
 type FurnitureKind = "single-bed" | "queen-bed" | "sofa" | "dining" | "desk" | "wardrobe" | "fridge";
 type FurnitureCatalogItem = { kind: FurnitureKind; label: string; width: number; depth: number; icon: LucideIcon; color: string };
 type PlacedFurniture = { id: string; kind: FurnitureKind; x: number; y: number; rotated: boolean };
-type BoundaryDong = { code: string; name: string };
+type BoundaryDong = { code: string; name: string; lat: number; lng: number };
 type ReleaseInfo = { commit: string; shortCommit: string; source: string };
 type FacilityMeta = { label: string; description: string; color: string; icon: LucideIcon; subtypes: string[] };
 const NEARBY_CATEGORIES: FacilityMeta[] = [
@@ -609,6 +609,13 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
   onDongMetricChange: (metric: DongMetric) => void; onSelectSido: (sido: string) => void; onSelectRegion: (region: Region) => void; onSelectDong: (dong: string) => void; onOpenBuildings: () => void;
 }) {
   const [data, setData] = useState<GeoJsonFeatureCollection | null>(null); const [boundaryError, setBoundaryError] = useState(""); const [boundaryRetry, setBoundaryRetry] = useState(0);
+  const boundaryZoomScope = `${focus}:${selectedSido}:${activeRegion.code}`;
+  const [boundaryZoomState, setBoundaryZoomState] = useState({ scope: boundaryZoomScope, zoom: 1 });
+  const boundaryZoom = boundaryZoomState.scope === boundaryZoomScope ? boundaryZoomState.zoom : 1;
+  const updateBoundaryZoom = (next: number | ((current: number) => number)) => setBoundaryZoomState((current) => {
+    const currentZoom = current.scope === boundaryZoomScope ? current.zoom : 1;
+    return { scope: boundaryZoomScope, zoom: typeof next === "function" ? next(currentZoom) : next };
+  });
   const [capitalContext, setCapitalContext] = useState<GeoJsonFeatureCollection | null>(null);
   const [capitalDistrictContext, setCapitalDistrictContext] = useState<GeoJsonFeatureCollection | null>(null);
   const [districtContext, setDistrictContext] = useState<GeoJsonFeatureCollection | null>(null);
@@ -712,6 +719,18 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
   const districtMid = districtValues.length ? median(districtValues) : 0;
   const isSelected = (boundary: ProjectedBoundary) => focus === "national" ? boundary.name === selectedSido : focus === "sido" ? boundary.code === activeRegion.code : selectedBoundaryDong ? boundary.name === selectedBoundaryDong : selectedDong !== "all" && boundary.name === selectedDong;
   const visibleLabels = useMemo(() => visibleAdministrativeLabels(boundaries), [boundaries]);
+  const administrativeViewBox = useMemo(() => {
+    const base = focus === "national" ? { x: 100, y: 0, width: 560, height: 560 } : { x: 0, y: 0, width: 760, height: 560 };
+    if (boundaryZoom <= 1) return `${base.x} ${base.y} ${base.width} ${base.height}`;
+    const selected = boundaries.find((boundary) => focus === "national" ? boundary.name === selectedSido : focus === "sido" ? boundary.code === activeRegion.code : selectedBoundaryDong ? boundary.name === selectedBoundaryDong : selectedDong !== "all" && boundary.name === selectedDong);
+    const centerX = selected?.centerX ?? base.x + base.width / 2;
+    const centerY = selected?.centerY ?? base.y + base.height / 2;
+    const width = base.width / boundaryZoom;
+    const height = base.height / boundaryZoom;
+    const x = Math.min(base.x + base.width - width, Math.max(base.x, centerX - width / 2));
+    const y = Math.min(base.y + base.height - height, Math.max(base.y, centerY - height / 2));
+    return `${x} ${y} ${width} ${height}`;
+  }, [activeRegion.code, boundaries, boundaryZoom, focus, selectedBoundaryDong, selectedDong, selectedSido]);
   const selectBoundary = (boundary: ProjectedBoundary) => {
     if (focus === "national") onSelectSido(boundary.name);
     else if (focus === "sido") { const region = REGIONS.find((item) => item.code === boundary.code); if (region) onSelectRegion(region); }
@@ -743,7 +762,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
   };
   return <div className={`administrative-market-map level-${focus}`}>
     <div className="administrative-map-head"><div>{focus === "district" && <span className="administrative-selected-region">현재 보고 있는 지역 · {activeRegion.sigungu}</span>}<b>{stageTitle}</b><small>{stageHint}</small></div><div className="administrative-map-actions">{focus === "district" && <div className="dong-metric-tabs" aria-label="동네 가격 지도 지표">{([['price', '중위가격'], ['py', '평당가'], ['volume', '거래량']] as const).map(([metric, label]) => <button type="button" key={metric} className={dongMetric === metric ? "active" : ""} aria-pressed={dongMetric === metric} onClick={() => onDongMetricChange(metric)}>{label}</button>)}</div>}<div className={`administrative-map-key key-${focus}`} aria-label="지도 색상 범례">{focus === "national" ? <><span><i className="cold" />하락</span><span><i className="flat" />보합</span><span><i className="hot" />상승</span></> : focus === "district" ? <><span><i className="price-low" />낮음</span><span><i className="price-mid" />중간</span><span><i className="price-high" />높음</span></> : <span><i className="selected" />선택 경계</span>}</div><div className="administrative-map-mode"><i />행정경계 데이터</div></div></div>
-    {data ? <svg className="administrative-map-svg" viewBox={focus === "national" ? "100 0 560 560" : "0 0 760 560"} role="img" aria-label={`${stageTitle} 행정구역 선택 지도`}>
+    {data ? <svg className="administrative-map-svg" viewBox={administrativeViewBox} role="img" aria-label={`${stageTitle} 행정구역 선택 지도`}>
       {capitalBoundaries.length > 0 && <g className="capital-context" aria-hidden="true">
         {capitalBoundaries.map((boundary) => <path key={boundary.code} className={`capital-context-region context-${boundary.code}`} d={boundary.path} fillRule="evenodd" />)}
       </g>}
@@ -783,13 +802,18 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
         </g>;
       })}</g>
     </svg> : <div className="administrative-map-loading"><i />행정경계를 조립하고 있습니다.</div>}
+    {data && <div className="administrative-map-zoom" aria-label="행정경계 지도 확대 축소">
+      <button type="button" aria-label="지도 축소" disabled={boundaryZoom <= 1} onClick={() => updateBoundaryZoom((value) => Math.max(1, value - .5))}><ZoomOut size={17} aria-hidden="true" /></button>
+      <button type="button" aria-label="지도 전체 보기" onClick={() => updateBoundaryZoom(1)}><Maximize2 size={15} aria-hidden="true" /><span>{Math.round(boundaryZoom * 100)}%</span></button>
+      <button type="button" aria-label="선택 지역 중심으로 지도 확대" disabled={boundaryZoom >= 3} onClick={() => updateBoundaryZoom((value) => Math.min(3, value + .5))}><ZoomIn size={17} aria-hidden="true" /></button>
+    </div>}
     {focus === "district" && parentLocatorBoundaries.length > 0 && <aside className="parent-region-locator" aria-label={`${activeRegion.sido} 안에서 ${activeRegion.sigungu}의 위치`}><span>{activeRegion.sido} 안의 위치</span><b>{activeRegion.sigungu}</b><svg viewBox="0 0 160 112" role="img" aria-label={`${activeRegion.sigungu}가 강조된 ${activeRegion.sido} 지도`}>{parentLocatorBoundaries.map((boundary) => <path key={boundary.code} className={boundary.code === activeRegion.code ? "selected" : ""} d={boundary.path} fillRule="evenodd" />)}</svg></aside>}
     <div className="administrative-map-foot"><span><i />선택 지역</span><b>{focus === "national" ? selectedSido : focus === "sido" ? activeRegion.sigungu : selectedBoundaryDong || "동을 선택하세요"}</b><small>{focus === "district" ? selectedBoundaryDong ? selectedDong !== "all" && selectedDong !== selectedBoundaryDong ? `${selectedDong} 법정동 실거래와 공식 코드로 연결했습니다.` : dongStats[selectedBoundaryDong] ? `${formatDongMetric(dongStats[selectedBoundaryDong], dongMetric)} · 공식 동 이름이 일치하는 거래만 연결합니다.` : "행정동의 공식 법정동 코드를 확인하고 있습니다." : "경계를 누르면 지역명과 실거래 요약을 먼저 확인합니다." : "경계를 누르면 한 단계씩 확대됩니다."}</small>{focus === "district" && selectedBoundaryDong && selectedDong !== "all" && <button type="button" className="administrative-map-open" disabled={!ROAD_MAP_AVAILABLE} onClick={onOpenBuildings}>{ROAD_MAP_AVAILABLE ? "건물 지도 보기" : "카카오 지도 키 연결 전"}</button>}</div>
     {boundaryError && <div className="administrative-map-error" role="status"><b>행정경계를 불러오지 못했습니다.</b><span>{boundaryError}</span><button type="button" onClick={() => setBoundaryRetry((value) => value + 1)}>다시 불러오기</button></div>}
   </div>;
 }
 
-function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, dongStats, dongMetric, onDongMetricChange, buildingLocations, buildingsLoading, buildingsError, selectedPropertyKey, camera, onCameraChange, onSelectSido, onSelectRegion, onSelectDong, onOpenBuildings, onSelectProperty }: {
+function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, entryCamera, dongStats, dongMetric, onDongMetricChange, buildingLocations, buildingsLoading, buildingsError, selectedPropertyKey, camera, onCameraChange, onSelectSido, onSelectRegion, onSelectDong, onOpenBuildings, onSelectProperty }: {
   markets: OverviewMarket[];
   focus: MapFocus;
   active: boolean;
@@ -798,6 +822,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   activeRegion: Region;
   selectedDong: string;
   selectedBoundaryDong: string;
+  entryCamera: { lat: number; lng: number; level: number } | null;
   dongStats: Record<string, DongMarketStat>;
   dongMetric: DongMetric;
   onDongMetricChange: (metric: DongMetric) => void;
@@ -817,10 +842,12 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   const cameraRef = useRef<{ context: string; lat: number; lng: number; level: number } | null>(null);
   const mapInstanceRef = useRef<KakaoMapInstance | null>(null);
   const initialCameraRef = useRef<MapCamera | null>(camera);
+  const entryCameraRef = useRef(entryCamera);
   const selectedPropertyKeyRef = useRef(selectedPropertyKey);
   const onCameraChangeRef = useRef(onCameraChange);
   const onSelectPropertyRef = useRef(onSelectProperty);
   const shouldFitMarkersRef = useRef(true);
+  const programmaticCameraChangeRef = useRef(false);
   const applyMarkerSelectionRef = useRef<(key: string) => void>(() => undefined);
   const [mapError, setMapError] = useState("");
   const [mapGeneration, setMapGeneration] = useState(0);
@@ -838,6 +865,10 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   useEffect(() => {
     initialCameraRef.current = camera;
   }, [camera]);
+
+  useEffect(() => {
+    entryCameraRef.current = entryCamera;
+  }, [entryCamera]);
 
   useEffect(() => {
     selectedPropertyKeyRef.current = selectedPropertyKey;
@@ -879,8 +910,9 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       const initialCamera = initialCameraRef.current;
       const sharedCamera = initialCamera && (initialCamera.contextKey === currentContext || initialCamera.changedBy === "restore") ? { context: currentContext, lat: initialCamera.center.lat, lng: initialCamera.center.lng, level: initialCamera.level } : null;
       const preservedCamera = sharedCamera || (cameraRef.current?.context === currentContext ? cameraRef.current : null);
-      const initial = preservedCamera || province;
-      const map = new maps.Map(host, { center: new maps.LatLng(initial.lat, initial.lng), level: preservedCamera?.level ?? kakaoLevelForZoom(province.zoom) });
+      const targetEntryCamera = entryCameraRef.current;
+      const initial = preservedCamera || targetEntryCamera || province;
+      const map = new maps.Map(host, { center: new maps.LatLng(initial.lat, initial.lng), level: preservedCamera?.level ?? targetEntryCamera?.level ?? kakaoLevelForZoom(province.zoom) });
       mapInstance = map;
       mapInstanceRef.current = map;
       shouldFitMarkersRef.current = !preservedCamera;
@@ -906,9 +938,14 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
           map.setCenter?.(new maps.LatLng(preservedCamera.lat, preservedCamera.lng));
           map.setLevel(preservedCamera.level);
         }
-        addListener(map, "dragstart", () => { userCameraChange = true; });
-        addListener(map, "zoom_start", () => { userCameraChange = true; });
+        addListener(map, "dragstart", () => { if (!programmaticCameraChangeRef.current) userCameraChange = true; });
+        addListener(map, "zoom_start", () => { if (!programmaticCameraChangeRef.current) userCameraChange = true; });
         addListener(map, "idle", () => {
+          if (programmaticCameraChangeRef.current) {
+            programmaticCameraChangeRef.current = false;
+            userCameraChange = false;
+            return;
+          }
           if (!userCameraChange || disposed || mapInstanceRef.current !== map) return;
           userCameraChange = false;
           const center = map.getCenter?.();
@@ -984,10 +1021,13 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     host.dataset.markerRenderer = "native-clusterer";
     host.dataset.visibleMarkers = String(nativeMarkers.length);
     if (shouldFitMarkersRef.current && buildingLocations.length) {
+      const selectedLocations = buildingLocations.filter((location) => location.scope === "selected");
+      const fitLocations = selectedLocations.length ? selectedLocations : buildingLocations;
       const bounds = new maps.LatLngBounds();
-      buildingLocations.forEach((location) => bounds.extend(new maps.LatLng(location.lat, location.lng)));
+      fitLocations.forEach((location) => bounds.extend(new maps.LatLng(location.lat, location.lng)));
+      programmaticCameraChangeRef.current = true;
       map.setBounds(bounds, 76, 34, 34, 34);
-      map.setLevel(Math.min(7, Math.max(4, map.getLevel() + 1)));
+      if (map.getLevel() > 5) map.setLevel(5);
       shouldFitMarkersRef.current = false;
     }
     renderMarkerSelection(selectedPropertyKeyRef.current);
@@ -1007,6 +1047,7 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     const map = mapInstanceRef.current;
     const maps = window.kakao?.maps;
     if (!map || !maps) return;
+    programmaticCameraChangeRef.current = true;
     map.setCenter?.(new maps.LatLng(camera.center.lat, camera.center.lng));
     map.setLevel(camera.level);
     cameraRef.current = { context: cameraContext, lat: camera.center.lat, lng: camera.center.lng, level: camera.level };
@@ -1037,12 +1078,12 @@ export default function Home() {
   const pendingPropertyRef = useRef("");
   const pendingBoundaryRef = useRef("");
   const boundaryDongsRef = useRef<BoundaryDong[]>([]);
-  const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(3); const [regionCode, setRegionCode] = useState("11680");
+  const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(36); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState(""); const [analysisAddressInput, setAnalysisAddressInput] = useState("서울특별시 강남구");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [propertiesRegionCode, setPropertiesRegionCode] = useState(""); const [selectedKey, setSelectedKey] = useState("");
   const [researchBundle, setResearchBundle] = useState<ResearchBundle | null>(null);
   const [selectedDong, setSelectedDong] = useState("all"); const [selectedBuildingDong, setSelectedBuildingDong] = useState(""); const [selectedAreaBucket, setSelectedAreaBucket] = useState<number | null>(null); const [selectedVariantKey, setSelectedVariantKey] = useState("");
-  const [area, setArea] = useState("all"); const [tradeAreaFilter, setTradeAreaFilter] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [dataRetry, setDataRetry] = useState(0);
+  const [area, setArea] = useState("all"); const [tradeAreaFilter, setTradeAreaFilter] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [historyLoading, setHistoryLoading] = useState(false); const [error, setError] = useState(""); const [dataRetry, setDataRetry] = useState(0);
   const [dataFeedback, setDataFeedback] = useState<DataFeedback>({ status: "empty", warnings: [] });
   const [markets, setMarkets] = useState<OverviewMarket[]>([]); const [marketMonth, setMarketMonth] = useState(""); const [marketError, setMarketError] = useState(""); const [marketRetry, setMarketRetry] = useState(0);
   const [overviewFeedback, setOverviewFeedback] = useState<OverviewFeedback>({ status: "empty", warnings: [], scopeLabel: "16개 대표 시군구 표본", nationwide: false });
@@ -1071,6 +1112,13 @@ export default function Home() {
   const [selectedHCode, setSelectedHCode] = useState(""); const [selectedBCode, setSelectedBCode] = useState("");
   const activeRegion = REGIONS.find((item) => item.code === regionCode) || REGIONS[0];
   const selectedBoundaryCode = boundaryDongs.find((dong) => dong.name === selectedBoundaryDong)?.code;
+  const mapEntryCamera = useMemo(() => {
+    const selectedBoundary = boundaryDongs.find((dong) => dong.name === selectedBoundaryDong);
+    if (selectedBoundary) return { lat: selectedBoundary.lat, lng: selectedBoundary.lng, level: 4 };
+    if (!boundaryDongs.length) return null;
+    const center = boundaryDongs.reduce((sum, dong) => ({ lat: sum.lat + dong.lat, lng: sum.lng + dong.lng }), { lat: 0, lng: 0 });
+    return { lat: center.lat / boundaryDongs.length, lng: center.lng / boundaryDongs.length, level: selectedDong === "all" ? 6 : 5 };
+  }, [boundaryDongs, selectedBoundaryDong, selectedDong]);
   const chooseThemePreference = (next: ThemePreference) => { themeInteractedRef.current = true; try { window.localStorage.setItem("jipgaps:theme", next); } catch { /* device storage is optional */ } setThemePreference(next); };
 
   useEffect(() => { const timer = window.setTimeout(() => { try { const stored = window.localStorage.getItem("jipgaps:saved-homes"); if (stored) setSavedHomes(JSON.parse(stored)); const draft = window.localStorage.getItem("jipgaps:study-draft"); if (draft) { const parsed = JSON.parse(draft); setStudyTitle(parsed.title || ""); setStudyBody(parsed.body || ""); } } catch { /* device storage is optional */ } }, 0); return () => window.clearTimeout(timer); }, []);
@@ -1200,9 +1248,50 @@ export default function Home() {
   useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      setLoading(true); setError(""); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all");
-      const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 3)), query: submittedQuery });
-      fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { const nextProperties = data.properties || []; setTrades(data.trades || []); setProperties(nextProperties); setPropertiesRegionCode(regionCode); setResearchBundle(data.research || null); setDataFeedback({ status: data.status || ((data.trades || []).length ? "ok" : "empty"), warnings: data.meta?.warnings || [] }); const requested = pendingPropertyRef.current; const restored = requested ? nextProperties.find((property: Property) => property.key === requested || property.name === requested || property.name.includes(requested)) : undefined; if (restored) { setSelectedKey(restored.key); setQuery(restored.name); setSubmittedQuery(restored.name); pendingPropertyRef.current = ""; } else if (nextProperties.length === 1) setSelectedKey(nextProperties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") { setResearchBundle(null); setError(publicDataErrorMessage(reason.message)); setDataFeedback({ status: "partial", warnings: [reason.message] }); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      const requestedMonths = Math.max(period, 3);
+      const quickMonths = !submittedQuery && requestedMonths > 3 ? 3 : requestedMonths;
+      const fetchTrades = async (months: number) => {
+        const params = new URLSearchParams({ type, lawd: regionCode, months: String(months), query: submittedQuery });
+        const response = await fetch(`/api/trades?${params}`, { signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다.");
+        return data;
+      };
+      const applyData = (data: { trades?: Trade[]; properties?: Property[]; research?: ResearchBundle; status?: DataState; meta?: { warnings?: string[] } }, updateProperties: boolean) => {
+        const nextProperties = data.properties || [];
+        setTrades(data.trades || []);
+        setResearchBundle(data.research || null);
+        setDataFeedback({ status: data.status || ((data.trades || []).length ? "ok" : "empty"), warnings: data.meta?.warnings || [] });
+        if (!updateProperties) return;
+        setProperties(nextProperties);
+        setPropertiesRegionCode(regionCode);
+        const requested = pendingPropertyRef.current;
+        const restored = requested ? nextProperties.find((property) => property.key === requested || property.name === requested || property.name.includes(requested)) : undefined;
+        if (restored) { setSelectedKey(restored.key); setQuery(restored.name); setSubmittedQuery(restored.name); pendingPropertyRef.current = ""; }
+        else if (nextProperties.length === 1) setSelectedKey(nextProperties[0].key);
+      };
+      setLoading(true); setHistoryLoading(false); setError(""); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all");
+      void fetchTrades(quickMonths).then(async (quickData) => {
+        if (controller.signal.aborted) return;
+        applyData(quickData, true);
+        setLoading(false);
+        if (quickMonths === requestedMonths) return;
+        setHistoryLoading(true);
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
+        if (controller.signal.aborted) return;
+        try {
+          const historyData = await fetchTrades(requestedMonths);
+          if (!controller.signal.aborted) applyData(historyData, false);
+        } catch (reason) {
+          if (reason instanceof Error && reason.name !== "AbortError") {
+            setDataFeedback((current) => ({ status: "partial", warnings: [...current.warnings, `최근 데이터는 표시했지만 ${requestedMonths / 12}년 이력은 아직 불러오지 못했습니다.`] }));
+          }
+        } finally {
+          if (!controller.signal.aborted) setHistoryLoading(false);
+        }
+      }).catch((reason) => {
+        if (reason instanceof Error && reason.name !== "AbortError") { setResearchBundle(null); setError(publicDataErrorMessage(reason.message)); setDataFeedback({ status: "partial", warnings: [reason.message] }); }
+      }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [type, regionCode, period, submittedQuery, dataRetry]);
@@ -1402,7 +1491,10 @@ export default function Home() {
   useEffect(() => {
     const controller = new AbortController();
     fetch(`/data/boundaries/emd/${activeRegion.code}.json`, { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject(new Error("동 경계를 불러오지 못했습니다."))).then((data: GeoJsonFeatureCollection) => {
-      const nextDongs = data.features.map((feature) => ({ code: String(feature.properties.code || ""), name: String(feature.properties.name || "") })).filter((dong) => dong.code && dong.name);
+      const nextDongs = data.features.map((feature) => {
+        const point = geometryLabelPoint(feature.geometry as SupportedGeometry);
+        return { code: String(feature.properties.code || ""), name: String(feature.properties.name || ""), lng: point?.[0] ?? NaN, lat: point?.[1] ?? NaN };
+      }).filter((dong) => dong.code && dong.name && Number.isFinite(dong.lat) && Number.isFinite(dong.lng));
       boundaryDongsRef.current = nextDongs;
       setBoundaryDongs(nextDongs);
       setBoundaryDongOptions(nextDongs.map((dong) => dong.name));
@@ -1454,7 +1546,7 @@ export default function Home() {
     });
     return stats;
   }, [trades, latestQuarterMonths]);
-  const buildingCandidates = useMemo(() => propertiesRegionCode === regionCode ? selectNearbyPropertyCandidates(properties, selectedDong, 90, 24) : [], [properties, propertiesRegionCode, regionCode, selectedDong]);
+  const buildingCandidates = useMemo(() => propertiesRegionCode === regionCode ? selectNearbyPropertyCandidates(properties, selectedDong, 30, 18) : [], [properties, propertiesRegionCode, regionCode, selectedDong]);
   useEffect(() => {
     if (mapFocus === "buildings" && propertiesRegionCode !== regionCode) {
       const waitingTimer = window.setTimeout(() => setBuildingsLoading(true), 0);
@@ -1759,7 +1851,7 @@ export default function Home() {
         <div className="stat-strip"><article><span>최근 월 중위가</span><strong>{formatPrice(latest)}</strong></article><article><span>기간 최고 / 최저</span><strong>{compactPrice(high)} <em>/</em> {compactPrice(low)}</strong></article><article><span>실거래 건수</span><strong>{filteredTrades.length.toLocaleString()}<em>건</em></strong></article><article><span>시장 신호</span><strong className={!chartChangeComparable ? "" : change >= 0 ? "up" : "down"}>{!chartChangeComparable ? "표본 부족" : change > 2 ? "매수 우위" : change < -2 ? "조정 구간" : "보합 구간"}</strong></article></div>
         <section className="watch-chart" aria-label={`${displayName} 가격 차트`}>
           <div className="chart-toolbar"><div className="period-switch">{PERIODS.map((item) => <button key={item.value} className={period === item.value ? "active" : ""} onClick={() => setPeriod(item.value)}>{item.label}</button>)}</div><div className="view-switch"><select value={area} onChange={(event) => setArea(event.target.value)} aria-label="전용면적 선택"><option value="all">전체 면적</option>{areas.map((value) => <option key={value} value={value}>전용 {value}㎡ ({(value / 3.305785).toFixed(1)}평)</option>)}</select><button className={unit === "price" ? "active" : ""} onClick={() => setUnit("price")}>실거래가</button><button className={unit === "py" ? "active" : ""} onClick={() => setUnit("py")}>평당가</button></div></div>
-          <article className="chart-card"><div className="chart-legend"><span><i className="price-dot" />월 중위가격</span><span><i className="ma-dot" />3개월 이동중위</span><span><i className="volume-dot" />거래량</span></div><div className={`canvas-wrap${error ? " has-error" : ""}`}>{loading ? <div className="state"><i /> 실거래 데이터를 불러오는 중입니다</div> : error ? <div className="state error"><b>실거래 데이터를 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : chartPoints.length ? <PriceChart points={chartPoints} unit={unit} theme={resolvedTheme} /> : <div className="state"><b>선택 조건의 거래가 없습니다</b><span>위 목록에서 다른 건물을 선택하거나 전체 면적을 선택하세요.</span></div>}</div></article>
+          <article className="chart-card"><div className="chart-legend"><span><i className="price-dot" />월 중위가격</span><span><i className="ma-dot" />3개월 이동중위</span><span><i className="volume-dot" />거래량</span>{historyLoading && <small role="status">최근 데이터 표시 완료 · 3년 이력 확장 중</small>}</div><div className={`canvas-wrap${error ? " has-error" : ""}`}>{loading ? <div className="state"><i /> 실거래 데이터를 불러오는 중입니다</div> : error ? <div className="state error"><b>실거래 데이터를 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : chartPoints.length ? <PriceChart points={chartPoints} unit={unit} theme={resolvedTheme} /> : <div className="state"><b>선택 조건의 거래가 없습니다</b><span>위 목록에서 다른 건물을 선택하거나 전체 면적을 선택하세요.</span></div>}</div></article>
         </section>
         <section className="valuation-panel">
           {selectedKey && targetTrade && peerPyeongPrice ? <>
@@ -1810,7 +1902,7 @@ export default function Home() {
     <section className="field-intelligence" id="field">
       <div ref={fieldSelectorRef} className="field-property-selector unified-map-picker" aria-label="상세 분석 지도 선택">
         <div className="field-selector-layout">
-          <KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "chart"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} camera={mapCamera} onCameraChange={setMapCamera} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={(key) => { chooseMapProperty(key); setFieldGroup("입지·동선"); setFieldFeatureId("region"); setNearbyCategory("전체"); setNearbySubtype("전체"); }} />
+          <KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "chart"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} entryCamera={mapEntryCamera} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} camera={mapCamera} onCameraChange={setMapCamera} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={(key) => { chooseMapProperty(key); setFieldGroup("입지·동선"); setFieldFeatureId("region"); setNearbyCategory("전체"); setNearbySubtype("전체"); }} />
           <aside className="field-building-picker" aria-label="임장할 건물 선택"><header><span>{mapFocus === "buildings" ? "지도에 표시된 건물" : "선택 안내"}</span><b>{selectedDong === "all" ? `${activeRegion.sigungu}에서 동을 선택하세요` : `${selectedDong}과 주변 동`}</b><small>{mapFocus === "buildings" ? "건물을 바꿔 눌러도 다른 아이콘과 목록은 유지됩니다." : "지도 경계를 누르면 실제 건물 단계로 이동합니다."}</small></header>{mapFocus === "buildings" ? <div>{buildingsLoading ? <p className="field-building-state">건물 좌표를 확인하고 있습니다.</p> : mapBuildingRows.length ? mapBuildingRows.slice(0, 10).map((building) => { const activeBuilding = building.key === selectedKey; return <button type="button" key={building.key} className={activeBuilding ? "active" : ""} aria-pressed={activeBuilding} onClick={() => { chooseMapProperty(building.key); setFieldGroup("입지·동선"); setFieldFeatureId("region"); setNearbyCategory("전체"); setNearbySubtype("전체"); }}><PropertyTypeIcon type={building.propertyType} /><span><b>{building.name}</b><small>{building.dong} · {PROPERTY_MAP_META[building.propertyType].short}</small></span><strong>{activeBuilding ? formatPrice(building.lastAmount) : "선택"}</strong></button>; }) : <p className="field-building-state">{buildingsError || "좌표가 확인된 거래 건물이 없습니다."}</p>}</div> : <ol><li><span>1</span><p><b>동 경계 선택</b><small>강남구 지도에서 삼성동·대치동처럼 원하는 동을 누릅니다.</small></p></li><li><span>2</span><p><b>건물 아이콘 선택</b><small>아파트·오피스텔 등 유형 아이콘에서 임장할 건물을 고릅니다.</small></p></li><li><span>3</span><p><b>생활 정보 확인</b><small>동선·교육·의료·장보기 탭으로 바로 비교합니다.</small></p></li></ol>}</aside>
         </div>
       </div>
@@ -1899,7 +1991,7 @@ export default function Home() {
             <header><div><span className={activeResearchTool.mode}>{activeResearchTool.mode === "live" ? "실거래 기반" : "추가 데이터 필요"}</span><h3>{activeResearchTool.label}</h3><p>{activeResearchTool.description}</p></div><small>{activeResearchTool.mode === "live" ? "사용 가능" : "준비 중"}</small></header>
             {activeResearchTool.mode === "live" ? <div className="research-live-board">
               <div className="research-table-head"><span>순위</span><span>단지 · 동 · 평형</span><span>3개월 중위가</span><span>도구 기준</span></div>
-              {loading ? <div className="research-state"><i />선택 지역의 실거래를 계산하고 있습니다.</div> : error ? <div className="research-state error"><b>실거래 분석을 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : researchRows.length ? researchRows.map((row, index) => <button key={row.key} onClick={() => selectCandidate(row)}><em>{String(index + 1).padStart(2, "0")}</em><span className={`research-building tone-${index % 5}`}>{row.name.slice(0, 1)}</span><b>{row.name}<small>{row.dong} · {dongLabel(row.buildingDong) || "동 정보 없음"} · 전용 {row.areaBucket}평 · {row.quarterCount}건</small></b><span>{formatPrice(row.current)}</span><strong className={researchTool === "record-high" || researchTool === "multi-compare" || researchTool === "most-bought" || researchTool === "volume" ? "" : researchTool === "price-compare" ? row.gap >= 0 ? "up" : "down" : (row.change ?? 0) >= 0 ? "up" : "down"}>{researchMetric(row)}</strong></button>) : <div className="research-state"><b>이 조건에서 비교 가능한 표본이 없습니다.</b><span>시·군·구 전체 또는 다른 주택 유형으로 범위를 넓혀보세요.</span></div>}
+              {loading ? <div className="research-state"><i />선택 지역의 실거래를 계산하고 있습니다.</div> : error ? <div className="research-state error"><b>실거래 분석을 불러오지 못했습니다.</b><span>{error}</span><button type="button" onClick={() => setDataRetry((value) => value + 1)}>다시 불러오기</button></div> : researchRows.length ? researchRows.map((row, index) => <button key={row.key} aria-pressed={selectedKey === row.propertyKey} onClick={() => selectCandidate(row)}><em>{String(index + 1).padStart(2, "0")}</em><AnalysisPropertyTypeIcon type={type} priceBucket={researchPriceBuckets(row.current)} selected={selectedKey === row.propertyKey} size="sm" /><b>{row.name}<small>{row.dong} · {dongLabel(row.buildingDong) || "동 정보 없음"} · 전용 {row.areaBucket}평 · {row.quarterCount}건</small></b><span>{formatPrice(row.current)}</span><strong className={researchTool === "record-high" || researchTool === "multi-compare" || researchTool === "most-bought" || researchTool === "volume" ? "" : researchTool === "price-compare" ? row.gap >= 0 ? "up" : "down" : (row.change ?? 0) >= 0 ? "up" : "down"}>{researchMetric(row)}</strong></button>) : <div className="research-state"><b>이 조건에서 비교 가능한 표본이 없습니다.</b><span>시·군·구 전체 또는 다른 주택 유형으로 범위를 넓혀보세요.</span></div>}
             </div> : <div className="research-connect-state"><div><span>데이터 준비 중</span><strong>확인된 공식 데이터만<br/>분석에 연결합니다.</strong><p>{activeResearchTool.label}에는 현재 실거래 외에 <b>{activeResearchTool.source}</b> 데이터가 필요합니다. 연결 전에는 임의의 값을 표시하지 않습니다.</p></div><ol><li><em>1</em><b>출처 확인</b><span>공식 기관과 갱신 주기 확인</span></li><li><em>2</em><b>지역 코드 통합</b><span>시·군·구·읍·면·동 연결</span></li><li><em>3</em><b>교차 분석</b><span>실거래와 같은 화면에서 비교</span></li></ol></div>}
           </article>
         </div>}
@@ -1921,7 +2013,7 @@ export default function Home() {
         <label><span>읍·면·동</span><select value={mapDongChoices.includes(mapPickerDong) ? mapPickerDong : ""} disabled={!mapDongChoices.length} onChange={(event) => setMapPickerDong(event.target.value)}><option value="" disabled>{mapDongChoices.length ? "읍·면·동 선택" : "동 목록 불러오는 중"}</option>{mapDongChoices.map((dong) => <option key={dong} value={dong}>{dong} · {formatDongMetric(mapDongStats[dong], dongMetric)}</option>)}</select></label>
         <button type="button" disabled={!mapPickerDong || !mapDongChoices.includes(mapPickerDong)} onClick={() => chooseMapDong(mapPickerDong)}>{mapPickerDong ? `${mapPickerDong} 선택` : "동을 선택하세요"}</button>
       </div>}
-      <div className="map-layout"><KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "research"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} camera={mapCamera} onCameraChange={setMapCamera} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />
+      <div className="map-layout"><KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "research"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} entryCamera={mapEntryCamera} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} camera={mapCamera} onCameraChange={setMapCamera} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />
         <aside className={`map-ranking${mapFocus === "buildings" ? "" : " map-selection-summary"}`} data-sheet-state={mobileSheetState} aria-label={mapFocus === "buildings" ? "선택 동과 주변 동의 최근 실거래 건물" : "선택 지역 요약"}>
           <div className="mobile-sheet-controls" role="group" aria-label="지도 결과 패널 높이"><button type="button" aria-pressed={mobileSheetState === "collapsed"} onClick={() => setMobileSheetState("collapsed")}>요약</button><button type="button" aria-pressed={mobileSheetState === "peek"} onClick={() => setMobileSheetState("peek")}>목록</button><button type="button" aria-pressed={mobileSheetState === "expanded"} onClick={() => setMobileSheetState("expanded")}>전체</button></div>
           {mapFocus === "buildings" ? <>

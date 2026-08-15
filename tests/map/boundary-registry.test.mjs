@@ -44,3 +44,12 @@ test("registry refuses array-order/name-based mismatches", () => {
   assert.equal(registry.valid, false);
   assert.equal(registry.issues[0].reason, "code_hierarchy_mismatch");
 });
+
+test("Ulsan EMD accepts the SGIS boundary namespace while preserving official parent codes", async () => {
+  const registry = buildBoundaryRegistry(await load("public/data/boundaries/emd/31200.json"), "emd");
+  assert.equal(registry.valid, true, JSON.stringify(registry.issues));
+  assert.ok(registry.regions.length > 0);
+  assert.ok(registry.regions.every((region) => region.code.length === 8));
+  assert.ok(registry.regions.every((region) => region.sidoCode === "31" && region.sigunguCode === "31200"));
+  assert.ok(registry.regions.some((region) => region.code === "26040510" && region.name === "농소1동"));
+});
