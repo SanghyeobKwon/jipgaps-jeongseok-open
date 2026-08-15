@@ -5,6 +5,7 @@ import { Archive, Baby, BedDouble, Building2, BusFront, CarFront, Drama, Dumbbel
 import regions from "./data/regions.json";
 import { PropertyTypeIcon as AnalysisPropertyTypeIcon, ResearchAnalysisWorkspace, type PriceBucket, type ResearchCell, type ResearchPropertyRow, type ResearchView as AnalysisResearchView } from "./components/analysis";
 import { geometryLabelPoint, type SupportedGeometry } from "./lib/map/geometry";
+import { selectNearbyPropertyCandidates } from "./lib/map/nearby-properties";
 import type { MapCamera, MapDataStatus } from "./lib/map/types";
 import type { AreaPriceSummary, DataState, ResearchBundle, ResearchMetric, SampleStatus } from "./lib/market/types";
 import { normalizeScreen, readViewState, writeViewState, type ScreenId } from "./lib/navigation/view-state";
@@ -70,7 +71,7 @@ type GeoJsonFeatureCollection = { type: "FeatureCollection"; features: GeoJsonFe
 type KakaoLatLng = { getLat?: () => number; getLng?: () => number };
 type KakaoBounds = { extend: (latLng: KakaoLatLng) => void };
 type KakaoMapInstance = { setBounds: (bounds: KakaoBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number) => void; setCenter?: (latLng: KakaoLatLng) => void; getCenter?: () => KakaoLatLng; getLevel: () => number; setLevel: (level: number) => void; addControl?: (control: unknown, position: unknown) => void; relayout?: () => void };
-type KakaoOverlayInstance = { setMap: (map: KakaoMapInstance | null) => void };
+type KakaoOverlayInstance = { setMap: (map: KakaoMapInstance | null) => void; setZIndex?: (zIndex: number) => void };
 type KakaoEventListener = { target: unknown; eventName: string; listener: (...args: unknown[]) => void };
 type KakaoMapsApi = { maps: {
   load: (callback: () => void) => void;
@@ -491,27 +492,6 @@ function geoJsonExtent(data: GeoJsonFeatureCollection) {
   return Number.isFinite(minLng) ? { minLng, minLat, maxLng, maxLat } : null;
 }
 
-function nearbyDongContext(data: GeoJsonFeatureCollection, selectedBoundaryDong: string, selectedDong: string) {
-  const selectedFeatures = data.features.filter((feature) => {
-    const name = String(feature.properties.name || "");
-    return selectedBoundaryDong ? name === selectedBoundaryDong : name === selectedDong;
-  });
-  const targets = selectedFeatures.length ? selectedFeatures : data.features.filter((feature) => String(feature.properties.name || "") === selectedDong);
-  const targetExtent = geoJsonExtent({ type: "FeatureCollection", features: targets });
-  if (!targetExtent) return { boundaryDongs: [] as string[], legalDongs: [] as string[] };
-  const lngPad = Math.max((targetExtent.maxLng - targetExtent.minLng) * .72, .006);
-  const latPad = Math.max((targetExtent.maxLat - targetExtent.minLat) * .72, .005);
-  const expanded = { minLng: targetExtent.minLng - lngPad, minLat: targetExtent.minLat - latPad, maxLng: targetExtent.maxLng + lngPad, maxLat: targetExtent.maxLat + latPad };
-  const selectedNames = new Set(targets.map((feature) => String(feature.properties.name || "")));
-  const boundaryDongs = data.features.filter((feature) => {
-    const extent = geoJsonExtent({ type: "FeatureCollection", features: [feature] });
-    if (!extent) return false;
-    return extent.maxLng >= expanded.minLng && extent.minLng <= expanded.maxLng && extent.maxLat >= expanded.minLat && extent.minLat <= expanded.maxLat;
-  }).map((feature) => String(feature.properties.name || "")).filter((name) => name && !selectedNames.has(name));
-  const legalDongs: string[] = [];
-  return { boundaryDongs, legalDongs };
-}
-
 type AdministrativeFocus = "national" | "sido" | "district";
 type ProjectedBoundary = { code: string; name: string; path: string; centerX: number; centerY: number; width: number; height: number };
 const NATIONAL_LABEL_OFFSETS: Record<string, [number, number]> = {
@@ -795,7 +775,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
   </div>;
 }
 
-function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, nearbyBoundaryDongs, nearbyLegalDongs, dongStats, dongMetric, onDongMetricChange, buildingLocations, buildingsLoading, buildingsError, selectedPropertyKey, camera, onCameraChange, onSelectSido, onSelectRegion, onSelectDong, onOpenBuildings, onSelectProperty }: {
+function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, activeRegion, selectedDong, selectedBoundaryDong, dongStats, dongMetric, onDongMetricChange, buildingLocations, buildingsLoading, buildingsError, selectedPropertyKey, camera, onCameraChange, onSelectSido, onSelectRegion, onSelectDong, onOpenBuildings, onSelectProperty }: {
   markets: OverviewMarket[];
   focus: MapFocus;
   active: boolean;
@@ -804,8 +784,6 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   activeRegion: Region;
   selectedDong: string;
   selectedBoundaryDong: string;
-  nearbyBoundaryDongs: string[];
-  nearbyLegalDongs: string[];
   dongStats: Record<string, DongMarketStat>;
   dongMetric: DongMetric;
   onDongMetricChange: (metric: DongMetric) => void;
@@ -825,9 +803,11 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   const cameraRef = useRef<{ context: string; lat: number; lng: number; level: number } | null>(null);
   const mapInstanceRef = useRef<KakaoMapInstance | null>(null);
   const initialCameraRef = useRef<MapCamera | null>(camera);
+  const selectedPropertyKeyRef = useRef(selectedPropertyKey);
+  const applyMarkerSelectionRef = useRef<(key: string) => void>(() => undefined);
   const [mapError, setMapError] = useState("");
   const stageTitle = focus === "national" ? "대한민국 16개 시·도" : focus === "sido" ? selectedSido : focus === "buildings" ? `${activeRegion.sido} ${activeRegion.sigungu} · ${selectedDong === "all" ? selectedBoundaryDong : selectedDong}` : `${activeRegion.sido} ${activeRegion.sigungu}${selectedBoundaryDong ? ` · ${selectedBoundaryDong}` : ""}`;
-  const stageHint = focus === "national" ? "시·도 경계를 눌러 다음 단계로 들어가세요." : focus === "sido" ? "시·군·구 경계를 눌러 읍·면·동 지도로 확대하세요." : focus === "buildings" ? buildingsLoading ? "선택한 동의 최근 실거래 건물 좌표를 확인하고 있습니다." : buildingsError ? buildingsError : "건물 아이콘을 누르면 해당 건물의 가격만 열립니다. 다른 건물은 지도에 계속 남습니다." : selectedBoundaryDong ? `${selectedBoundaryDong} 행정경계를 선택했습니다.` : "읍·면·동 경계를 누르면 실거래 건물 지도로 확대됩니다.";
+  const stageHint = focus === "national" ? "시·도 경계를 눌러 다음 단계로 들어가세요." : focus === "sido" ? "시·군·구 경계를 눌러 읍·면·동 지도로 확대하세요." : focus === "buildings" ? buildingsLoading ? "선택 지역과 주변 법정동의 최근 실거래 건물을 확인하고 있습니다." : buildingsError ? buildingsError : "선택 지역을 중심으로 주변 동의 건물과 가격을 함께 표시합니다. 지도를 움직여 다른 지역도 계속 살펴보세요." : selectedBoundaryDong ? `${selectedBoundaryDong} 행정경계를 선택했습니다.` : "읍·면·동 경계를 누르면 실거래 건물 지도로 확대됩니다.";
   const fallbackLocation = buildingLocations[0] || SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
   const visibleMapPrices = useMemo(() => buildingLocations.map((building) => building.lastAmount).filter((price) => price > 0), [buildingLocations]);
   const visibleMapPriceBands = useMemo(() => buildMapPriceBands(visibleMapPrices), [visibleMapPrices]);
@@ -840,13 +820,17 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   }, [camera]);
 
   useEffect(() => {
+    selectedPropertyKeyRef.current = selectedPropertyKey;
+    applyMarkerSelectionRef.current(selectedPropertyKey);
+  }, [selectedPropertyKey]);
+
+  useEffect(() => {
     const host = hostRef.current;
     const appKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY;
-    const controller = new AbortController();
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
     let mapInstance: KakaoMapInstance | null = null;
-    let cameraReady = false;
+    let userCameraChange = false;
     const overlays: KakaoOverlayInstance[] = [];
     const listeners: KakaoEventListener[] = [];
     if (!host || !active || focus !== "buildings") return;
@@ -854,12 +838,6 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       const timer = window.setTimeout(() => setMapError("카카오 지도 JavaScript 키가 연결되지 않았습니다."), 0);
       return () => window.clearTimeout(timer);
     }
-
-    const readGeoJson = async (url: string) => {
-      const response = await fetch(url, { signal: controller.signal });
-      if (!response.ok) throw new Error("행정경계 데이터를 불러오지 못했습니다.");
-      return response.json() as Promise<GeoJsonFeatureCollection>;
-    };
 
     loadKakaoMap(appKey).then(async () => {
       if (disposed || !window.kakao?.maps) return;
@@ -881,67 +859,60 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       const addListener = (target: unknown, eventName: string, listener: (...args: unknown[]) => void) => {
         maps.event.addListener(target, eventName, listener); listeners.push({ target, eventName, listener });
       };
-      const fitCollection = (data: GeoJsonFeatureCollection, maximumLevel = 5) => {
-        const extent = geoJsonExtent(data); if (!extent) return;
+      const fitBuildings = (locations: PropertyMapLocation[]) => {
+        if (!locations.length) return;
+        if (locations.length === 1) {
+          map.setCenter?.(new maps.LatLng(locations[0].lat, locations[0].lng));
+          map.setLevel(5);
+          return;
+        }
         const bounds = new maps.LatLngBounds();
-        bounds.extend(new maps.LatLng(extent.minLat, extent.minLng)); bounds.extend(new maps.LatLng(extent.maxLat, extent.maxLng));
+        locations.forEach((location) => bounds.extend(new maps.LatLng(location.lat, location.lng)));
         map.setBounds(bounds, 76, 34, 34, 34);
-        if (map.getLevel() > maximumLevel) map.setLevel(maximumLevel);
-      };
-      const focusCollection = (data: GeoJsonFeatureCollection, level = 4) => {
-        const extent = geoJsonExtent(data); if (!extent) return;
-        map.setCenter?.(new maps.LatLng((extent.minLat + extent.maxLat) / 2, (extent.minLng + extent.maxLng) / 2));
-        map.setLevel(level);
+        map.setLevel(Math.min(7, Math.max(4, map.getLevel() + 1)));
       };
       if (focus === "buildings") {
-        const dongs = await readGeoJson(`/data/boundaries/emd/${activeRegion.code}.json`);
-        if (disposed) return;
-        const targetDong = selectedBoundaryDong || selectedDong;
-        const nearbyBoundarySet = new Set(nearbyBoundaryDongs);
-        dongs.features.forEach((feature) => {
-          const name = String(feature.properties.name || "");
-          const selected = name === targetDong;
-          const nearby = nearbyBoundarySet.has(name);
-          const geometryType = String(feature.geometry.type || "");
-          const rawCoordinates = feature.geometry.coordinates;
-          const polygonCoordinates = geometryType === "Polygon" ? [rawCoordinates] : geometryType === "MultiPolygon" && Array.isArray(rawCoordinates) ? rawCoordinates : [];
-          polygonCoordinates.forEach((polygonValue) => {
-            if (!Array.isArray(polygonValue)) return;
-            const path = polygonValue.map((ringValue) => Array.isArray(ringValue) ? ringValue.flatMap((coordinate) => Array.isArray(coordinate) && typeof coordinate[0] === "number" && typeof coordinate[1] === "number" ? [new maps.LatLng(coordinate[1], coordinate[0])] : []) : []).filter((ring) => ring.length >= 3);
-            if (!path.length) return;
-            const polygon = new maps.Polygon({ map, path, clickable: true, fillColor: selected ? "#0068d8" : nearby ? "#8fc6ef" : "#dbe5ed", fillOpacity: selected ? .27 : nearby ? .13 : .025, strokeColor: selected ? "#0054b1" : nearby ? "#4389bb" : "#aebbc7", strokeWeight: selected ? 3 : nearby ? 1.5 : .7, strokeOpacity: selected ? 1 : nearby ? .8 : .28, strokeStyle: "solid", zIndex: selected ? 4 : nearby ? 3 : 1 });
-            overlays.push(polygon); addListener(polygon, "click", () => { if (name) onSelectDong(name); });
-          });
-        });
-        const visibleDongs = dongs.features.filter((feature) => {
-          const name = String(feature.properties.name || "");
-          const selected = name === targetDong;
-          return selected || nearbyBoundarySet.has(name);
-        });
-        const selectedDongs = visibleDongs.filter((feature) => {
-          const name = String(feature.properties.name || "");
-          return name === targetDong;
-        });
         if (preservedCamera) {
           map.setCenter?.(new maps.LatLng(preservedCamera.lat, preservedCamera.lng));
           map.setLevel(preservedCamera.level);
-        } else if (selectedDongs.length) focusCollection({ type: "FeatureCollection", features: selectedDongs }, 4);
-        else if (visibleDongs.length) fitCollection({ type: "FeatureCollection", features: visibleDongs }, 6);
-        else fitCollection(dongs, 7);
-        cameraReady = true;
+        } else {
+          fitBuildings(buildingLocations);
+        }
+        addListener(map, "dragstart", () => { userCameraChange = true; });
+        addListener(map, "zoom_start", () => { userCameraChange = true; });
         addListener(map, "idle", () => {
+          if (!userCameraChange || disposed || mapInstanceRef.current !== map) return;
+          userCameraChange = false;
           const center = map.getCenter?.();
           const lat = center?.getLat?.();
           const lng = center?.getLng?.();
           if (typeof lat === "number" && typeof lng === "number") onCameraChange({ contextKey: cameraContext, center: { lat, lng }, level: map.getLevel(), changedBy: "user" });
         });
+        const markerEntries: Array<{ building: PropertyMapLocation; button: HTMLButtonElement; overlay: KakaoOverlayInstance }> = [];
+        const renderMarkerSelection = (selectedKey: string) => {
+          markerEntries.forEach(({ building, button, overlay }) => {
+            const heat = classifyMapPrice(building.lastAmount, visibleMapPriceBands);
+            const isSelected = building.key === selectedKey;
+            button.className = `naver-building-pin ${isSelected ? "detail-pin is-active" : "icon-pin"} ${heat} kind-${building.propertyType} scope-${building.scope}`;
+            button.setAttribute("aria-pressed", String(isSelected));
+            button.setAttribute("aria-label", isSelected ? `${building.dong} ${building.name}, 선택됨, 최근 실거래 ${formatPrice(building.lastAmount)}, ${building.count}건` : `${building.dong} ${building.name} ${PROPERTY_MAP_META[building.propertyType].short}, 가격 확인`);
+            button.title = isSelected ? `${building.name}\n${PROPERTY_MAP_META[building.propertyType].short} · 최근 실거래 ${formatPrice(building.lastAmount)} · 최근 3개월 ${building.count}건` : `${building.name}\n눌러서 최근 실거래 가격 확인`;
+            button.innerHTML = isSelected ? `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i><span class="property-marker-copy"><small>${escapeMapHtml(PROPERTY_MAP_META[building.propertyType].short)} · 최근 실거래</small><strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><em>${escapeMapHtml(building.name)} · ${building.count}건</em></span>` : `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i>`;
+            overlay.setZIndex?.(isSelected ? 140 : 30 + Math.min(building.count, 20));
+          });
+        };
+        applyMarkerSelectionRef.current = renderMarkerSelection;
         buildingLocations.forEach((building) => {
           const heat = classifyMapPrice(building.lastAmount, visibleMapPriceBands);
-          const isSelected = building.key === selectedPropertyKey;
+          const isSelected = building.key === selectedPropertyKeyRef.current;
           const button = document.createElement("button");
-          button.type = "button"; button.className = `naver-building-pin ${isSelected ? "detail-pin is-active" : "icon-pin"} ${heat} kind-${building.propertyType} scope-${building.scope}`; button.setAttribute("aria-pressed", String(isSelected)); button.setAttribute("aria-label", isSelected ? `${building.dong} ${building.name}, 선택됨, 최근 실거래 ${formatPrice(building.lastAmount)}, ${building.count}건` : `${building.dong} ${building.name} ${PROPERTY_MAP_META[building.propertyType].short}, 가격 확인`); button.title = isSelected ? `${building.name}\n${PROPERTY_MAP_META[building.propertyType].short} · 최근 실거래 ${formatPrice(building.lastAmount)} · 최근 3개월 ${building.count}건` : `${building.name}\n눌러서 최근 실거래 가격 확인`; button.innerHTML = isSelected ? `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i><span class="property-marker-copy"><small>${escapeMapHtml(PROPERTY_MAP_META[building.propertyType].short)} · 최근 실거래</small><strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><em>${escapeMapHtml(building.name)} · ${building.count}건</em></span>` : `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i>`; button.addEventListener("click", () => onSelectProperty(building.key));
-          overlays.push(new maps.CustomOverlay({ position: new maps.LatLng(building.lat, building.lng), map, content: button, xAnchor: .5, yAnchor: 1, zIndex: isSelected ? 140 : (building.scope === "selected" ? 70 : 30) + Math.min(building.count, 20) }));
+          button.type = "button"; button.className = `naver-building-pin ${isSelected ? "detail-pin is-active" : "icon-pin"} ${heat} kind-${building.propertyType} scope-${building.scope}`; button.setAttribute("aria-pressed", String(isSelected)); button.setAttribute("aria-label", isSelected ? `${building.dong} ${building.name}, 선택됨, 최근 실거래 ${formatPrice(building.lastAmount)}, ${building.count}건` : `${building.dong} ${building.name} ${PROPERTY_MAP_META[building.propertyType].short}, 가격 확인`); button.title = isSelected ? `${building.name}\n${PROPERTY_MAP_META[building.propertyType].short} · 최근 실거래 ${formatPrice(building.lastAmount)} · 최근 3개월 ${building.count}건` : `${building.name}\n눌러서 최근 실거래 가격 확인`; button.innerHTML = isSelected ? `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i><span class="property-marker-copy"><small>${escapeMapHtml(PROPERTY_MAP_META[building.propertyType].short)} · 최근 실거래</small><strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><em>${escapeMapHtml(building.name)} · ${building.count}건</em></span>` : `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i>`;
+          const overlay = new maps.CustomOverlay({ position: new maps.LatLng(building.lat, building.lng), map, content: button, xAnchor: .5, yAnchor: 1, zIndex: isSelected ? 140 : 30 + Math.min(building.count, 20) });
+          markerEntries.push({ building, button, overlay });
+          button.addEventListener("click", () => { renderMarkerSelection(building.key); onSelectProperty(building.key); });
+          overlays.push(overlay);
         });
+        renderMarkerSelection(selectedPropertyKeyRef.current);
         setMapError("");
         return;
       }
@@ -950,13 +921,9 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     }).catch((error) => { if (!disposed && (!(error instanceof Error) || error.name !== "AbortError")) setMapError(safeMapMessage(error)); });
 
     return () => {
-      const center = mapInstance?.getCenter?.();
-      const lat = center?.getLat?.();
-      const lng = center?.getLng?.();
-      if (cameraReady && typeof lat === "number" && typeof lng === "number" && mapInstance) cameraRef.current = { context: cameraContext, lat, lng, level: mapInstance.getLevel() };
-      disposed = true; controller.abort(); resizeObserver?.disconnect(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); if (mapInstanceRef.current === mapInstance) mapInstanceRef.current = null; host.replaceChildren();
+      disposed = true; applyMarkerSelectionRef.current = () => undefined; resizeObserver?.disconnect(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); if (mapInstanceRef.current === mapInstance) mapInstanceRef.current = null; host.replaceChildren();
     };
-  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, cameraContext, focus, markets, nearbyBoundaryDongs, nearbyLegalDongs, onCameraChange, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyType, selectedBoundaryDong, selectedDong, selectedPropertyKey, selectedSido, visibleMapPriceBands]);
+  }, [active, activeRegion.code, buildingLocations, cameraContext, focus, onCameraChange, onSelectProperty, selectedSido, visibleMapPriceBands]);
 
   useEffect(() => {
     if (!camera || camera.changedBy !== "restore" || focus !== "buildings") return;
@@ -1005,7 +972,7 @@ export default function Home() {
   const [policyItems, setPolicyItems] = useState<readonly PolicyItem[]>(POLICIES); const [policyUpdated, setPolicyUpdated] = useState("");
   const [activeSection, setActiveSection] = useState<ScreenId>("home"); const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("price"); const [navIndicator, setNavIndicator] = useState({ left: 0, width: 0 });
   const [themePreference, setThemePreference] = useState<ThemePreference>("system"); const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
-  const [selectedMapSido, setSelectedMapSido] = useState("서울특별시"); const [mapFocus, setMapFocus] = useState<MapFocus>("district"); const [selectedBoundaryDong, setSelectedBoundaryDong] = useState(""); const [boundaryDongOptions, setBoundaryDongOptions] = useState<string[]>([]); const [boundaryDongs, setBoundaryDongs] = useState<BoundaryDong[]>([]); const [nearbyBoundaryDongs, setNearbyBoundaryDongs] = useState<string[]>([]); const [nearbyLegalDongs, setNearbyLegalDongs] = useState<string[]>([]); const [mapPickerDong, setMapPickerDong] = useState(""); const [dongMetric, setDongMetric] = useState<DongMetric>("price"); const [mapCamera, setMapCamera] = useState<MapCamera | null>(null);
+  const [selectedMapSido, setSelectedMapSido] = useState("서울특별시"); const [mapFocus, setMapFocus] = useState<MapFocus>("district"); const [selectedBoundaryDong, setSelectedBoundaryDong] = useState(""); const [boundaryDongOptions, setBoundaryDongOptions] = useState<string[]>([]); const [boundaryDongs, setBoundaryDongs] = useState<BoundaryDong[]>([]); const [mapPickerDong, setMapPickerDong] = useState(""); const [dongMetric, setDongMetric] = useState<DongMetric>("price"); const [mapCamera, setMapCamera] = useState<MapCamera | null>(null);
   const [savedHomes, setSavedHomes] = useState<SavedHome[]>([]);
   const [fieldGroup, setFieldGroup] = useState(FIELD_GROUPS[0]); const [fieldFeatureId, setFieldFeatureId] = useState("region"); const [timeSlotIndex, setTimeSlotIndex] = useState(3); const [noiseSources, setNoiseSources] = useState(() => NOISE_SOURCES.map((source) => source.id));
   const [commuteDestination, setCommuteDestination] = useState(""); const [commuteEstimate, setCommuteEstimate] = useState<CommuteEstimate | null>(null); const [commuteLoading, setCommuteLoading] = useState(false); const [commuteError, setCommuteError] = useState("");
@@ -1365,19 +1332,6 @@ export default function Home() {
     return () => controller.abort();
   }, [activeRegion.code]);
   useEffect(() => {
-    if (selectedDong === "all") return;
-    const controller = new AbortController();
-    fetch(`/data/boundaries/emd/${activeRegion.code}.json`, { signal: controller.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("주변 동 경계를 불러오지 못했습니다.")))
-      .then((data: GeoJsonFeatureCollection) => {
-        const context = nearbyDongContext(data, selectedBoundaryDong, selectedDong);
-        setNearbyBoundaryDongs(context.boundaryDongs);
-        setNearbyLegalDongs(context.legalDongs);
-      })
-      .catch((error) => { if (error instanceof Error && error.name !== "AbortError") { setNearbyBoundaryDongs([]); setNearbyLegalDongs([]); } });
-    return () => controller.abort();
-  }, [activeRegion.code, selectedBoundaryDong, selectedDong]);
-  useEffect(() => {
     if (!selectedBoundaryDong || selectedDong !== "all" || !selectedBoundaryCode) return;
     const controller = new AbortController();
     const params = new URLSearchParams({
@@ -1415,11 +1369,7 @@ export default function Home() {
     });
     return stats;
   }, [trades, latestQuarterMonths]);
-  const buildingCandidates = useMemo(() => {
-    const selected = properties.filter((property) => property.dong === selectedDong).sort((a, b) => b.count - a.count || b.lastAmount - a.lastAmount);
-    const nearby = properties.filter((property) => property.dong !== selectedDong && nearbyLegalDongs.includes(property.dong)).sort((a, b) => b.count - a.count || b.lastAmount - a.lastAmount);
-    return [...selected.slice(0, 18), ...nearby.slice(0, 12)].slice(0, 30);
-  }, [nearbyLegalDongs, properties, selectedDong]);
+  const buildingCandidates = useMemo(() => selectNearbyPropertyCandidates(properties, selectedDong, 90, 24), [properties, selectedDong]);
   useEffect(() => {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
@@ -1435,7 +1385,7 @@ export default function Home() {
           sigungu: activeRegion.sigungu,
           dong: selectedDong,
           scope: { sidoCode: activeRegion.code.slice(0, 2), sidoName: activeRegion.sido, sigunguCode: activeRegion.code, sigunguName: activeRegion.sigungu, adminDongCode: selectedHCode || undefined, legalDongCode: selectedBCode || undefined, legalDongName: selectedDong, boundaryAdminCode: selectedBoundaryCode },
-          properties: buildingCandidates.map((property) => ({ key: property.key, name: property.name, dong: property.dong, jibun: property.jibun, count: property.count, lastAmount: property.lastAmount, propertyType: type })),
+          properties: buildingCandidates.map((property) => ({ key: property.key, name: property.name, dong: property.dong, jibun: property.jibun, count: property.count, lastAmount: property.lastAmount, propertyType: type, scope: property.dong === selectedDong ? undefined : { adminDongCode: "", adminDongName: "", legalDongCode: "", legalDongName: property.dong, boundaryAdminCode: "" } })),
         }),
         signal: controller.signal,
       }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error || data.mapFallback?.markerAllowed === false) throw new Error(data.error || "건물 위치를 불러오지 못했습니다."); return data; })
@@ -1506,7 +1456,17 @@ export default function Home() {
     setSelectedDong(exactLegalDong);
   }, [dongOptions, resetPropertySelection]);
   const openMapBuildings = useCallback(() => { if (ROAD_MAP_AVAILABLE && selectedDong !== "all") setMapFocus("buildings"); }, [selectedDong]);
-  const chooseMapProperty = useCallback((key: string) => { historyModeRef.current = "push"; const property = properties.find((item) => item.key === key); setSelectedKey(key); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); setMapFocus("buildings"); if (property) setQuery(property.name); }, [properties]);
+  const chooseMapProperty = useCallback((key: string) => {
+    historyModeRef.current = "push";
+    const property = properties.find((item) => item.key === key);
+    setSelectedKey(key); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); setMapFocus("buildings");
+    if (property) {
+      setQuery(property.name);
+      if (property.dong !== selectedDong) {
+        setSelectedDong(property.dong); setMapPickerDong(property.dong); setSelectedBoundaryDong(""); setSelectedHCode(""); setSelectedBCode("");
+      }
+    }
+  }, [properties, selectedDong]);
   const openSelectedPropertyMap = useCallback(() => {
     if (!selectedProperty) return;
     historyModeRef.current = "push"; setSelectedMapSido(activeRegion.sido); setSelectedDong(selectedProperty.dong); setSelectedBoundaryDong(""); setMapPickerDong(selectedProperty.dong); setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); setActiveSection("research");
@@ -1599,6 +1559,7 @@ export default function Home() {
   const saveStudyDraft = (event: React.FormEvent) => { event.preventDefault(); if (!studyTitle.trim() || !studyBody.trim()) return; try { window.localStorage.setItem("jipgaps:study-draft", JSON.stringify({ category: activeCommunityCategory.label, board: communityBoard === "전체" ? activeCommunityCategory.boards[1] : communityBoard, title: studyTitle.trim(), body: studyBody.trim(), savedAt: new Date().toISOString() })); setDraftSaved(true); } catch { setDraftSaved(false); } };
   const mapLocationTitle = mapFocus === "national" ? "대한민국 전체" : mapFocus === "sido" ? selectedMapSido : `${activeRegion.sido} › ${activeRegion.sigungu}${selectedDong !== "all" ? ` › ${selectedDong}` : ""}`;
   const mapLocationDescription = mapFocus === "national" ? "전국 16개 시·도의 최근 3개월 시장 흐름" : mapFocus === "sido" ? `${selectedMapSido} 시·군·구 선택 단계` : `${PROPERTY_TYPES.find((item) => item.key === type)?.label} · 최근 3개월 실거래 기준`;
+  const visibleBuildingDongs = [...new Set(buildingLocations.map((building) => building.dong))];
   const selectedMapMarket = markets.find((market) => market.sido === selectedMapSido);
   const selectedMapDongStat = selectedDong !== "all" ? mapDongStats[selectedDong] : undefined;
   const mapBuildingRows = useMemo(() => [...buildingLocations].sort((a, b) => Number(b.scope === "selected") - Number(a.scope === "selected") || b.count - a.count || b.lastAmount - a.lastAmount), [buildingLocations]);
@@ -1734,7 +1695,7 @@ export default function Home() {
     <section className="field-intelligence" id="field">
       <div ref={fieldSelectorRef} className="field-property-selector unified-map-picker" aria-label="상세 분석 지도 선택">
         <div className="field-selector-layout">
-          <KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "chart"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} nearbyBoundaryDongs={nearbyBoundaryDongs} nearbyLegalDongs={nearbyLegalDongs} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} camera={mapCamera} onCameraChange={setMapCamera} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={(key) => { chooseMapProperty(key); setFieldGroup("입지·동선"); setFieldFeatureId("region"); setNearbyCategory("전체"); setNearbySubtype("전체"); }} />
+          <KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "chart"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} camera={mapCamera} onCameraChange={setMapCamera} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={(key) => { chooseMapProperty(key); setFieldGroup("입지·동선"); setFieldFeatureId("region"); setNearbyCategory("전체"); setNearbySubtype("전체"); }} />
           <aside className="field-building-picker" aria-label="임장할 건물 선택"><header><span>{mapFocus === "buildings" ? "지도에 표시된 건물" : "선택 안내"}</span><b>{selectedDong === "all" ? `${activeRegion.sigungu}에서 동을 선택하세요` : `${selectedDong}과 주변 동`}</b><small>{mapFocus === "buildings" ? "건물을 바꿔 눌러도 다른 아이콘과 목록은 유지됩니다." : "지도 경계를 누르면 실제 건물 단계로 이동합니다."}</small></header>{mapFocus === "buildings" ? <div>{buildingsLoading ? <p className="field-building-state">건물 좌표를 확인하고 있습니다.</p> : mapBuildingRows.length ? mapBuildingRows.slice(0, 10).map((building) => { const activeBuilding = building.key === selectedKey; return <button type="button" key={building.key} className={activeBuilding ? "active" : ""} aria-pressed={activeBuilding} onClick={() => { chooseMapProperty(building.key); setFieldGroup("입지·동선"); setFieldFeatureId("region"); setNearbyCategory("전체"); setNearbySubtype("전체"); }}><PropertyTypeIcon type={building.propertyType} /><span><b>{building.name}</b><small>{building.dong} · {PROPERTY_MAP_META[building.propertyType].short}</small></span><strong>{activeBuilding ? formatPrice(building.lastAmount) : "선택"}</strong></button>; }) : <p className="field-building-state">{buildingsError || "좌표가 확인된 거래 건물이 없습니다."}</p>}</div> : <ol><li><span>1</span><p><b>동 경계 선택</b><small>강남구 지도에서 삼성동·대치동처럼 원하는 동을 누릅니다.</small></p></li><li><span>2</span><p><b>건물 아이콘 선택</b><small>아파트·오피스텔 등 유형 아이콘에서 임장할 건물을 고릅니다.</small></p></li><li><span>3</span><p><b>생활 정보 확인</b><small>동선·교육·의료·장보기 탭으로 바로 비교합니다.</small></p></li></ol>}</aside>
         </div>
       </div>
@@ -1845,11 +1806,11 @@ export default function Home() {
         <label><span>읍·면·동</span><select value={mapDongChoices.includes(mapPickerDong) ? mapPickerDong : ""} disabled={!mapDongChoices.length} onChange={(event) => setMapPickerDong(event.target.value)}><option value="" disabled>{mapDongChoices.length ? "읍·면·동 선택" : "동 목록 불러오는 중"}</option>{mapDongChoices.map((dong) => <option key={dong} value={dong}>{dong} · {formatDongMetric(mapDongStats[dong], dongMetric)}</option>)}</select></label>
         <button type="button" disabled={!mapPickerDong || !mapDongChoices.includes(mapPickerDong)} onClick={() => chooseMapDong(mapPickerDong)}>{mapPickerDong ? `${mapPickerDong} 선택` : "동을 선택하세요"}</button>
       </div>}
-      <div className="map-layout"><KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "research"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} nearbyBoundaryDongs={nearbyBoundaryDongs} nearbyLegalDongs={nearbyLegalDongs} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} camera={mapCamera} onCameraChange={setMapCamera} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />
+      <div className="map-layout"><KakaoMarketMap markets={markets} focus={mapFocus} active={activeSection === "home" || activeSection === "research"} propertyType={type} selectedSido={selectedMapSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongStats={mapDongStats} dongMetric={dongMetric} onDongMetricChange={setDongMetric} buildingLocations={buildingLocations} buildingsLoading={buildingsLoading} buildingsError={buildingsError} selectedPropertyKey={selectedKey} camera={mapCamera} onCameraChange={setMapCamera} onSelectSido={chooseMapSido} onSelectRegion={chooseMapRegion} onSelectDong={chooseMapDong} onOpenBuildings={openMapBuildings} onSelectProperty={chooseMapProperty} />
         <aside className={`map-ranking${mapFocus === "buildings" ? "" : " map-selection-summary"}`} data-sheet-state={mobileSheetState} aria-label={mapFocus === "buildings" ? "선택 동과 주변 동의 최근 실거래 건물" : "선택 지역 요약"}>
           <div className="mobile-sheet-controls" role="group" aria-label="지도 결과 패널 높이"><button type="button" aria-pressed={mobileSheetState === "collapsed"} onClick={() => setMobileSheetState("collapsed")}>요약</button><button type="button" aria-pressed={mobileSheetState === "peek"} onClick={() => setMobileSheetState("peek")}>목록</button><button type="button" aria-pressed={mobileSheetState === "expanded"} onClick={() => setMobileSheetState("expanded")}>전체</button></div>
           {mapFocus === "buildings" ? <>
-            <div className="map-inspector-scope"><span>{selectedMapProperty ? "선택 건물 가격" : "선택 동과 주변 생활권"}</span><h3>{selectedMapProperty ? selectedMapProperty.name : mapLocationTitle}</h3><p>{selectedMapProperty ? `${selectedMapProperty.dong} ${selectedMapProperty.jibun || "지번 확인 중"} · 최근 실거래 ${formatPrice(selectedMapProperty.lastAmount)} · ${selectedMapProperty.count}건 · 다른 아이콘을 눌러 계속 비교할 수 있습니다.` : nearbyLegalDongs.length ? `${nearbyLegalDongs.slice(0, 4).join(" · ")}${nearbyLegalDongs.length > 4 ? ` 외 ${nearbyLegalDongs.length - 4}곳` : ""}의 거래 건물도 함께 봅니다.` : "선택 동의 최근 실거래 건물을 지도에 표시합니다."}</p></div>
+            <div className="map-inspector-scope"><span>{selectedMapProperty ? "선택 건물 가격" : "선택 동과 주변 생활권"}</span><h3>{selectedMapProperty ? selectedMapProperty.name : mapLocationTitle}</h3><p>{selectedMapProperty ? `${selectedMapProperty.dong} ${selectedMapProperty.jibun || "지번 확인 중"} · 최근 실거래 ${formatPrice(selectedMapProperty.lastAmount)} · ${selectedMapProperty.count}건 · 다른 아이콘을 눌러 계속 비교할 수 있습니다.` : visibleBuildingDongs.length > 1 ? `${visibleBuildingDongs.slice(0, 4).join(" · ")}${visibleBuildingDongs.length > 4 ? ` 외 ${visibleBuildingDongs.length - 4}곳` : ""}의 거래 건물을 함께 표시합니다.` : "선택 지역의 최근 실거래 건물을 지도에 표시합니다."}</p></div>
             <div className="map-market-summary"><div><span>{selectedDong} 건물</span><strong>{selectedMapBuildingCount}곳</strong></div><div><span>주변 동 건물</span><strong>{nearbyMapBuildingCount}곳</strong></div><div><span>표시 건물 중위가</span><strong>{mapBuildingMedian ? formatPrice(mapBuildingMedian) : buildingsLoading ? "확인 중" : buildingsError ? "좌표 확인 불가" : "데이터 없음"}</strong></div></div>
             <div className="map-ranking-head"><div><b>지도에 표시된 거래 건물</b><span>선택 동을 먼저, 인접 동을 다음에 보여줍니다.</span></div></div>
             <div className="ranking-labels building-labels"><span>구분</span><span>건물</span><span>최근 거래가</span><span>거래</span></div>

@@ -19,7 +19,10 @@ export async function POST(request: Request) {
     if (!sido || !sigungu || !selectedDong) return Response.json({ status: "error", error: "시도, 시군구, 읍면동 선택이 필요합니다.", rejected: 0, mapFallback: { markerAllowed: false, reason: "no_verified_coordinate" } }, { status: 400 });
 
     const restApiKey = process.env.KAKAO_REST_API_KEY;
-    const properties = (Array.isArray(payload.properties) ? payload.properties : []).slice(0, 30);
+    // A sigungu can contain many nearby legal dongs. Keep enough verified,
+    // unique buildings available so panning and zooming reveal the current
+    // viewport instead of only the originally selected dong.
+    const properties = (Array.isArray(payload.properties) ? payload.properties : []).slice(0, 90);
     const locations: Array<Record<string, unknown>> = [];
     const failures: KakaoFailureKind[] = [];
     const rejections: string[] = [];
