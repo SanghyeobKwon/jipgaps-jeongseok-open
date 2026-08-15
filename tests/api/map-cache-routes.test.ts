@@ -27,10 +27,12 @@ test("건물 위치 Route는 검증 좌표만 90일 캐시하고 현재 가격 �
 test("행정경계 지도는 모든 지역에서 선택 중심 확대와 전체 보기를 제공한다", async () => {
   const page = await source("app/page.tsx");
   const css = await source("app/styles/map-stability.css");
+  const mobileCss = await source("app/styles/responsive-mobile.css");
   assert.match(page, /administrativeViewBox/);
   assert.match(page, /aria-label="지도 전체 보기"/);
   assert.match(page, /aria-label="선택 지역 중심으로 지도 확대"/);
   assert.match(css, /\.administrative-map-zoom/);
   assert.match(css, /min-height:\s*44px/);
   assert.match(css, /@media \(max-width: 767px\)[\s\S]*?\.administrative-map-zoom \{[\s\S]*?top:\s*112px;[\s\S]*?bottom:\s*auto;/);
+  assert.match(mobileCss, /\.map-ranking\.map-selection-summary\[data-sheet-state\][\s\S]*?position:\s*relative;[\s\S]*?bottom:\s*auto;/);
 });

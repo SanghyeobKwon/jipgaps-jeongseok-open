@@ -210,6 +210,15 @@
     max-height: var(--mobile-sheet-expanded);
   }
 
+  /* The administrative atlas has no marker shortlist. Keep its summary after
+   * the full map so it cannot cover place labels or zoom controls. */
+  .terminal-shell[data-view="research"]
+    .map-ranking.map-selection-summary[data-sheet-state] {
+    position: relative;
+    bottom: auto;
+    max-height: none;
+  }
+
   .terminal-shell[data-view="research"]
     .map-ranking[data-sheet-state]
     :is(.map-ranking-list, .building-list) {
