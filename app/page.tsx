@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, Baby, BedDouble, Building2, BusFront, CarFront, Drama, Dumbbell, Film, GraduationCap, HeartPulse, Hospital, ImagePlus, Landmark, Library, Mail, MapPin, Monitor, Moon, Move, Pill, Refrigerator, RotateCw, Ruler, School, Search, ShoppingBasket, ShoppingCart, Sofa, Stethoscope, Store, Sun, Table2, TrainFront, Trash2, Trees, Trophy, Upload, WashingMachine, Waves, type LucideIcon } from "lucide-react";
 import regions from "./data/regions.json";
 import { PropertyTypeIcon as AnalysisPropertyTypeIcon, ResearchAnalysisWorkspace, type PriceBucket, type ResearchCell, type ResearchPropertyRow, type ResearchView as AnalysisResearchView } from "./components/analysis";
+import { geometryLabelPoint, type SupportedGeometry } from "./lib/map/geometry";
 import type { MapCamera, MapDataStatus } from "./lib/map/types";
 import type { AreaPriceSummary, DataState, ResearchBundle, ResearchMetric, SampleStatus } from "./lib/market/types";
 import { normalizeScreen, readViewState, writeViewState, type ScreenId } from "./lib/navigation/view-state";
@@ -521,7 +522,6 @@ const SIDO_MAP_LABELS: Record<string, string> = {
   "서울특별시": "서울", "경기도": "경기", "인천광역시": "인천", "부산광역시": "부산", "대구광역시": "대구", "대전광역시": "대전", "울산광역시": "울산", "세종특별자치시": "세종",
   "강원특별자치도": "강원", "충청북도": "충북", "충청남도": "충남", "전남광주통합특별시": "전남·광주", "전북특별자치도": "전북", "경상북도": "경북", "경상남도": "경남", "제주특별자치도": "제주",
 };
-const NATIONAL_PRIMARY_LABELS = new Set(["경기도", "강원특별자치도", "충청남도", "전북특별자치도", "전남광주통합특별시", "경상북도", "경상남도", "제주특별자치도"]);
 const ROAD_MAP_AVAILABLE = Boolean(process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY);
 // Keep the shortlist logic ready while its home-page surface is temporarily paused.
 const SHOW_OPPORTUNITY_SECTION = false;
@@ -538,26 +538,10 @@ function compactAdministrativeLabel(name: string, focus: AdministrativeFocus) {
   return compact;
 }
 
-function visibleAdministrativeLabels(boundaries: ProjectedBoundary[], focus: AdministrativeFocus, selectedCode: string) {
-  const occupied: { left: number; right: number; top: number; bottom: number }[] = [];
-  const visible = new Set<string>();
-  const limit = focus === "national" ? 9 : focus === "sido" ? 16 : 10;
-  const candidates = [...boundaries]
-    .filter((boundary) => focus !== "national" || boundary.code === selectedCode || NATIONAL_PRIMARY_LABELS.has(boundary.name))
-    .sort((a, b) => Number(b.code === selectedCode) - Number(a.code === selectedCode) || b.width * b.height - a.width * a.height);
-  candidates.forEach((boundary) => {
-    if (visible.size >= limit && boundary.code !== selectedCode) return;
-    const label = compactAdministrativeLabel(boundary.name, focus);
-    const offset = focus === "national" ? NATIONAL_LABEL_OFFSETS[boundary.name] || [0, 0] : [0, 0];
-    const centerX = boundary.centerX + offset[0]; const centerY = boundary.centerY + offset[1];
-    const boxWidth = Math.max(52, label.length * (focus === "district" ? 23 : 21));
-    const boxHeight = focus === "district" ? 38 : 34;
-    const box = { left: centerX - boxWidth / 2, right: centerX + boxWidth / 2, top: centerY - boxHeight / 2, bottom: centerY + boxHeight / 2 };
-    const selected = boundary.code === selectedCode;
-    const overlaps = occupied.some((other) => box.left < other.right && box.right > other.left && box.top < other.bottom && box.bottom > other.top);
-    if (selected || !overlaps) { visible.add(boundary.code); occupied.push(box); }
-  });
-  return visible;
+function visibleAdministrativeLabels(boundaries: ProjectedBoundary[]) {
+  // Every rendered official boundary remains named. The SVG title and keyboard
+  // target preserve the full name even when a compact visual label is used.
+  return new Set(boundaries.map((boundary) => boundary.code));
 }
 
 function coordinateRings(value: unknown) {
@@ -606,7 +590,10 @@ function projectAdministrativeBoundaries(data: GeoJsonFeatureCollection, width =
     const xs = projected.map((point) => point[0]); const ys = projected.map((point) => point[1]);
     const path = rings.map((ring) => ring.map(([lng, lat], index) => `${index ? "L" : "M"}${(offsetX + (lng - extent.minLng) * scale).toFixed(1)},${(offsetY + (extent.maxLat - lat) * scale).toFixed(1)}`).join(" ") + " Z").join(" ");
     const minX = Math.min(...xs); const maxX = Math.max(...xs); const minY = Math.min(...ys); const maxY = Math.max(...ys);
-    return { code: String(feature.properties.code || ""), name: String(feature.properties.name || ""), path, centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, width: maxX - minX, height: maxY - minY };
+    const labelPoint = geometryLabelPoint(feature.geometry as SupportedGeometry);
+    const centerX = labelPoint ? offsetX + (labelPoint[0] - extent.minLng) * scale : (minX + maxX) / 2;
+    const centerY = labelPoint ? offsetY + (extent.maxLat - labelPoint[1]) * scale : (minY + maxY) / 2;
+    return { code: String(feature.properties.code || ""), name: String(feature.properties.name || ""), path, centerX, centerY, width: maxX - minX, height: maxY - minY };
   }).filter((feature) => feature.path && feature.name);
 }
 
@@ -709,7 +696,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
     return projectAdministrativeBoundaries({ type: "FeatureCollection", features }, 760, 560, mapExtent)
       .filter((boundary) => boundary.centerX > -60 && boundary.centerX < 820 && boundary.centerY > -60 && boundary.centerY < 620);
   }, [capitalDistrictContext, focus, mapExtent, selectedSido]);
-  const capitalDistrictLabels = useMemo(() => visibleAdministrativeLabels(capitalDistrictBoundaries, "sido", ""), [capitalDistrictBoundaries]);
+  const capitalDistrictLabels = useMemo(() => visibleAdministrativeLabels(capitalDistrictBoundaries), [capitalDistrictBoundaries]);
   const neighborDongBoundaries = useMemo(() => {
     if (!neighborDongContext || !mapExtent || !data) return [];
     const activeExtent = geoJsonExtent(data); if (!activeExtent) return [];
@@ -717,7 +704,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
     const nearbyFeatures = neighborDongContext.features.filter((feature) => { const extent = geoJsonExtent({ type: "FeatureCollection", features: [feature] }); return extent ? geoExtentsIntersect(extent, contextExtent) : false; });
     return projectAdministrativeBoundaries({ type: "FeatureCollection", features: nearbyFeatures }, 760, 560, mapExtent).filter((boundary) => boundary.centerX > -40 && boundary.centerX < 800 && boundary.centerY > -40 && boundary.centerY < 600);
   }, [data, mapExtent, neighborDongContext]);
-  const neighborVisibleLabels = useMemo(() => visibleAdministrativeLabels(neighborDongBoundaries, "district", ""), [neighborDongBoundaries]);
+  const neighborVisibleLabels = useMemo(() => visibleAdministrativeLabels(neighborDongBoundaries), [neighborDongBoundaries]);
   const neighborDongMeta = useMemo(() => new Map((neighborDongContext?.features || []).map((feature) => [String(feature.properties.code || ""), { name: String(feature.properties.name || ""), sigungu: String(feature.properties.sigunguName || ""), sigunguCode: String(feature.properties.sigunguCode || "") }])), [neighborDongContext]);
   const districtContextBoundaries = useMemo(() => {
     if (!districtContext || !mapExtent || focus !== "district") return [];
@@ -730,8 +717,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
   const districtValues = Object.values(dongStats).map((stat) => dongMetric === "price" ? stat.median : dongMetric === "py" ? stat.perPy : stat.count).filter((value) => value > 0);
   const districtMid = districtValues.length ? median(districtValues) : 0;
   const isSelected = (boundary: ProjectedBoundary) => focus === "national" ? boundary.name === selectedSido : focus === "sido" ? boundary.code === activeRegion.code : selectedBoundaryDong ? boundary.name === selectedBoundaryDong : selectedDong !== "all" && boundary.name === selectedDong;
-  const selectedBoundaryCode = boundaries.find(isSelected)?.code || "";
-  const visibleLabels = useMemo(() => visibleAdministrativeLabels(boundaries, focus, selectedBoundaryCode), [boundaries, focus, selectedBoundaryCode]);
+  const visibleLabels = useMemo(() => visibleAdministrativeLabels(boundaries), [boundaries]);
   const selectBoundary = (boundary: ProjectedBoundary) => {
     if (focus === "national") onSelectSido(boundary.name);
     else if (focus === "sido") { const region = REGIONS.find((item) => item.code === boundary.code); if (region) onSelectRegion(region); }
@@ -837,13 +823,21 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const cameraRef = useRef<{ context: string; lat: number; lng: number; level: number } | null>(null);
+  const mapInstanceRef = useRef<KakaoMapInstance | null>(null);
+  const initialCameraRef = useRef<MapCamera | null>(camera);
   const [mapError, setMapError] = useState("");
   const stageTitle = focus === "national" ? "대한민국 16개 시·도" : focus === "sido" ? selectedSido : focus === "buildings" ? `${activeRegion.sido} ${activeRegion.sigungu} · ${selectedDong === "all" ? selectedBoundaryDong : selectedDong}` : `${activeRegion.sido} ${activeRegion.sigungu}${selectedBoundaryDong ? ` · ${selectedBoundaryDong}` : ""}`;
   const stageHint = focus === "national" ? "시·도 경계를 눌러 다음 단계로 들어가세요." : focus === "sido" ? "시·군·구 경계를 눌러 읍·면·동 지도로 확대하세요." : focus === "buildings" ? buildingsLoading ? "선택한 동의 최근 실거래 건물 좌표를 확인하고 있습니다." : buildingsError ? buildingsError : "건물 아이콘을 누르면 해당 건물의 가격만 열립니다. 다른 건물은 지도에 계속 남습니다." : selectedBoundaryDong ? `${selectedBoundaryDong} 행정경계를 선택했습니다.` : "읍·면·동 경계를 누르면 실거래 건물 지도로 확대됩니다.";
   const fallbackLocation = buildingLocations[0] || SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
   const visibleMapPrices = useMemo(() => buildingLocations.map((building) => building.lastAmount).filter((price) => price > 0), [buildingLocations]);
   const visibleMapPriceBands = useMemo(() => buildMapPriceBands(visibleMapPrices), [visibleMapPrices]);
-  const cameraContext = `${activeRegion.code}:${selectedBoundaryDong || selectedDong}:${propertyType}`;
+  // A dong/property/filter change must not recreate the user's spatial frame.
+  // Only moving to another sigungu creates a new camera scope.
+  const cameraContext = activeRegion.code;
+
+  useEffect(() => {
+    initialCameraRef.current = camera;
+  }, [camera]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -871,11 +865,13 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       if (disposed || !window.kakao?.maps) return;
       const maps = window.kakao.maps;
       const province = SIDO_CENTERS[selectedSido] || { lat: 36.35, lng: 127.85, zoom: 8 };
-      const sharedCamera = camera && (camera.contextKey === cameraContext || camera.changedBy === "restore") ? { context: cameraContext, lat: camera.center.lat, lng: camera.center.lng, level: camera.level } : null;
+      const initialCamera = initialCameraRef.current;
+      const sharedCamera = initialCamera && (initialCamera.contextKey === cameraContext || initialCamera.changedBy === "restore") ? { context: cameraContext, lat: initialCamera.center.lat, lng: initialCamera.center.lng, level: initialCamera.level } : null;
       const preservedCamera = sharedCamera || (cameraRef.current?.context === cameraContext ? cameraRef.current : null);
       const initial = preservedCamera || province;
       const map = new maps.Map(host, { center: new maps.LatLng(initial.lat, initial.lng), level: preservedCamera?.level ?? kakaoLevelForZoom(province.zoom) });
       mapInstance = map;
+      mapInstanceRef.current = map;
       map.addControl?.(new maps.ZoomControl(), maps.ControlPosition.TOPRIGHT);
       resizeObserver = new ResizeObserver(() => {
         map.relayout?.();
@@ -958,9 +954,19 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       const lat = center?.getLat?.();
       const lng = center?.getLng?.();
       if (cameraReady && typeof lat === "number" && typeof lng === "number" && mapInstance) cameraRef.current = { context: cameraContext, lat, lng, level: mapInstance.getLevel() };
-      disposed = true; controller.abort(); resizeObserver?.disconnect(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); host.replaceChildren();
+      disposed = true; controller.abort(); resizeObserver?.disconnect(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); if (mapInstanceRef.current === mapInstance) mapInstanceRef.current = null; host.replaceChildren();
     };
-  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, camera, cameraContext, focus, markets, nearbyBoundaryDongs, nearbyLegalDongs, onCameraChange, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyType, selectedBoundaryDong, selectedDong, selectedPropertyKey, selectedSido, visibleMapPriceBands]);
+  }, [active, activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingLocations, buildingsError, buildingsLoading, cameraContext, focus, markets, nearbyBoundaryDongs, nearbyLegalDongs, onCameraChange, onSelectDong, onSelectProperty, onSelectRegion, onSelectSido, propertyType, selectedBoundaryDong, selectedDong, selectedPropertyKey, selectedSido, visibleMapPriceBands]);
+
+  useEffect(() => {
+    if (!camera || camera.changedBy !== "restore" || focus !== "buildings") return;
+    const map = mapInstanceRef.current;
+    const maps = window.kakao?.maps;
+    if (!map || !maps) return;
+    map.setCenter?.(new maps.LatLng(camera.center.lat, camera.center.lng));
+    map.setLevel(camera.level);
+    cameraRef.current = { context: cameraContext, lat: camera.center.lat, lng: camera.center.lng, level: camera.level };
+  }, [camera, cameraContext, focus]);
 
   if (focus === "national" || focus === "sido" || focus === "district") return <AdministrativeMarketMap key={`${focus}-${selectedSido}-${activeRegion.code}`} focus={focus} active={active} markets={markets} selectedSido={selectedSido} activeRegion={activeRegion} selectedDong={selectedDong} selectedBoundaryDong={selectedBoundaryDong} dongStats={dongStats} dongMetric={dongMetric} onDongMetricChange={onDongMetricChange} onSelectSido={onSelectSido} onSelectRegion={onSelectRegion} onSelectDong={onSelectDong} onOpenBuildings={onOpenBuildings} />;
 
@@ -984,6 +990,8 @@ export default function Home() {
   const historyModeRef = useRef<"replace" | "push">("replace");
   const restoringUrlRef = useRef(false);
   const pendingPropertyRef = useRef("");
+  const pendingBoundaryRef = useRef("");
+  const boundaryDongsRef = useRef<BoundaryDong[]>([]);
   const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState(""); const [analysisAddressInput, setAnalysisAddressInput] = useState("서울특별시 강남구");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
@@ -1064,6 +1072,13 @@ export default function Home() {
       setMapFocus(requestedRegion ? "district" : requestedSido ? "sido" : "district");
       setSelectedHCode(viewState.hcode || "");
       setSelectedBCode(viewState.bcode || "");
+      pendingBoundaryRef.current = viewState.boundary || "";
+      const restoredBoundary = boundaryDongsRef.current.find((dong) => dong.code === pendingBoundaryRef.current);
+      if (restoredBoundary) {
+        setSelectedBoundaryDong(restoredBoundary.name);
+        setMapPickerDong(restoredBoundary.name);
+        pendingBoundaryRef.current = "";
+      }
       pendingPropertyRef.current = viewState.property || "";
       setSelectedKey(viewState.property || "");
       setQuery(viewState.property || "");
@@ -1106,6 +1121,7 @@ export default function Home() {
       screen: activeSection,
       sido: selectedMapSido,
       sigungu: regionCode,
+      boundary: selectedBoundaryCode || undefined,
       hcode: selectedHCode || undefined,
       bcode: selectedBCode || undefined,
       property: selectedKey || undefined,
@@ -1121,7 +1137,7 @@ export default function Home() {
     historyModeRef.current = "replace";
     if (mode === "push") window.history.pushState(null, "", nextUrl);
     else window.history.replaceState(null, "", nextUrl);
-  }, [activeSection, area, mapCamera, regionCode, selectedBCode, selectedHCode, selectedKey, selectedMapSido, tradeAreaFilter, urlHydrated]);
+  }, [activeSection, area, mapCamera, regionCode, selectedBCode, selectedBoundaryCode, selectedHCode, selectedKey, selectedMapSido, tradeAreaFilter, urlHydrated]);
 
   useEffect(() => {
     const nav = navRef.current; const link = nav?.querySelector<HTMLAnchorElement>(`a[data-view="${activeSection}"]`); if (!nav || !link) return;
@@ -1335,9 +1351,17 @@ export default function Home() {
     const controller = new AbortController();
     fetch(`/data/boundaries/emd/${activeRegion.code}.json`, { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject(new Error("동 경계를 불러오지 못했습니다."))).then((data: GeoJsonFeatureCollection) => {
       const nextDongs = data.features.map((feature) => ({ code: String(feature.properties.code || ""), name: String(feature.properties.name || "") })).filter((dong) => dong.code && dong.name);
+      boundaryDongsRef.current = nextDongs;
       setBoundaryDongs(nextDongs);
       setBoundaryDongOptions(nextDongs.map((dong) => dong.name));
-    }).catch((error) => { if (error instanceof Error && error.name !== "AbortError") { setBoundaryDongs([]); setBoundaryDongOptions([]); } });
+      const requestedBoundary = pendingBoundaryRef.current;
+      const restoredBoundary = requestedBoundary ? nextDongs.find((dong) => dong.code === requestedBoundary) : undefined;
+      if (restoredBoundary) {
+        setSelectedBoundaryDong(restoredBoundary.name);
+        setMapPickerDong(restoredBoundary.name);
+        pendingBoundaryRef.current = "";
+      }
+    }).catch((error) => { if (error instanceof Error && error.name !== "AbortError") { boundaryDongsRef.current = []; setBoundaryDongs([]); setBoundaryDongOptions([]); } });
     return () => controller.abort();
   }, [activeRegion.code]);
   useEffect(() => {
@@ -1435,13 +1459,13 @@ export default function Home() {
   const selectedSpaceFurniture = spaceFurnitureLayouts.find((item) => item.id === selectedSpaceFurnitureId) || null;
   const occupiedSpaceArea = spaceFurnitureLayouts.reduce((sum, item) => sum + item.width * item.depth / 10000, 0);
   const resetPropertySelection = useCallback(() => { setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all"); setPropertyLocation(null); setPropertyLimit(30); }, []);
-  const chooseRegion = useCallback((region: Region, scrollToTop = true) => { historyModeRef.current = "push"; setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedMapSido(region.sido); setMapFocus("district"); setMapCamera(null); setSelectedHCode(""); setSelectedBCode(""); setSelectedBoundaryDong(""); setMapPickerDong(""); setSelectedDong("all"); resetPropertySelection(); setSubmittedQuery(""); setQuery(""); if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" }); }, [resetPropertySelection]);
+  const chooseRegion = useCallback((region: Region, scrollToTop = true) => { historyModeRef.current = "push"; setRegionCode(region.code); setRegionInput(`${region.sido} ${region.sigungu}`); setSelectedMapSido(region.sido); setMapFocus("district"); if (region.code !== regionCode) setMapCamera(null); setSelectedHCode(""); setSelectedBCode(""); setSelectedBoundaryDong(""); setMapPickerDong(""); setSelectedDong("all"); resetPropertySelection(); setSubmittedQuery(""); setQuery(""); if (scrollToTop) window.scrollTo({ top: 0, behavior: "smooth" }); }, [regionCode, resetPropertySelection]);
   const chooseMapSido = useCallback((sido: string) => {
     historyModeRef.current = "push";
     const next = REGIONS.filter((region) => region.sido === sido).sort(sortRegions)[0];
-    setSelectedMapSido(sido); setMapFocus("sido"); setMapCamera(null); setSelectedHCode(""); setSelectedBCode(""); setSelectedBoundaryDong(""); setMapPickerDong(""); setSelectedDong("all"); resetPropertySelection(); setSubmittedQuery(""); setQuery("");
+    setSelectedMapSido(sido); setMapFocus("sido"); if (sido !== selectedMapSido) setMapCamera(null); setSelectedHCode(""); setSelectedBCode(""); setSelectedBoundaryDong(""); setMapPickerDong(""); setSelectedDong("all"); resetPropertySelection(); setSubmittedQuery(""); setQuery("");
     if (next) { setRegionCode(next.code); setRegionInput(`${next.sido} ${next.sigungu}`); }
-  }, [resetPropertySelection]);
+  }, [resetPropertySelection, selectedMapSido]);
   const chooseMapRegion = useCallback((region: Region) => chooseRegion(region, false), [chooseRegion]);
   const chooseMapDong = useCallback((dong: string) => {
     historyModeRef.current = "push";
@@ -1451,7 +1475,6 @@ export default function Home() {
     setSelectedBoundaryDong(dong);
     setMapPickerDong(dong);
     setMapFocus(ROAD_MAP_AVAILABLE && exactLegalDong !== "all" ? "buildings" : "district");
-    setMapCamera(null);
     resetPropertySelection();
     setSelectedDong(exactLegalDong);
   }, [dongOptions, resetPropertySelection]);

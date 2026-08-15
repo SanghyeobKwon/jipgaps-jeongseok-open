@@ -8,6 +8,7 @@ import "./styles/responsive-web.css";
 import "./styles/responsive-tablet.css";
 import "./styles/responsive-mobile.css";
 import "./styles/research-analysis.css";
+import "./styles/map-stability.css";
 
 const themeBootstrap = `(() => {
   try {
