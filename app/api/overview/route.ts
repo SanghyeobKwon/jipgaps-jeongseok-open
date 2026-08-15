@@ -1,9 +1,17 @@
+import { readCache, writeCache, type CacheReadResult } from "../../lib/cache/repository.ts";
 import { median } from "../../lib/market/aggregate.ts";
 import { fetchAllMolitPages, type MolitCollection, UpstreamDataError } from "../../lib/market/molit.ts";
 import { normalizeMolitTrade } from "../../lib/market/normalize.ts";
 import type { DataState, PropertyType, RepresentativeMarket, SampleStatus } from "../../lib/market/types";
 
 export const dynamic = "force-dynamic";
+
+type OverviewPayload = {
+  markets: RepresentativeMarket[];
+  status: DataState;
+  meta: { warnings: string[]; [key: string]: unknown };
+  [key: string]: unknown;
+};
 
 const API_ROOT = "https://apis.data.go.kr/1613000";
 const SERVICES: Record<PropertyType, readonly [string, string]> = {
@@ -88,10 +96,21 @@ function sample(count: number, partial: boolean, minimumRequired = 3): SampleSta
 }
 
 export async function GET(request: Request) {
+  let cached: CacheReadResult<OverviewPayload> | null = null;
   try {
-    const requested = new URL(request.url).searchParams.get("type") || "apt";
+    const params = new URL(request.url).searchParams;
+    const requested = params.get("type") || "apt";
     if (!(requested in SERVICES)) return Response.json({ error: "지원하지 않는 부동산 유형입니다." }, { status: 400 });
     const type = requested as PropertyType;
+    const basis = (params.get("basis") || "rolling-quarter").slice(0, 40);
+    const cacheKey = { propertyType: type, basis };
+    cached = await readCache<OverviewPayload>("market-overview", cacheKey, { allowStale: true });
+    if (cached.state === "fresh" && cached.data) {
+      return Response.json({
+        ...cached.data,
+        meta: { ...cached.data.meta, cache: { state: "fresh", capturedAt: cached.capturedAt } },
+      }, { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" } });
+    }
     const latestMonth = await latestAvailableMonth(type);
     const periods = {
       current: [0, -1, -2].map((offset) => shiftMonthKey(latestMonth, offset)),
@@ -134,7 +153,7 @@ export async function GET(request: Request) {
       });
     }
     const status: DataState = warnings.length ? "partial" : markets.some((market) => market.count > 0) ? "ok" : "empty";
-    return Response.json({
+    const payload: OverviewPayload = {
       markets,
       month: periods.current[0],
       previousMonth: periods.previous[0],
@@ -153,9 +172,29 @@ export async function GET(request: Request) {
         periods,
         fetchedPages,
         warnings,
+        cache: { state: cached.state, capturedAt: null },
       },
-    }, { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" } });
+    };
+    if (status === "ok" || status === "empty") {
+      await writeCache("market-overview", cacheKey, payload, {
+        freshForSeconds: 24 * 60 * 60,
+        staleForSeconds: 7 * 24 * 60 * 60,
+        dataStatus: status,
+      });
+    }
+    return Response.json(payload, { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" } });
   } catch (error) {
+    if (cached?.state === "stale" && cached.data) {
+      return Response.json({
+        ...cached.data,
+        status: "partial",
+        meta: {
+          ...cached.data.meta,
+          warnings: [...(cached.data.meta.warnings || []), `최신 대표 지역 집계를 갱신하지 못해 ${cached.capturedAt ?? "이전 수집 시점"}의 캐시를 표시합니다.`],
+          cache: { state: "stale", capturedAt: cached.capturedAt, fallback: true },
+        },
+      }, { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=3600" } });
+    }
     const message = error instanceof Error ? error.message : "대표 지역 시장 데이터를 불러오지 못했습니다.";
     const status = error instanceof UpstreamDataError && error.kind === "timeout" ? 504 : 502;
     return Response.json({ error: message }, { status });

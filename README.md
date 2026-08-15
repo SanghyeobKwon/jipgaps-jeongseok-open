@@ -36,6 +36,23 @@ npm run build
 - 카카오 개발자 콘솔의 JavaScript SDK 허용 도메인에 로컬 주소와 운영 도메인을 각각 등록해야 합니다.
 - 실제 키는 `.env.local`과 호스팅 환경변수에만 저장하고 Git에는 올리지 않습니다.
 
+## Supabase Free Cache
+
+Supabase는 선택 사항인 서버 캐시로 사용합니다. 실거래 원본의 영구 보관소나 지도 타일 저장소가 아니며, 기존 공공데이터·카카오 API 경로가 항상 fallback으로 남습니다.
+
+- `SUPABASE_URL`: Supabase 프로젝트 URL
+- `SUPABASE_SERVICE_ROLE_KEY`: 서버의 PostgREST 캐시 읽기·쓰기 키
+- `SUPABASE_DATABASE_URL`: 마이그레이션 도구 전용 연결 문자열
+- `DATA_SYNC_SECRET`: 보호된 동기화 API를 추가할 때 사용할 서버 비밀값
+- 브라우저는 Supabase에 직접 연결하지 않습니다. 서비스 역할 키를 `NEXT_PUBLIC_*` 변수에 넣지 마세요.
+- `SUPABASE_URL` 또는 `SUPABASE_SERVICE_ROLE_KEY`가 없으면 캐시 계층은 자동으로 우회되고 현재 API 동작을 유지합니다.
+- 최초 설정은 `supabase/migrations/0001_free_cache.sql`을 적용합니다. 기본 RLS는 `anon`과 `authenticated`의 직접 접근을 차단합니다.
+- `freshForSeconds`는 정상 캐시 기간이고 `staleForSeconds`는 그 뒤에 외부 API 장애 시 사용할 추가 fallback 기간입니다.
+- 무료 500MB 범위에서는 300~350MB를 운영 목표로 삼고, 만료 데이터는 `purge_expired_api_cache()`로 정리합니다.
+- 단일 캐시 항목은 최대 5MiB이며, 그보다 큰 응답은 저장하지 않고 기존 API 경로로 우회합니다.
+
+지도 행정경계 GeoJSON, 카카오 지도 타일, 외부 API 원문과 사용자 검색 기록은 이 캐시에 저장하지 않습니다.
+
 This starter does not use `wrangler.jsonc`.
 
 ## Included Shape

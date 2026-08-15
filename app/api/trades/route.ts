@@ -1,3 +1,4 @@
+import { readCache, writeCache, type CacheReadResult } from "../../lib/cache/repository.ts";
 import { combineDataState, monthlySeries, rollingQuarter } from "../../lib/market/aggregate.ts";
 import { fetchAllMolitPages, type MolitCollection, UpstreamDataError } from "../../lib/market/molit.ts";
 import { normalizeMolitTrade } from "../../lib/market/normalize.ts";
@@ -7,6 +8,9 @@ import type { PropertySummary, PropertyType, TradeRecord, TradesResponse } from 
 export const dynamic = "force-dynamic";
 
 const API_ROOT = "https://apis.data.go.kr/1613000";
+const MARKET_MONTH_CACHE = "market-month";
+const MARKET_MONTH_FRESH_SECONDS = 12 * 60 * 60;
+const MARKET_MONTH_STALE_SECONDS = 7 * 24 * 60 * 60;
 const SERVICES: Record<PropertyType, readonly [string, string]> = {
   apt: ["RTMSDataSvcAptTradeDev", "getRTMSDataSvcAptTradeDev"],
   rowhouse: ["RTMSDataSvcRHTrade", "getRTMSDataSvcRHTrade"],
@@ -39,22 +43,53 @@ function displayMonth(month: string) {
   return `${month.slice(0, 4)}-${month.slice(4)}`;
 }
 
-async function fetchMonth(type: PropertyType, lawd: string, month: string): Promise<MolitCollection> {
+type CachedMonthResult = MolitCollection & {
+  cache: Pick<CacheReadResult<MolitCollection>, "state" | "capturedAt"> & { fallback: boolean };
+};
+
+async function fetchMonth(type: PropertyType, lawd: string, month: string, useCache: boolean): Promise<CachedMonthResult> {
+  const cacheKey = { propertyType: type, lawdCode: lawd, dealYmd: month };
+  const cached = useCache
+    ? await readCache<MolitCollection>(MARKET_MONTH_CACHE, cacheKey, { allowStale: true })
+    : null;
+  if (cached?.state === "fresh" && cached.data) {
+    return { ...cached.data, cache: { state: cached.state, capturedAt: cached.capturedAt, fallback: false } };
+  }
   const [service, operation] = SERVICES[type];
   const url = new URL(`${API_ROOT}/${service}/${operation}`);
   url.searchParams.set("LAWD_CD", lawd);
   url.searchParams.set("DEAL_YMD", month);
   url.searchParams.set("numOfRows", "1000");
   url.searchParams.set("serviceKey", serviceKey());
-  return fetchAllMolitPages(url);
+  try {
+    const collection = await fetchAllMolitPages(url);
+    if (useCache && (!collection.partial || cached?.dataStatus !== "ok")) {
+      await writeCache(MARKET_MONTH_CACHE, cacheKey, collection, {
+        freshForSeconds: collection.partial ? 15 * 60 : MARKET_MONTH_FRESH_SECONDS,
+        staleForSeconds: collection.partial ? 24 * 60 * 60 : MARKET_MONTH_STALE_SECONDS,
+        dataStatus: collection.partial ? "partial" : collection.rows.length ? "ok" : "empty",
+      });
+    }
+    return { ...collection, cache: { state: cached?.state ?? "unavailable", capturedAt: null, fallback: false } };
+  } catch (error) {
+    if (cached?.state === "stale" && cached.data) {
+      return {
+        ...cached.data,
+        partial: true,
+        warnings: [...cached.data.warnings, `${month}: 최신 원본 응답을 받지 못해 ${cached.capturedAt ?? "이전 수집 시점"}의 캐시를 표시합니다.`],
+        cache: { state: cached.state, capturedAt: cached.capturedAt, fallback: true },
+      };
+    }
+    throw error;
+  }
 }
 
-async function fetchMonths(type: PropertyType, lawd: string, months: string[]) {
-  const collections = new Map<string, MolitCollection>();
+async function fetchMonths(type: PropertyType, lawd: string, months: string[], useCache: boolean) {
+  const collections = new Map<string, CachedMonthResult>();
   const failures = new Map<string, unknown>();
   for (let index = 0; index < months.length; index += 6) {
     const batchMonths = months.slice(index, index + 6);
-    const settled = await Promise.allSettled(batchMonths.map((month) => fetchMonth(type, lawd, month)));
+    const settled = await Promise.allSettled(batchMonths.map((month) => fetchMonth(type, lawd, month, useCache)));
     settled.forEach((result, resultIndex) => {
       const month = batchMonths[resultIndex];
       if (result.status === "fulfilled") collections.set(month, result.value);
@@ -105,7 +140,8 @@ export async function GET(request: Request) {
     const requestedMonths = monthIds(monthCount);
     const query = (params.get("query") || "").trim().toLocaleLowerCase("ko");
     const exact = params.get("exact") === "1";
-    const { collections, failures } = await fetchMonths(type, lawd, requestedMonths);
+    const useMonthCache = !query && monthCount <= 12;
+    const { collections, failures } = await fetchMonths(type, lawd, requestedMonths, useMonthCache);
     const partialMonthIds = [
       ...failures.keys(),
       ...[...collections].filter(([, collection]) => collection.partial).map(([month]) => month),
@@ -137,7 +173,7 @@ export async function GET(request: Request) {
     const status = combineDataState(successfulMonths.length, failedMonths.length + [...collections.values()].filter((collection) => collection.partial).length, trades.length);
     const from = displayMonth(requestedMonths[0]);
     const to = displayMonth(requestedMonths.at(-1)!);
-    const response: TradesResponse = {
+    const response: TradesResponse & { meta: TradesResponse["meta"] & { cache: unknown } } = {
       trades,
       properties: propertySummaries(trades),
       months: monthCount,
@@ -166,6 +202,10 @@ export async function GET(request: Request) {
         warnings,
         areaKinds: [...new Set(trades.map((trade) => trade.areaMeasurement.kind))],
         period: { from, to, basis: "calendar-month", completeness: "provisional" },
+        cache: {
+          enabledForRequest: useMonthCache,
+          months: [...collections].map(([month, collection]) => ({ month, state: collection.cache.state, capturedAt: collection.cache.capturedAt, fallback: collection.cache.fallback })),
+        },
       },
     };
     return Response.json(response, { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=86400" } });
