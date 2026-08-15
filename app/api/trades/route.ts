@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 const API_ROOT = "https://apis.data.go.kr/1613000";
 const MARKET_MONTH_CACHE = "market-month";
+const MARKET_BUNDLE_CACHE = "market-month-bundle";
 const MARKET_MONTH_FRESH_SECONDS = 12 * 60 * 60;
 const MARKET_MONTH_STALE_SECONDS = 7 * 24 * 60 * 60;
 const SERVICES: Record<PropertyType, readonly [string, string]> = {
@@ -46,6 +47,20 @@ function displayMonth(month: string) {
 type CachedMonthResult = MolitCollection & {
   cache: Pick<CacheReadResult<MolitCollection>, "state" | "capturedAt"> & { fallback: boolean };
 };
+
+type CachedMonthBundle = {
+  months: Array<[string, MolitCollection]>;
+};
+
+function validMonthBundle(data: CachedMonthBundle | null, months: string[]): data is CachedMonthBundle {
+  if (!data || !Array.isArray(data.months) || data.months.length !== months.length) return false;
+  return data.months.every(([month, collection], index) => (
+    month === months[index]
+    && Array.isArray(collection?.rows)
+    && Number.isFinite(collection?.fetchedPages)
+    && Number.isFinite(collection?.totalCount)
+  ));
+}
 
 async function fetchMonth(type: PropertyType, lawd: string, month: string, useCache: boolean): Promise<CachedMonthResult> {
   const cacheKey = { propertyType: type, lawdCode: lawd, dealYmd: month };
@@ -85,6 +100,20 @@ async function fetchMonth(type: PropertyType, lawd: string, month: string, useCa
 }
 
 async function fetchMonths(type: PropertyType, lawd: string, months: string[], useCache: boolean) {
+  const bundleKey = { propertyType: type, lawdCode: lawd, dealYmds: months };
+  const bundle = useCache
+    ? await readCache<CachedMonthBundle>(MARKET_BUNDLE_CACHE, bundleKey, { allowStale: true })
+    : null;
+  if (bundle?.state === "fresh" && validMonthBundle(bundle.data, months)) {
+    return {
+      collections: new Map(bundle.data.months.map(([month, collection]) => [month, {
+        ...collection,
+        cache: { state: "fresh" as const, capturedAt: bundle.capturedAt, fallback: false },
+      }])),
+      failures: new Map<string, unknown>(),
+      bundleCache: { state: bundle.state, capturedAt: bundle.capturedAt, fallback: false },
+    };
+  }
   const collections = new Map<string, CachedMonthResult>();
   const failures = new Map<string, unknown>();
   for (let index = 0; index < months.length; index += 6) {
@@ -96,8 +125,46 @@ async function fetchMonths(type: PropertyType, lawd: string, months: string[], u
       else failures.set(month, result.reason);
     });
   }
-  if (!collections.size && failures.size) throw failures.values().next().value;
-  return { collections, failures };
+  if (!collections.size && failures.size) {
+    if (bundle?.state === "stale" && validMonthBundle(bundle.data, months)) {
+      return {
+        collections: new Map(bundle.data.months.map(([month, collection]) => [month, {
+          ...collection,
+          partial: true,
+          warnings: [...collection.warnings, `${month}: 최신 원본 응답을 받지 못해 ${bundle.capturedAt ?? "이전 수집 시점"}의 묶음 캐시를 표시합니다.`],
+          cache: { state: "stale" as const, capturedAt: bundle.capturedAt, fallback: true },
+        }])),
+        failures: new Map<string, unknown>(),
+        bundleCache: { state: bundle.state, capturedAt: bundle.capturedAt, fallback: true },
+      };
+    }
+    throw failures.values().next().value;
+  }
+  const complete = failures.size === 0 && [...collections.values()].every((collection) => !collection.partial);
+  const bundleWrite = useCache && complete
+    ? await writeCache<CachedMonthBundle>(MARKET_BUNDLE_CACHE, bundleKey, {
+      months: [...collections].map(([month, collection]) => [month, {
+        rows: collection.rows,
+        totalCount: collection.totalCount,
+        fetchedPages: collection.fetchedPages,
+        partial: collection.partial,
+        warnings: collection.warnings,
+      }]),
+    }, {
+      freshForSeconds: MARKET_MONTH_FRESH_SECONDS,
+      staleForSeconds: MARKET_MONTH_STALE_SECONDS,
+      dataStatus: "ok",
+    })
+    : null;
+  return {
+    collections,
+    failures,
+    bundleCache: {
+      state: bundleWrite?.state ?? bundle?.state ?? (useCache ? "miss" : "unavailable"),
+      capturedAt: bundleWrite?.capturedAt ?? bundle?.capturedAt ?? null,
+      fallback: false,
+    },
+  };
 }
 
 function propertySummaries(trades: TradeRecord[]): PropertySummary[] {
@@ -141,7 +208,7 @@ export async function GET(request: Request) {
     const query = (params.get("query") || "").trim().toLocaleLowerCase("ko");
     const exact = params.get("exact") === "1";
     const useMonthCache = !query && monthCount <= 12;
-    const { collections, failures } = await fetchMonths(type, lawd, requestedMonths, useMonthCache);
+    const { collections, failures, bundleCache } = await fetchMonths(type, lawd, requestedMonths, useMonthCache);
     const partialMonthIds = [
       ...failures.keys(),
       ...[...collections].filter(([, collection]) => collection.partial).map(([month]) => month),
@@ -204,6 +271,7 @@ export async function GET(request: Request) {
         period: { from, to, basis: "calendar-month", completeness: "provisional" },
         cache: {
           enabledForRequest: useMonthCache,
+          bundle: bundleCache,
           months: [...collections].map(([month, collection]) => ({ month, state: collection.cache.state, capturedAt: collection.cache.capturedAt, fallback: collection.cache.fallback })),
         },
       },

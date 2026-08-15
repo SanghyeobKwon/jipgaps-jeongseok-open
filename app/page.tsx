@@ -1037,7 +1037,7 @@ export default function Home() {
   const pendingPropertyRef = useRef("");
   const pendingBoundaryRef = useRef("");
   const boundaryDongsRef = useRef<BoundaryDong[]>([]);
-  const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
+  const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(3); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState(""); const [analysisAddressInput, setAnalysisAddressInput] = useState("서울특별시 강남구");
   const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [propertiesRegionCode, setPropertiesRegionCode] = useState(""); const [selectedKey, setSelectedKey] = useState("");
   const [researchBundle, setResearchBundle] = useState<ResearchBundle | null>(null);
@@ -1201,7 +1201,7 @@ export default function Home() {
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setLoading(true); setError(""); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all");
-      const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 6)), query: submittedQuery });
+      const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 3)), query: submittedQuery });
       fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { const nextProperties = data.properties || []; setTrades(data.trades || []); setProperties(nextProperties); setPropertiesRegionCode(regionCode); setResearchBundle(data.research || null); setDataFeedback({ status: data.status || ((data.trades || []).length ? "ok" : "empty"), warnings: data.meta?.warnings || [] }); const requested = pendingPropertyRef.current; const restored = requested ? nextProperties.find((property: Property) => property.key === requested || property.name === requested || property.name.includes(requested)) : undefined; if (restored) { setSelectedKey(restored.key); setQuery(restored.name); setSubmittedQuery(restored.name); pendingPropertyRef.current = ""; } else if (nextProperties.length === 1) setSelectedKey(nextProperties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") { setResearchBundle(null); setError(publicDataErrorMessage(reason.message)); setDataFeedback({ status: "partial", warnings: [reason.message] }); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };

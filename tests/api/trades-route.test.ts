@@ -140,6 +140,44 @@ test("12개월 이하 거래 요청은 월별 fresh 캐시에서 외부 API 호�
   });
 });
 
+test("월별 묶음 캐시는 한 번의 Supabase 요청으로 거래를 복원한다", async () => {
+  const parsed = parseMolitPage(await fixture("page-1.xml"));
+  const now = new Date();
+  const months = Array.from({ length: 3 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (2 - index), 1);
+    return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}`;
+  });
+  let supabaseCalls = 0;
+  let upstreamCalls = 0;
+  await withSupabaseCache((async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "cache.supabase.test") {
+      supabaseCalls += 1;
+      const timestamp = Date.now();
+      return Response.json([{
+        namespace: "market-month-bundle",
+        cache_key: "test",
+        payload: { months: months.map((month) => [month, { rows: parsed.rows, totalCount: parsed.totalCount, fetchedPages: 1, partial: false, warnings: [] }]) },
+        data_status: "ok",
+        captured_at: new Date(timestamp - 1_000).toISOString(),
+        fresh_until: new Date(timestamp + 60_000).toISOString(),
+        stale_until: new Date(timestamp + 120_000).toISOString(),
+        size_bytes: 100,
+      }]);
+    }
+    upstreamCalls += 1;
+    return new Response("unexpected", { status: 500 });
+  }) as typeof fetch, async () => {
+    const response = await getTrades(new Request("https://example.test/api/trades?type=apt&lawd=11680&months=3"));
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(supabaseCalls, 1);
+    assert.equal(upstreamCalls, 0);
+    assert.equal(payload.meta.cache.bundle.state, "fresh");
+    assert.ok(payload.meta.cache.months.every((month: { state: string }) => month.state === "fresh"));
+  });
+});
+
 test("월별 stale 캐시는 원본 갱신 실패 때 partial 경고와 함께 사용한다", async () => {
   const parsed = parseMolitPage(await fixture("page-1.xml"));
   await withSupabaseCache((async (input) => {
