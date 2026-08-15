@@ -32,4 +32,5 @@ test("행정경계 지도는 모든 지역에서 선택 중심 확대와 전체 
   assert.match(page, /aria-label="선택 지역 중심으로 지도 확대"/);
   assert.match(css, /\.administrative-map-zoom/);
   assert.match(css, /min-height:\s*44px/);
+  assert.match(css, /@media \(max-width: 767px\)[\s\S]*?\.administrative-map-zoom \{[\s\S]*?top:\s*112px;[\s\S]*?bottom:\s*auto;/);
 });

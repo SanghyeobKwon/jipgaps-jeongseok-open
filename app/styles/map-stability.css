@@ -118,8 +118,9 @@
 
 @media (max-width: 767px) {
   .administrative-map-zoom {
+    top: 112px;
     right: 10px;
-    bottom: 86px;
+    bottom: auto;
     grid-template-columns: 44px 58px 44px;
   }
 
