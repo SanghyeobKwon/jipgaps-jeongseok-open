@@ -405,7 +405,14 @@ function PriceChart({ points, unit, theme }: { points: ChartPoint[]; unit: "pric
       ctx.fillStyle = chartTooltip; ctx.strokeStyle = chartBorder; ctx.lineWidth = 1; ctx.fillRect(boxX, boxY, boxW, 66); ctx.strokeRect(boxX, boxY, boxW, 66);
       ctx.textAlign = "left"; ctx.fillStyle = chartMuted; ctx.font = "10px sans-serif"; ctx.fillText(`${point.month} · 거래 ${point.volume}건`, boxX + 11, boxY + 17); ctx.fillStyle = chartText; ctx.font = "700 13px sans-serif"; ctx.fillText(formatPrice(point.price), boxX + 11, boxY + 38); ctx.fillStyle = chartMuted; ctx.font = "10px sans-serif"; ctx.fillText(`3개월 이동평균 ${formatPrice(point.average)}`, boxX + 11, boxY + 56);
     };
-    draw(); const observer = new ResizeObserver(draw); observer.observe(host); return () => observer.disconnect();
+    let resizeFrame = 0;
+    draw();
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = window.requestAnimationFrame(draw);
+    });
+    observer.observe(host);
+    return () => { observer.disconnect(); window.cancelAnimationFrame(resizeFrame); };
   }, [points, hover, theme, unit]);
 
   return <canvas ref={canvasRef} onPointerMove={(event) => { const rect = event.currentTarget.getBoundingClientRect(); const plotWidth = rect.width - 87; const index = Math.round(((event.clientX - rect.left - 15) / plotWidth) * (points.length - 1)); setHover(Math.max(0, Math.min(points.length - 1, index))); }} onPointerLeave={() => setHover(null)} aria-label="월별 실거래 중위가격과 거래량 차트" />;
@@ -1180,7 +1187,14 @@ export default function Home() {
   useEffect(() => {
     const nav = navRef.current; const link = nav?.querySelector<HTMLAnchorElement>(`a[data-view="${activeSection}"]`); if (!nav || !link) return;
     const updateIndicator = () => setNavIndicator({ left: link.offsetLeft, width: link.offsetWidth });
-    updateIndicator(); const observer = new ResizeObserver(updateIndicator); observer.observe(nav); return () => observer.disconnect();
+    let resizeFrame = 0;
+    updateIndicator();
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = window.requestAnimationFrame(updateIndicator);
+    });
+    observer.observe(nav);
+    return () => { observer.disconnect(); window.cancelAnimationFrame(resizeFrame); };
   }, [activeSection]);
 
   useEffect(() => {

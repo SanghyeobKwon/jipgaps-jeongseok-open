@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/playwright-report/
+/test-results/
 
 # next.js
 /.next/
@@ -48,3 +50,4 @@ yarn-error.log*
 # local Codex UI verification artifacts
 /.impeccable/
 /.codex-local-dev.*.log
+/.codex-dev-*.log

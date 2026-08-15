@@ -27,21 +27,45 @@ jobs:
         with:
           node-version: 24
 
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install project dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for deployment smoke test
+        run: pnpm exec playwright install --with-deps chromium
+
       - name: Install Vercel CLI
         run: npm install --global vercel@58.9.0
 
       - name: Pull production configuration
-        run: vercel pull --yes --environment=production --scope=trader-kwon
+        run: vercel pull --yes --environment=production
 
       - name: Build and deploy on Vercel
         id: deploy
         shell: bash
         run: |
           set -euo pipefail
-          url="$(vercel deploy --prod --yes --scope=trader-kwon)"
+          url="$(vercel deploy --prod --yes)"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "### Production deployment" >> "$GITHUB_STEP_SUMMARY"
           echo "$url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify Kakao map, property markers and SDK
+        id: map_smoke
+        continue-on-error: true
+        env:
+          BASE_URL: https://jipgaps-jeongseok.vercel.app
+        run: pnpm test:deployed-map
+
+      - name: Roll back a failed map deployment
+        if: steps.map_smoke.outcome == 'failure'
+        run: vercel rollback --yes
+
+      - name: Stop after failed map verification
+        if: steps.map_smoke.outcome == 'failure'
+        run: exit 1
 
       - name: Verify production response
         shell: bash
@@ -49,5 +73,5 @@ jobs:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
         run: |
           set -euo pipefail
-          vercel curl / --deployment "$DEPLOYMENT_URL" --scope=trader-kwon --silent --output response.html
+          vercel curl / --deployment "$DEPLOYMENT_URL" --silent --output response.html
           test -s response.html

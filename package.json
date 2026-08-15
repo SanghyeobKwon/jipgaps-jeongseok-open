@@ -2,6 +2,7 @@
   "name": "site-creator-vinext-starter",
   "version": "1.1.1",
   "private": true,
+  "packageManager": "pnpm@11.19.0",
   "engines": {
     "node": ">=22.13.0"
   },
@@ -11,6 +12,7 @@
     "start": "vinext start",
     "test": "pnpm build && node --experimental-strip-types --test tests/run-tests.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "test:deployed-map": "playwright test e2e/kakao-map-production.spec.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
@@ -23,6 +25,7 @@
     "@cloudflare/vite-plugin": "1.37.1",
     "@eslint/js": "9.39.4",
     "@next/eslint-plugin-next": "16.2.6",
+    "@playwright/test": "1.62.1",
     "@tailwindcss/postcss": "4.2.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "22.19.19",
