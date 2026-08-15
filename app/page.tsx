@@ -5,6 +5,7 @@ import { Archive, Baby, BedDouble, Building2, BusFront, CarFront, Drama, Dumbbel
 import regions from "./data/regions.json";
 import { PropertyTypeIcon as AnalysisPropertyTypeIcon, ResearchAnalysisWorkspace, type PriceBucket, type ResearchCell, type ResearchPropertyRow, type ResearchView as AnalysisResearchView } from "./components/analysis";
 import { geometryLabelPoint, type SupportedGeometry } from "./lib/map/geometry";
+import { selectVisibleMapMarkerKeys } from "./lib/map/marker-visibility";
 import { selectNearbyPropertyCandidates } from "./lib/map/nearby-properties";
 import type { MapCamera, MapDataStatus } from "./lib/map/types";
 import type { AreaPriceSummary, DataState, ResearchBundle, ResearchMetric, SampleStatus } from "./lib/market/types";
@@ -69,8 +70,8 @@ type DongMarketStat = { count: number; median: number; perPy: number };
 type GeoJsonFeature = { type: "Feature"; properties: Record<string, unknown>; geometry: Record<string, unknown> };
 type GeoJsonFeatureCollection = { type: "FeatureCollection"; features: GeoJsonFeature[] };
 type KakaoLatLng = { getLat?: () => number; getLng?: () => number };
-type KakaoBounds = { extend: (latLng: KakaoLatLng) => void };
-type KakaoMapInstance = { setBounds: (bounds: KakaoBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number) => void; setCenter?: (latLng: KakaoLatLng) => void; getCenter?: () => KakaoLatLng; getLevel: () => number; setLevel: (level: number) => void; addControl?: (control: unknown, position: unknown) => void; relayout?: () => void };
+type KakaoBounds = { extend: (latLng: KakaoLatLng) => void; getSouthWest?: () => KakaoLatLng; getNorthEast?: () => KakaoLatLng };
+type KakaoMapInstance = { setBounds: (bounds: KakaoBounds, paddingTop?: number, paddingRight?: number, paddingBottom?: number, paddingLeft?: number) => void; getBounds?: () => KakaoBounds; setCenter?: (latLng: KakaoLatLng) => void; getCenter?: () => KakaoLatLng; getLevel: () => number; setLevel: (level: number) => void; addControl?: (control: unknown, position: unknown) => void; relayout?: () => void };
 type KakaoOverlayInstance = { setMap: (map: KakaoMapInstance | null) => void; setZIndex?: (zIndex: number) => void };
 type KakaoEventListener = { target: unknown; eventName: string; listener: (...args: unknown[]) => void };
 type KakaoMapsApi = { maps: {
@@ -804,6 +805,8 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   const mapInstanceRef = useRef<KakaoMapInstance | null>(null);
   const initialCameraRef = useRef<MapCamera | null>(camera);
   const selectedPropertyKeyRef = useRef(selectedPropertyKey);
+  const onCameraChangeRef = useRef(onCameraChange);
+  const onSelectPropertyRef = useRef(onSelectProperty);
   const applyMarkerSelectionRef = useRef<(key: string) => void>(() => undefined);
   const [mapError, setMapError] = useState("");
   const stageTitle = focus === "national" ? "대한민국 16개 시·도" : focus === "sido" ? selectedSido : focus === "buildings" ? `${activeRegion.sido} ${activeRegion.sigungu} · ${selectedDong === "all" ? selectedBoundaryDong : selectedDong}` : `${activeRegion.sido} ${activeRegion.sigungu}${selectedBoundaryDong ? ` · ${selectedBoundaryDong}` : ""}`;
@@ -825,10 +828,18 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
   }, [selectedPropertyKey]);
 
   useEffect(() => {
+    onCameraChangeRef.current = onCameraChange;
+    onSelectPropertyRef.current = onSelectProperty;
+  }, [onCameraChange, onSelectProperty]);
+
+  useEffect(() => {
     const host = hostRef.current;
     const appKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY;
     let disposed = false;
     let resizeObserver: ResizeObserver | null = null;
+    let resizeFrame = 0;
+    let lastHostWidth = 0;
+    let lastHostHeight = 0;
     let mapInstance: KakaoMapInstance | null = null;
     let userCameraChange = false;
     const overlays: KakaoOverlayInstance[] = [];
@@ -851,8 +862,15 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
       mapInstance = map;
       mapInstanceRef.current = map;
       map.addControl?.(new maps.ZoomControl(), maps.ControlPosition.TOPRIGHT);
-      resizeObserver = new ResizeObserver(() => {
-        map.relayout?.();
+      resizeObserver = new ResizeObserver((entries) => {
+        const rect = entries[0]?.contentRect;
+        if (!rect || (Math.abs(rect.width - lastHostWidth) < 1 && Math.abs(rect.height - lastHostHeight) < 1)) return;
+        lastHostWidth = rect.width;
+        lastHostHeight = rect.height;
+        window.cancelAnimationFrame(resizeFrame);
+        resizeFrame = window.requestAnimationFrame(() => {
+          if (!disposed && mapInstanceRef.current === map) map.relayout?.();
+        });
       });
       resizeObserver.observe(host);
 
@@ -878,17 +896,31 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
         } else {
           fitBuildings(buildingLocations);
         }
-        addListener(map, "dragstart", () => { userCameraChange = true; });
-        addListener(map, "zoom_start", () => { userCameraChange = true; });
-        addListener(map, "idle", () => {
-          if (!userCameraChange || disposed || mapInstanceRef.current !== map) return;
-          userCameraChange = false;
-          const center = map.getCenter?.();
-          const lat = center?.getLat?.();
-          const lng = center?.getLng?.();
-          if (typeof lat === "number" && typeof lng === "number") onCameraChange({ contextKey: cameraContext, center: { lat, lng }, level: map.getLevel(), changedBy: "user" });
-        });
-        const markerEntries: Array<{ building: PropertyMapLocation; button: HTMLButtonElement; overlay: KakaoOverlayInstance }> = [];
+        const markerEntries: Array<{ building: PropertyMapLocation; button: HTMLButtonElement; overlay: KakaoOverlayInstance; attached: boolean }> = [];
+        const setMarkerAttached = (entry: (typeof markerEntries)[number], attached: boolean) => {
+          if (entry.attached === attached) return;
+          entry.overlay.setMap(attached ? map : null);
+          entry.attached = attached;
+        };
+        const hideMarkersForMovement = () => {
+          host.dataset.mapMoving = "true";
+          markerEntries.forEach((entry) => setMarkerAttached(entry, false));
+        };
+        const restoreVisibleMarkers = () => {
+          delete host.dataset.mapMoving;
+          const bounds = map.getBounds?.();
+          const southWest = bounds?.getSouthWest?.();
+          const northEast = bounds?.getNorthEast?.();
+          const south = southWest?.getLat?.();
+          const west = southWest?.getLng?.();
+          const north = northEast?.getLat?.();
+          const east = northEast?.getLng?.();
+          const visibleKeys = typeof south === "number" && typeof west === "number" && typeof north === "number" && typeof east === "number"
+            ? selectVisibleMapMarkerKeys(buildingLocations, { south, west, north, east }, map.getLevel(), selectedPropertyKeyRef.current)
+            : new Set(buildingLocations.slice(0, 60).map((building) => building.key));
+          markerEntries.forEach((entry) => setMarkerAttached(entry, visibleKeys.has(entry.building.key)));
+          host.dataset.visibleMarkers = String(visibleKeys.size);
+        };
         const renderMarkerSelection = (selectedKey: string) => {
           markerEntries.forEach(({ building, button, overlay }) => {
             const heat = classifyMapPrice(building.lastAmount, visibleMapPriceBands);
@@ -901,18 +933,33 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
             overlay.setZIndex?.(isSelected ? 140 : 30 + Math.min(building.count, 20));
           });
         };
-        applyMarkerSelectionRef.current = renderMarkerSelection;
+        applyMarkerSelectionRef.current = (key) => {
+          renderMarkerSelection(key);
+          restoreVisibleMarkers();
+        };
         buildingLocations.forEach((building) => {
           const heat = classifyMapPrice(building.lastAmount, visibleMapPriceBands);
           const isSelected = building.key === selectedPropertyKeyRef.current;
           const button = document.createElement("button");
           button.type = "button"; button.className = `naver-building-pin ${isSelected ? "detail-pin is-active" : "icon-pin"} ${heat} kind-${building.propertyType} scope-${building.scope}`; button.setAttribute("aria-pressed", String(isSelected)); button.setAttribute("aria-label", isSelected ? `${building.dong} ${building.name}, 선택됨, 최근 실거래 ${formatPrice(building.lastAmount)}, ${building.count}건` : `${building.dong} ${building.name} ${PROPERTY_MAP_META[building.propertyType].short}, 가격 확인`); button.title = isSelected ? `${building.name}\n${PROPERTY_MAP_META[building.propertyType].short} · 최근 실거래 ${formatPrice(building.lastAmount)} · 최근 3개월 ${building.count}건` : `${building.name}\n눌러서 최근 실거래 가격 확인`; button.innerHTML = isSelected ? `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i><span class="property-marker-copy"><small>${escapeMapHtml(PROPERTY_MAP_META[building.propertyType].short)} · 최근 실거래</small><strong>${escapeMapHtml(formatPrice(building.lastAmount))}</strong><em>${escapeMapHtml(building.name)} · ${building.count}건</em></span>` : `<i class="property-marker-icon">${propertyMapIconMarkup(building.propertyType)}</i>`;
-          const overlay = new maps.CustomOverlay({ position: new maps.LatLng(building.lat, building.lng), map, content: button, xAnchor: .5, yAnchor: 1, zIndex: isSelected ? 140 : 30 + Math.min(building.count, 20) });
-          markerEntries.push({ building, button, overlay });
-          button.addEventListener("click", () => { renderMarkerSelection(building.key); onSelectProperty(building.key); });
+          const overlay = new maps.CustomOverlay({ position: new maps.LatLng(building.lat, building.lng), map: null, content: button, xAnchor: .5, yAnchor: 1, zIndex: isSelected ? 140 : 30 + Math.min(building.count, 20) });
+          markerEntries.push({ building, button, overlay, attached: false });
+          button.addEventListener("click", () => { applyMarkerSelectionRef.current(building.key); onSelectPropertyRef.current(building.key); });
           overlays.push(overlay);
         });
         renderMarkerSelection(selectedPropertyKeyRef.current);
+        restoreVisibleMarkers();
+        addListener(map, "dragstart", () => { userCameraChange = true; hideMarkersForMovement(); });
+        addListener(map, "zoom_start", () => { userCameraChange = true; hideMarkersForMovement(); });
+        addListener(map, "idle", () => {
+          restoreVisibleMarkers();
+          if (!userCameraChange || disposed || mapInstanceRef.current !== map) return;
+          userCameraChange = false;
+          const center = map.getCenter?.();
+          const lat = center?.getLat?.();
+          const lng = center?.getLng?.();
+          if (typeof lat === "number" && typeof lng === "number") onCameraChangeRef.current({ contextKey: cameraContext, center: { lat, lng }, level: map.getLevel(), changedBy: "user" });
+        });
         setMapError("");
         return;
       }
@@ -921,9 +968,9 @@ function KakaoMarketMap({ markets, focus, active, propertyType, selectedSido, ac
     }).catch((error) => { if (!disposed && (!(error instanceof Error) || error.name !== "AbortError")) setMapError(safeMapMessage(error)); });
 
     return () => {
-      disposed = true; applyMarkerSelectionRef.current = () => undefined; resizeObserver?.disconnect(); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); if (mapInstanceRef.current === mapInstance) mapInstanceRef.current = null; host.replaceChildren();
+      disposed = true; applyMarkerSelectionRef.current = () => undefined; resizeObserver?.disconnect(); window.cancelAnimationFrame(resizeFrame); listeners.forEach(safelyRemoveKakaoListener); overlays.forEach(safelyRemoveKakaoOverlay); if (mapInstanceRef.current === mapInstance) mapInstanceRef.current = null; host.replaceChildren();
     };
-  }, [active, activeRegion.code, buildingLocations, cameraContext, focus, onCameraChange, onSelectProperty, selectedSido, visibleMapPriceBands]);
+  }, [active, activeRegion.code, buildingLocations, cameraContext, focus, selectedSido, visibleMapPriceBands]);
 
   useEffect(() => {
     if (!camera || camera.changedBy !== "restore" || focus !== "buildings") return;
