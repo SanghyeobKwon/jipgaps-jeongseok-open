@@ -16,6 +16,8 @@ test("건물 위치 Route는 검증 좌표만 90일 캐시하고 현재 가격 �
   const locations = await source("app/api/property-locations/route.ts");
   assert.match(locations, /readCache<VerifiedGeocode>\("property-geocode"/);
   assert.match(locations, /readCache<PropertyLocationBundle>\("property-geocode-bundle"/);
+  assert.match(locations, /freshForSeconds:\s*complete \? 7 \* 24 \* 60 \* 60 : 15 \* 60/);
+  assert.match(locations, /dataStatus:\s*complete \? "ok" : "partial"/);
   assert.match(locations, /freshForSeconds: 90 \* 24 \* 60 \* 60/);
   assert.match(locations, /slice\(0, 30\)/);
   assert.match(locations, /index \+= 10/);

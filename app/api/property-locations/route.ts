@@ -8,7 +8,13 @@ export const dynamic = "force-dynamic";
 
 type PropertyRequest = { key?: string; name?: string; dong?: string; jibun?: string; count?: number; lastAmount?: number; propertyType?: string; scope?: Partial<MapScope> };
 type CachedPropertyLocation = { key: string; address: VerifiedGeocode };
-type PropertyLocationBundle = { entries: CachedPropertyLocation[] };
+type PropertyLocationBundle = {
+  entries: CachedPropertyLocation[];
+  complete: boolean;
+  rejected: number;
+  rejectionReasons: string[];
+  failures: number;
+};
 const PROPERTY_TYPES = new Set(["apt", "rowhouse", "house", "officetel", "commercial", "factory"]);
 const clean = (value: unknown, max: number) => String(value || "").replace(/[<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 
@@ -57,9 +63,10 @@ export async function POST(request: Request) {
       codes: address.codes,
       validation: "verified",
     });
-    if (bundleCache.state === "fresh" && prepared.length && prepared.every(({ key }) => bundleIndex.has(key))) {
-      const bundledLocations = prepared.map((entry) => locationValue(entry, bundleIndex.get(entry.key)!));
-      return Response.json({ status: "success", locations: bundledLocations, requested: properties.length, matched: bundledLocations.length, rejected: 0, rejectionReasons: [], failures: 0, source: "국토교통부 실거래가 + Kakao verified coordinates", cache: { ...cacheStates, bundle: "fresh" }, mapFallback: { markerAllowed: true, reason: "verified_coordinate" } }, { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800" } });
+    if (bundleCache.state === "fresh" && prepared.length && bundleCache.data?.entries.length) {
+      const bundledLocations = prepared.filter(({ key }) => bundleIndex.has(key)).map((entry) => locationValue(entry, bundleIndex.get(entry.key)!));
+      const bundleStatus: MapDataStatus = bundleCache.data.complete && bundledLocations.length === prepared.length ? "success" : "partial";
+      return Response.json({ status: bundleStatus, locations: bundledLocations, requested: properties.length, matched: bundledLocations.length, rejected: bundleCache.data.rejected, rejectionReasons: bundleCache.data.rejectionReasons, failures: bundleCache.data.failures, source: "국토교통부 실거래가 + Kakao verified coordinates", cache: { ...cacheStates, bundle: "fresh" }, mapFallback: { markerAllowed: true, reason: "verified_coordinate" } }, { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800" } });
     }
 
     for (let index = 0; index < prepared.length; index += 10) {
@@ -102,7 +109,8 @@ export async function POST(request: Request) {
       });
     }
 
-    if (prepared.length && locations.length === prepared.length && !failures.length) {
+    if (prepared.length && locations.length) {
+      const complete = locations.length === prepared.length && !failures.length && !empty && !rejected;
       const entries = locations.map((location) => ({
         key: String(location.key),
         address: {
@@ -111,7 +119,11 @@ export async function POST(request: Request) {
           codes: (location.codes || {}) as VerifiedGeocode["codes"],
         },
       }));
-      await writeCache("property-geocode-bundle", bundleKey, { entries }, { freshForSeconds: 7 * 24 * 60 * 60, staleForSeconds: 30 * 24 * 60 * 60, dataStatus: "ok" });
+      await writeCache("property-geocode-bundle", bundleKey, { entries, complete, rejected, rejectionReasons: [...new Set(rejections)], failures: failures.length }, {
+        freshForSeconds: complete ? 7 * 24 * 60 * 60 : 15 * 60,
+        staleForSeconds: complete ? 30 * 24 * 60 * 60 : 24 * 60 * 60,
+        dataStatus: complete ? "ok" : "partial",
+      });
     }
 
     if (!restApiKey && !locations.length && failures.length) return Response.json({ status: "error", error: "카카오 REST API 키가 설정되지 않았습니다.", rejected, failures: failures.length, cache: cacheStates, mapFallback: { markerAllowed: false, reason: "upstream_failure" } }, { status: 503 });
