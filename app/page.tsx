@@ -956,12 +956,13 @@ export default function Home() {
   const spaceFurnitureSequenceRef = useRef(0);
   const historyModeRef = useRef<"replace" | "push">("replace");
   const restoringUrlRef = useRef(false);
+  const viewportContextRef = useRef("");
   const pendingPropertyRef = useRef("");
   const pendingBoundaryRef = useRef("");
   const boundaryDongsRef = useRef<BoundaryDong[]>([]);
   const [type, setType] = useState<PropertyType>("apt"); const [period, setPeriod] = useState(12); const [regionCode, setRegionCode] = useState("11680");
   const [regionInput, setRegionInput] = useState("서울특별시 강남구"); const [query, setQuery] = useState(""); const [submittedQuery, setSubmittedQuery] = useState(""); const [analysisAddressInput, setAnalysisAddressInput] = useState("서울특별시 강남구");
-  const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [selectedKey, setSelectedKey] = useState("");
+  const [trades, setTrades] = useState<Trade[]>([]); const [properties, setProperties] = useState<Property[]>([]); const [propertiesRegionCode, setPropertiesRegionCode] = useState(""); const [selectedKey, setSelectedKey] = useState("");
   const [researchBundle, setResearchBundle] = useState<ResearchBundle | null>(null);
   const [selectedDong, setSelectedDong] = useState("all"); const [selectedBuildingDong, setSelectedBuildingDong] = useState(""); const [selectedAreaBucket, setSelectedAreaBucket] = useState<number | null>(null); const [selectedVariantKey, setSelectedVariantKey] = useState("");
   const [area, setArea] = useState("all"); const [tradeAreaFilter, setTradeAreaFilter] = useState("all"); const [unit, setUnit] = useState<"price" | "py">("price"); const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [dataRetry, setDataRetry] = useState(0);
@@ -1117,7 +1118,7 @@ export default function Home() {
     const timer = window.setTimeout(() => {
       setLoading(true); setError(""); setSelectedKey(""); setSelectedBuildingDong(""); setSelectedAreaBucket(null); setSelectedVariantKey(""); setArea("all");
       const params = new URLSearchParams({ type, lawd: regionCode, months: String(Math.max(period, 6)), query: submittedQuery });
-      fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { const nextProperties = data.properties || []; setTrades(data.trades || []); setProperties(nextProperties); setResearchBundle(data.research || null); setDataFeedback({ status: data.status || ((data.trades || []).length ? "ok" : "empty"), warnings: data.meta?.warnings || [] }); const requested = pendingPropertyRef.current; const restored = requested ? nextProperties.find((property: Property) => property.key === requested || property.name === requested || property.name.includes(requested)) : undefined; if (restored) { setSelectedKey(restored.key); setQuery(restored.name); setSubmittedQuery(restored.name); pendingPropertyRef.current = ""; } else if (nextProperties.length === 1) setSelectedKey(nextProperties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") { setResearchBundle(null); setError(publicDataErrorMessage(reason.message)); setDataFeedback({ status: "partial", warnings: [reason.message] }); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      fetch(`/api/trades?${params}`, { signal: controller.signal }).then(async (response) => { const data = await response.json(); if (!response.ok || data.error) throw new Error(data.error || "실거래가를 불러오지 못했습니다."); return data; }).then((data) => { const nextProperties = data.properties || []; setTrades(data.trades || []); setProperties(nextProperties); setPropertiesRegionCode(regionCode); setResearchBundle(data.research || null); setDataFeedback({ status: data.status || ((data.trades || []).length ? "ok" : "empty"), warnings: data.meta?.warnings || [] }); const requested = pendingPropertyRef.current; const restored = requested ? nextProperties.find((property: Property) => property.key === requested || property.name === requested || property.name.includes(requested)) : undefined; if (restored) { setSelectedKey(restored.key); setQuery(restored.name); setSubmittedQuery(restored.name); pendingPropertyRef.current = ""; } else if (nextProperties.length === 1) setSelectedKey(nextProperties[0].key); }).catch((reason) => { if (reason.name !== "AbortError") { setResearchBundle(null); setError(publicDataErrorMessage(reason.message)); setDataFeedback({ status: "partial", warnings: [reason.message] }); } }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [type, regionCode, period, submittedQuery, dataRetry]);
@@ -1369,8 +1370,12 @@ export default function Home() {
     });
     return stats;
   }, [trades, latestQuarterMonths]);
-  const buildingCandidates = useMemo(() => selectNearbyPropertyCandidates(properties, selectedDong, 90, 24), [properties, selectedDong]);
+  const buildingCandidates = useMemo(() => propertiesRegionCode === regionCode ? selectNearbyPropertyCandidates(properties, selectedDong, 90, 24) : [], [properties, propertiesRegionCode, regionCode, selectedDong]);
   useEffect(() => {
+    if (mapFocus === "buildings" && propertiesRegionCode !== regionCode) {
+      const waitingTimer = window.setTimeout(() => setBuildingsLoading(true), 0);
+      return () => window.clearTimeout(waitingTimer);
+    }
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       if (mapFocus !== "buildings" || selectedDong === "all" || !buildingCandidates.length) {
@@ -1400,7 +1405,7 @@ export default function Home() {
         .finally(() => { if (!controller.signal.aborted) setBuildingsLoading(false); });
     }, 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingCandidates, mapFocus, selectedBCode, selectedBoundaryCode, selectedDong, selectedHCode, type]);
+  }, [activeRegion.code, activeRegion.sigungu, activeRegion.sido, buildingCandidates, mapFocus, propertiesRegionCode, regionCode, selectedBCode, selectedBoundaryCode, selectedDong, selectedHCode, type]);
   const targetTrade = filteredTrades.at(-1); const targetArea = area === "all" ? targetTrade?.area || 0 : Number(area);
   const subjectPerPy = filteredTrades.filter((trade) => trade.area > 0 && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15)).slice(-20).map((trade) => trade.amount / (trade.area / 3.3058));
   const latestPeers = scopedTrades.filter((trade) => trade.propertyKey !== selectedKey && trade.area > 0 && trade.date.startsWith(latestMonth) && (!targetArea || Math.abs(trade.area - targetArea) / targetArea <= .15));
@@ -1467,6 +1472,32 @@ export default function Home() {
       }
     }
   }, [properties, selectedDong]);
+  useEffect(() => {
+    if (mapFocus !== "buildings" || !mapCamera || mapCamera.changedBy !== "user") return;
+    const rounded = `${mapCamera.center.lat.toFixed(4)}|${mapCamera.center.lng.toFixed(4)}|${mapCamera.level}`;
+    if (viewportContextRef.current === rounded) return;
+    viewportContextRef.current = rounded;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({ lat: String(mapCamera.center.lat), lng: String(mapCamera.center.lng) });
+      fetch(`/api/map-context?${params}`, { signal: controller.signal }).then(async (response) => {
+        const data = await response.json();
+        if (!response.ok || data.error || !data.sigungu?.code) throw new Error(data.error || "현재 지도 영역을 확인하지 못했습니다.");
+        return data;
+      }).then((data) => {
+        const nextRegion = REGIONS.find((region) => region.code === data.sigungu.code);
+        const nextDong = String(data.legalDong?.name || "").trim();
+        if (!nextRegion || !nextDong) return;
+        const regionChanged = nextRegion.code !== regionCode;
+        const dongChanged = nextDong !== selectedDong;
+        if (!regionChanged && !dongChanged) return;
+        historyModeRef.current = "replace";
+        setMapCamera((current) => current ? { ...current, contextKey: nextRegion.code, changedBy: "restore" } : current);
+        setRegionCode(nextRegion.code); setSelectedMapSido(nextRegion.sido); setRegionInput(`${nextRegion.sido} ${nextRegion.sigungu}`); setSelectedDong(nextDong); setMapPickerDong(String(data.administrativeDong?.name || nextDong)); setSelectedBoundaryDong(""); setSelectedHCode(String(data.administrativeDong?.code || "")); setSelectedBCode(String(data.legalDong?.code || "")); setMapFocus("buildings"); setSubmittedQuery(""); setQuery(""); resetPropertySelection();
+      }).catch((reason) => { if (reason.name !== "AbortError") viewportContextRef.current = ""; });
+    }, 500);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [mapCamera, mapFocus, regionCode, resetPropertySelection, selectedDong]);
   const openSelectedPropertyMap = useCallback(() => {
     if (!selectedProperty) return;
     historyModeRef.current = "push"; setSelectedMapSido(activeRegion.sido); setSelectedDong(selectedProperty.dong); setSelectedBoundaryDong(""); setMapPickerDong(selectedProperty.dong); setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district"); setActiveSection("research");
