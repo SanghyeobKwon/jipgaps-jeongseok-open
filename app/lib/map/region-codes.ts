@@ -23,7 +23,9 @@ export type ScopeValidation = {
   sidoCode?: string;
   sigunguCode?: string;
   adminDongCode?: string;
+  adminDongName?: string;
   legalDongCode?: string;
+  legalDongName?: string;
 };
 
 export function cleanRegionCode(value: unknown, length?: number) {
@@ -78,7 +80,9 @@ export function validateRegionScope(scope: Partial<MapScope>, regions: ResolvedR
     sidoCode,
     sigunguCode,
     adminDongCode: administrativeCode || undefined,
+    adminDongName: regions.administrative?.region_3depth_name || undefined,
     legalDongCode: legalCode || undefined,
+    legalDongName: regions.legal?.region_3depth_name || undefined,
   };
 }
 

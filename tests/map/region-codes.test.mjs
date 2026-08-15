@@ -9,6 +9,8 @@ const regions = selectRegionDocuments([
 
 test("validates distinct h_code and b_code without name regex", () => {
   assert.equal(validateRegionScope({ sidoCode: "11", sigunguCode: "11680", adminDongCode: "1168064000", legalDongCode: "1168010100", adminDongName: "역삼1동", legalDongName: "역삼동" }, regions).valid, true);
+  assert.equal(validateRegionScope({}, regions).adminDongName, "역삼1동");
+  assert.equal(validateRegionScope({}, regions).legalDongName, "역삼동");
 });
 test("rejects code mismatch even when a similar name could match", () => {
   const result = validateRegionScope({ sigunguCode: "11500", legalDongName: "역삼동" }, regions);

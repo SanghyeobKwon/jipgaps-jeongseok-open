@@ -29,7 +29,7 @@ type ResearchCategory = { id: string; number: string; label: string; short: stri
 type CommunityCategory = { id: string; number: string; label: string; description: string; boards: string[] };
 type CommunityGuide = { id: string; category: string; board: string; tag: string; title: string; summary: string; evidence: string };
 type FieldFeature = { id: string; group: string; title: string; information: string; value: string; importance: 4 | 5; status: "live" | "beta" | "connect"; source: string };
-type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAddress: string; codes?: { adminDongCode?: string; legalDongCode?: string } };
+type PropertyLocation = { lat: number; lng: number; roadAddress: string; jibunAddress: string; codes?: { adminDongCode?: string; adminDongName?: string; legalDongCode?: string; legalDongName?: string } };
 type PropertyMapLocation = PropertyLocation & { key: string; name: string; dong: string; jibun: string; count: number; lastAmount: number; propertyType: PropertyType; scope: "selected" | "nearby"; validation?: "verified" };
 type NearbyPlace = { id: string; name: string; category: string; subCategory: string; distance: number; walkingMinutes: number; lat: number; lng: number; detail: string };
 type CommuteEstimate = { destination: string; address: string; distance: number; walkingMinutes: number; drivingMinutes: number; transitMinutes: number };
@@ -790,7 +790,7 @@ function AdministrativeMarketMap({ focus, active, markets, selectedSido, activeR
       })}</g>
     </svg> : <div className="administrative-map-loading"><i />행정경계를 조립하고 있습니다.</div>}
     {focus === "district" && parentLocatorBoundaries.length > 0 && <aside className="parent-region-locator" aria-label={`${activeRegion.sido} 안에서 ${activeRegion.sigungu}의 위치`}><span>{activeRegion.sido} 안의 위치</span><b>{activeRegion.sigungu}</b><svg viewBox="0 0 160 112" role="img" aria-label={`${activeRegion.sigungu}가 강조된 ${activeRegion.sido} 지도`}>{parentLocatorBoundaries.map((boundary) => <path key={boundary.code} className={boundary.code === activeRegion.code ? "selected" : ""} d={boundary.path} fillRule="evenodd" />)}</svg></aside>}
-    <div className="administrative-map-foot"><span><i />선택 지역</span><b>{focus === "national" ? selectedSido : focus === "sido" ? activeRegion.sigungu : selectedBoundaryDong || "동을 선택하세요"}</b><small>{focus === "district" ? selectedBoundaryDong ? dongStats[selectedBoundaryDong] ? `${formatDongMetric(dongStats[selectedBoundaryDong], dongMetric)} · 공식 동 이름이 일치하는 거래만 연결합니다.` : "행정동 경계는 선택됐지만 법정동 거래와 자동 합치지 않습니다." : "경계를 누르면 지역명과 실거래 요약을 먼저 확인합니다." : "경계를 누르면 한 단계씩 확대됩니다."}</small>{focus === "district" && selectedBoundaryDong && selectedDong !== "all" && <button type="button" className="administrative-map-open" disabled={!ROAD_MAP_AVAILABLE} onClick={onOpenBuildings}>{ROAD_MAP_AVAILABLE ? "건물 지도 보기" : "카카오 지도 키 연결 전"}</button>}</div>
+    <div className="administrative-map-foot"><span><i />선택 지역</span><b>{focus === "national" ? selectedSido : focus === "sido" ? activeRegion.sigungu : selectedBoundaryDong || "동을 선택하세요"}</b><small>{focus === "district" ? selectedBoundaryDong ? selectedDong !== "all" && selectedDong !== selectedBoundaryDong ? `${selectedDong} 법정동 실거래와 공식 코드로 연결했습니다.` : dongStats[selectedBoundaryDong] ? `${formatDongMetric(dongStats[selectedBoundaryDong], dongMetric)} · 공식 동 이름이 일치하는 거래만 연결합니다.` : "행정동의 공식 법정동 코드를 확인하고 있습니다." : "경계를 누르면 지역명과 실거래 요약을 먼저 확인합니다." : "경계를 누르면 한 단계씩 확대됩니다."}</small>{focus === "district" && selectedBoundaryDong && selectedDong !== "all" && <button type="button" className="administrative-map-open" disabled={!ROAD_MAP_AVAILABLE} onClick={onOpenBuildings}>{ROAD_MAP_AVAILABLE ? "건물 지도 보기" : "카카오 지도 키 연결 전"}</button>}</div>
     {boundaryError && <div className="administrative-map-error" role="status"><b>행정경계를 불러오지 못했습니다.</b><span>{boundaryError}</span><button type="button" onClick={() => setBoundaryRetry((value) => value + 1)}>다시 불러오기</button></div>}
   </div>;
 }
@@ -1377,6 +1377,32 @@ export default function Home() {
       .catch((error) => { if (error instanceof Error && error.name !== "AbortError") { setNearbyBoundaryDongs([]); setNearbyLegalDongs([]); } });
     return () => controller.abort();
   }, [activeRegion.code, selectedBoundaryDong, selectedDong]);
+  useEffect(() => {
+    if (!selectedBoundaryDong || selectedDong !== "all" || !selectedBoundaryCode) return;
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      query: `${activeRegion.sido} ${activeRegion.sigungu} ${selectedBoundaryDong} 주민센터`,
+      sido: activeRegion.sido,
+      sigungu: activeRegion.sigungu,
+      adminDong: selectedBoundaryDong,
+      sidoCode: activeRegion.code.slice(0, 2),
+      sigunguCode: activeRegion.code,
+      boundaryCode: selectedBoundaryCode,
+    });
+    fetch(`/api/geocode?${params}`, { signal: controller.signal })
+      .then(async (response) => { const data = await response.json(); if (!response.ok || data.error || data.validation !== "verified") throw new Error(data.error || "행정동과 법정동을 연결하지 못했습니다."); return data; })
+      .then((data) => {
+        const legalDongName = String(data.codes?.legalDongName || "").trim();
+        if (!legalDongName) throw new Error("선택한 행정동에 대응하는 실거래 법정동을 찾지 못했습니다.");
+        setSelectedHCode(data.codes?.adminDongCode || "");
+        setSelectedBCode(data.codes?.legalDongCode || "");
+        setSelectedDong(legalDongName);
+        setMapFocus(ROAD_MAP_AVAILABLE ? "buildings" : "district");
+      })
+      .catch((reason) => { if (reason.name !== "AbortError") setBuildingsError(reason.message); })
+      .finally(() => { if (!controller.signal.aborted) setBuildingsLoading(false); });
+    return () => controller.abort();
+  }, [activeRegion.code, activeRegion.sigungu, activeRegion.sido, selectedBoundaryCode, selectedBoundaryDong, selectedDong]);
   const mapDongChoices = boundaryDongOptions.length ? boundaryDongOptions : dongOptions;
   const finderDongOptions = useMemo(() => [...new Set([...dongOptions, ...(selectedDong === "all" ? [] : [selectedDong])].filter(Boolean))].sort(), [dongOptions, selectedDong]);
   const mapDongStats = useMemo(() => {
@@ -1474,6 +1500,7 @@ export default function Home() {
     setSelectedBCode("");
     setSelectedBoundaryDong(dong);
     setMapPickerDong(dong);
+    setBuildingsError("");
     setMapFocus(ROAD_MAP_AVAILABLE && exactLegalDong !== "all" ? "buildings" : "district");
     resetPropertySelection();
     setSelectedDong(exactLegalDong);

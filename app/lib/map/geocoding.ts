@@ -5,7 +5,7 @@ import type { MapScope } from "./types";
 
 export type VerifiedGeocode = {
   x: string; y: string; roadAddress: string; jibunAddress: string;
-  codes: { sidoCode?: string; sigunguCode?: string; adminDongCode?: string; legalDongCode?: string; boundaryAdminCode?: string };
+  codes: { sidoCode?: string; sigunguCode?: string; adminDongCode?: string; adminDongName?: string; legalDongCode?: string; legalDongName?: string; boundaryAdminCode?: string };
 };
 
 export type GeocodeResult = { address: VerifiedGeocode | null; rejected: number; rejectionReasons: string[] };
