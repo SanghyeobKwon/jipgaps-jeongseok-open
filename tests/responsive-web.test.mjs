@@ -19,6 +19,11 @@ test("desktop analysis markup keeps the shortlist, chart and detail contracts", 
       new RegExp('className=(?:"[^"]*|\\{`[^`]*)' + className),
     );
   }
+
+  assert.match(
+    page,
+    /<\/aside>\s*<section className="watch-chart"[\s\S]*?<div className="detail-terminal">/,
+  );
 });
 
 test("desktop layout reserves a 320 to 360 pixel candidate rail", () => {
@@ -30,15 +35,14 @@ test("desktop layout reserves a 320 to 360 pixel candidate rail", () => {
   );
 });
 
-test("candidate selection is isolated from the right analysis pane", () => {
+test("candidate rail stacks the compact chart below the shortlist", () => {
   assert.match(css, /\.watch-scroll,[\s\S]*?\.watch-state[\s\S]*?overflow-y:\s*auto/);
   assert.match(css, /overscroll-behavior:\s*contain/);
   assert.match(css, /scrollbar-gutter:\s*stable/);
   assert.match(css, /overflow-anchor:\s*none/);
-  assert.match(css, /\.watch-chart\s*\{[\s\S]*?grid-column:\s*2/);
-  assert.match(css, /\.watch-chart\s*\{[\s\S]*?order:\s*0/);
-  assert.match(css, /height:\s*clamp\(220px,\s*19vw,\s*250px\)/);
-  assert.match(css, />\s*\.detail-terminal\s*\{[\s\S]*?grid-column:\s*2/);
+  assert.match(css, /\.watch-chart\s*\{[\s\S]*?grid-column:\s*1[\s\S]*?grid-row:\s*2/);
+  assert.match(css, /height:\s*clamp\(170px,\s*14vw,\s*190px\)/);
+  assert.match(css, />\s*\.detail-terminal\s*\{[\s\S]*?grid-column:\s*2[\s\S]*?grid-row:\s*1\s*\/\s*span\s*2/);
 });
 
 test("legacy hidden shortlist selectors are explicitly restored only on desktop", () => {

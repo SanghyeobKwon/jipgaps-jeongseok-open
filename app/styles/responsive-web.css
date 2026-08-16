@@ -12,26 +12,29 @@
     --web-candidate-width: clamp(320px, 25vw, 360px);
     display: grid !important;
     grid-template-columns: var(--web-candidate-width) minmax(0, 1fr) !important;
-    grid-template-rows: auto auto auto minmax(360px, 56vh) auto;
+    grid-template-rows: auto auto;
     column-gap: var(--space-3, 12px);
-    row-gap: 0;
+    row-gap: var(--space-3, 12px);
     align-items: start;
     overflow: visible;
     overflow-anchor: none;
   }
 
-  /* Flatten only the layout wrapper so its chart can occupy the right pane. */
+  /* Keep the shortlist as one rail; the supporting chart sits directly below it. */
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]
     > #price-analysis.market-browser
     > .watchlist {
-    display: contents !important;
+    grid-column: 1;
+    grid-row: 1;
+    display: flex !important;
+    min-width: 0;
+    max-height: min(620px, calc(100dvh - 220px));
+    overflow: hidden;
   }
 
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]
     #price-analysis
     .watch-head {
-    grid-column: 1;
-    grid-row: 1;
     display: flex !important;
     min-width: 0;
   }
@@ -39,8 +42,6 @@
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]
     #price-analysis
     .watch-filters {
-    grid-column: 1;
-    grid-row: 2;
     display: grid !important;
     min-width: 0;
   }
@@ -48,8 +49,6 @@
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]
     #price-analysis
     .watch-columns {
-    grid-column: 1;
-    grid-row: 3;
     display: grid !important;
     min-width: 0;
   }
@@ -57,13 +56,11 @@
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]
     #price-analysis
     :is(.watch-scroll, .watch-state) {
-    grid-column: 1;
-    grid-row: 4;
     display: block !important;
     min-width: 0;
     width: 100%;
-    height: auto !important;
-    max-height: 56vh;
+    height: min(480px, calc(100dvh - 350px)) !important;
+    max-height: none;
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -82,11 +79,11 @@
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]
     #price-analysis
     .watch-chart {
-    order: 0;
-    grid-column: 2;
-    grid-row: 1 / span 4;
+    grid-column: 1;
+    grid-row: 2;
     min-width: 0;
-    align-self: stretch;
+    width: 100%;
+    align-self: start;
     border: 1px solid var(--atlas-line, #d9e1eb);
     border-radius: var(--radius-lg, 16px);
     overflow: clip;
@@ -95,18 +92,48 @@
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]
     #price-analysis
     .watch-chart
+    :is(.period-switch, .view-switch) {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    overflow: visible;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    .watch-chart
+    .view-switch {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    .watch-chart
+    .view-switch
+    select {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    margin-right: 0;
+  }
+
+  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
+    #price-analysis
+    .watch-chart
     .canvas-wrap {
-    height: clamp(220px, 19vw, 250px) !important;
-    min-height: 220px !important;
+    height: clamp(170px, 14vw, 190px) !important;
+    min-height: 170px !important;
   }
 
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]
     > #price-analysis.market-browser
     > .detail-terminal {
     grid-column: 2;
-    grid-row: 5;
+    grid-row: 1 / span 2;
     min-width: 0;
-    margin-top: var(--space-3, 12px);
+    margin-top: 0;
     scroll-margin-top: 88px;
     overflow-anchor: none;
   }
@@ -115,22 +142,7 @@
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]
     #price-analysis
     :is(.watch-head, .watch-filters, .watch-columns, .watch-scroll, .watch-state) {
-    border-inline: 1px solid var(--atlas-line, #d9e1eb);
     background: var(--atlas-surface, #fff);
-  }
-
-  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
-    #price-analysis
-    .watch-head {
-    border-top: 1px solid var(--atlas-line, #d9e1eb);
-    border-radius: var(--radius-lg, 16px) var(--radius-lg, 16px) 0 0;
-  }
-
-  .terminal-shell[data-view="chart"][data-analysis-mode="price"]
-    #price-analysis
-    :is(.watch-scroll, .watch-state) {
-    border-bottom: 1px solid var(--atlas-line, #d9e1eb);
-    border-radius: 0 0 var(--radius-lg, 16px) var(--radius-lg, 16px);
   }
 
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]

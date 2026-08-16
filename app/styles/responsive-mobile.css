@@ -234,7 +234,7 @@
     background: var(--atlas-surface, #fff);
   }
 
-  /* Mobile analysis reading order: selector, chart, metrics, then map/life detail. */
+  /* Mobile analysis reading order: selector, selected home/life detail, then supporting chart. */
   .terminal-shell[data-view="chart"][data-analysis-mode="price"] {
     display: flex;
     flex-direction: column;
@@ -246,6 +246,29 @@
 
   .terminal-shell[data-view="chart"] > #price-analysis {
     order: 20;
+  }
+
+  .terminal-shell[data-view="chart"] #price-analysis.market-browser {
+    display: flex !important;
+    flex-direction: column;
+  }
+
+  .terminal-shell[data-view="chart"] #price-analysis > .watchlist {
+    order: 10;
+  }
+
+  .terminal-shell[data-view="chart"] #price-analysis > .detail-terminal {
+    order: 20;
+  }
+
+  .terminal-shell[data-view="chart"] #price-analysis > .watch-chart {
+    order: 30;
+    width: 100%;
+    min-width: 0;
+    margin-top: 12px;
+    border: 1px solid var(--atlas-line, #d9e1eb);
+    border-radius: 14px;
+    overflow: clip;
   }
 
   .terminal-shell[data-view="chart"] > #field {

@@ -41,6 +41,36 @@
     touch-action: manipulation;
   }
 
+  .terminal-shell[data-view="chart"]
+    #price-analysis
+    > .watch-chart
+    :is(.period-switch, .view-switch) {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    overflow: visible;
+  }
+
+  .terminal-shell[data-view="chart"]
+    #price-analysis
+    > .watch-chart
+    .view-switch {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .terminal-shell[data-view="chart"]
+    #price-analysis
+    > .watch-chart
+    .view-switch
+    select {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    margin-right: 0;
+  }
+
   .terminal-shell .table-head,
   .terminal-shell .table-row {
     font-variant-numeric: tabular-nums;
@@ -85,38 +115,58 @@
   .terminal-shell #price-analysis.market-browser {
     display: grid;
     grid-template-columns: clamp(320px, 31vw, 360px) minmax(0, 1fr);
-    align-items: stretch;
+    grid-template-rows: auto auto;
+    gap: 12px;
+    align-items: start;
+  }
+
+  .terminal-shell #price-analysis > .watchlist {
+    grid-column: 1;
+    grid-row: 1;
+    max-height: min(620px, calc(100dvh - 220px));
+    overflow: hidden;
   }
 
   .terminal-shell[data-view="chart"] .watchlist > :is(.watch-head, .watch-filters, .watch-columns, .watch-state, .watch-scroll) {
-    display: initial;
+    display: initial !important;
   }
 
   .terminal-shell[data-view="chart"] .watchlist > .watch-head {
-    display: flex;
+    display: flex !important;
   }
 
   .terminal-shell[data-view="chart"] .watchlist > :is(.watch-filters, .watch-columns) {
-    display: grid;
+    display: grid !important;
   }
 
   .terminal-shell[data-view="chart"] .watchlist > :is(.watch-state, .watch-scroll) {
-    display: flex;
+    display: flex !important;
   }
 
   .terminal-shell[data-view="chart"] .watchlist > .watch-scroll {
-    height: min(560px, calc(100dvh - 270px));
+    height: min(480px, calc(100dvh - 350px));
     min-height: 360px;
-    display: block;
+    display: block !important;
   }
 
-  .terminal-shell[data-view="chart"] .detail-terminal > .watch-chart {
-    order: 0;
+  .terminal-shell[data-view="chart"] #price-analysis > .watch-chart {
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--atlas-line, #d9e1eb);
+    border-radius: 16px;
+    overflow: clip;
   }
 
   .terminal-shell[data-view="chart"] .watch-chart .canvas-wrap {
-    height: 220px !important;
-    min-height: 220px !important;
+    height: 180px !important;
+    min-height: 170px !important;
+  }
+
+  .terminal-shell #price-analysis > .detail-terminal {
+    grid-column: 2;
+    grid-row: 1 / span 2;
   }
 
   .terminal-shell .map-section .map-layout {
@@ -143,7 +193,7 @@
   }
 }
 
-/* Portrait / medium tablet: keep the price shortlist and compact chart side by side. */
+/* Portrait / medium tablet: keep the compact chart below the candidate rail. */
 @media (min-width: 768px) and (max-width: 959px) {
   .terminal-shell :is(.map-section .map-layout, .field-selector-layout, .trade-analysis-layout) {
     display: grid;
@@ -153,6 +203,7 @@
   .terminal-shell #price-analysis.market-browser {
     display: grid;
     grid-template-columns: clamp(280px, 33vw, 316px) minmax(0, 1fr);
+    grid-template-rows: auto auto;
     gap: 12px;
     align-items: start;
     overflow: visible;
@@ -175,6 +226,8 @@
   }
 
   .terminal-shell #price-analysis .watchlist {
+    grid-column: 1;
+    grid-row: 1;
     max-height: min(560px, calc(100dvh - 250px));
     overflow: hidden;
     border-right: 1px solid var(--atlas-line, #d9e1eb);
@@ -186,16 +239,24 @@
     min-height: 300px;
   }
 
-  .terminal-shell[data-view="chart"] .detail-terminal > .watch-chart {
-    order: 0;
+  .terminal-shell[data-view="chart"] #price-analysis > .watch-chart {
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--atlas-line, #d9e1eb);
+    border-radius: 14px;
+    overflow: clip;
   }
 
   .terminal-shell[data-view="chart"] .watch-chart .canvas-wrap {
-    height: 200px !important;
-    min-height: 200px !important;
+    height: 170px !important;
+    min-height: 160px !important;
   }
 
-  .terminal-shell .detail-terminal {
+  .terminal-shell #price-analysis > .detail-terminal {
+    grid-column: 2;
+    grid-row: 1 / span 2;
     scroll-margin-top: 76px;
   }
 

@@ -31,6 +31,8 @@ test("mobile stylesheet locks touch, overflow and progressive disclosure contrac
   assert.match(css, /data-sheet-state="expanded"/);
   assert.match(css, /data-expanded="true"/);
   assert.match(css, /\.pwa-offline-state/);
+  assert.match(css, /#price-analysis\s*>\s*\.detail-terminal\s*\{[\s\S]*order:\s*20/);
+  assert.match(css, /#price-analysis\s*>\s*\.watch-chart\s*\{[\s\S]*order:\s*30/);
 });
 
 test("PWA manifest uses the existing product identity and a local icon", async () => {

@@ -19,11 +19,12 @@ test("large tablets preserve master-detail workspace proportions", () => {
   assert.match(css, /\.field-selector-layout[\s\S]*clamp\(290px,\s*29vw,\s*332px\)/);
 });
 
-test("medium tablets keep navigation and move the compact chart beside the shortlist", () => {
+test("medium tablets keep navigation and stack the compact chart under the shortlist", () => {
   assert.match(css, /\.terminal-shell \.topbar nav\s*\{[\s\S]*display:\s*flex/);
   assert.match(css, /#price-analysis\.market-browser\s*\{[\s\S]*grid-template-columns:\s*clamp\(280px,\s*33vw,\s*316px\)\s+minmax\(0,\s*1fr\)/);
-  assert.match(css, /\.detail-terminal\s*>\s*\.watch-chart\s*\{[\s\S]*order:\s*0/);
-  assert.match(css, /\.watch-chart \.canvas-wrap\s*\{[\s\S]*height:\s*200px\s*!important/);
+  assert.match(css, /#price-analysis\s*>\s*\.watch-chart\s*\{[\s\S]*grid-column:\s*1[\s\S]*grid-row:\s*2/);
+  assert.match(css, /\.watch-chart \.canvas-wrap\s*\{[\s\S]*height:\s*170px\s*!important/);
+  assert.match(css, /#price-analysis\s*>\s*\.detail-terminal\s*\{[\s\S]*grid-column:\s*2[\s\S]*grid-row:\s*1\s*\/\s*span\s*2/);
   assert.match(css, /\[data-tablet-panel="drawer"\]/);
   assert.match(css, /\.hmi-drawer/);
 });
