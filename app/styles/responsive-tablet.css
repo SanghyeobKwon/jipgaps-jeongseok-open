@@ -143,27 +143,56 @@
   }
 }
 
-/* Portrait / medium tablet: one content column with drawer-ready secondary panels. */
+/* Portrait / medium tablet: keep the price shortlist and compact chart side by side. */
 @media (min-width: 768px) and (max-width: 959px) {
-  .terminal-shell :is(#price-analysis.market-browser, .map-section .map-layout, .field-selector-layout, .trade-analysis-layout) {
+  .terminal-shell :is(.map-section .map-layout, .field-selector-layout, .trade-analysis-layout) {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
   }
 
   .terminal-shell #price-analysis.market-browser {
+    display: grid;
+    grid-template-columns: clamp(280px, 33vw, 316px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
     overflow: visible;
   }
 
-  .terminal-shell .watchlist {
-    max-height: min(390px, 42dvh);
-    overflow: hidden;
-    border-right: 0;
-    border-bottom: 1px solid var(--atlas-line, #d9e1eb);
+  .terminal-shell[data-view="chart"] .watchlist > .watch-head {
+    display: flex !important;
   }
 
-  .terminal-shell .watch-scroll {
-    height: min(280px, 31dvh);
-    min-height: 220px;
+  .terminal-shell[data-view="chart"] .watchlist > :is(.watch-filters, .watch-columns) {
+    display: grid !important;
+  }
+
+  .terminal-shell[data-view="chart"] .watchlist > .watch-state {
+    display: flex !important;
+  }
+
+  .terminal-shell[data-view="chart"] .watchlist > .watch-scroll {
+    display: block !important;
+  }
+
+  .terminal-shell #price-analysis .watchlist {
+    max-height: min(560px, calc(100dvh - 250px));
+    overflow: hidden;
+    border-right: 1px solid var(--atlas-line, #d9e1eb);
+    border-bottom: 0;
+  }
+
+  .terminal-shell #price-analysis .watch-scroll {
+    height: min(430px, calc(100dvh - 370px));
+    min-height: 300px;
+  }
+
+  .terminal-shell[data-view="chart"] .detail-terminal > .watch-chart {
+    order: 0;
+  }
+
+  .terminal-shell[data-view="chart"] .watch-chart .canvas-wrap {
+    height: 200px !important;
+    min-height: 200px !important;
   }
 
   .terminal-shell .detail-terminal {

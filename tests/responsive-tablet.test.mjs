@@ -19,9 +19,11 @@ test("large tablets preserve master-detail workspace proportions", () => {
   assert.match(css, /\.field-selector-layout[\s\S]*clamp\(290px,\s*29vw,\s*332px\)/);
 });
 
-test("medium tablets keep navigation and prepare one-column drawers", () => {
+test("medium tablets keep navigation and move the compact chart beside the shortlist", () => {
   assert.match(css, /\.terminal-shell \.topbar nav\s*\{[\s\S]*display:\s*flex/);
-  assert.match(css, /:is\(#price-analysis\.market-browser,\s*\.map-section \.map-layout,\s*\.field-selector-layout,\s*\.trade-analysis-layout\)[\s\S]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(css, /#price-analysis\.market-browser\s*\{[\s\S]*grid-template-columns:\s*clamp\(280px,\s*33vw,\s*316px\)\s+minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.detail-terminal\s*>\s*\.watch-chart\s*\{[\s\S]*order:\s*0/);
+  assert.match(css, /\.watch-chart \.canvas-wrap\s*\{[\s\S]*height:\s*200px\s*!important/);
   assert.match(css, /\[data-tablet-panel="drawer"\]/);
   assert.match(css, /\.hmi-drawer/);
 });
@@ -39,4 +41,3 @@ test("portrait trade summaries expose four core columns and an expansion hook", 
   assert.match(css, /:nth-child\(3\),\s*:nth-child\(5\),\s*:nth-child\(7\)/);
   assert.match(css, /\[data-trade-expanded="true"\]\s*\+\s*\.trade-row-details/);
 });
-
