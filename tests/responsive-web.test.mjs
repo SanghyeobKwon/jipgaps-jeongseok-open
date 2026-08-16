@@ -36,6 +36,8 @@ test("candidate selection is isolated from the right analysis pane", () => {
   assert.match(css, /scrollbar-gutter:\s*stable/);
   assert.match(css, /overflow-anchor:\s*none/);
   assert.match(css, /\.watch-chart\s*\{[\s\S]*?grid-column:\s*2/);
+  assert.match(css, /\.watch-chart\s*\{[\s\S]*?order:\s*0/);
+  assert.match(css, /height:\s*clamp\(220px,\s*19vw,\s*250px\)/);
   assert.match(css, />\s*\.detail-terminal\s*\{[\s\S]*?grid-column:\s*2/);
 });
 

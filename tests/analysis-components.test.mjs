@@ -21,6 +21,9 @@ test("주택 유형은 아이콘, 가격은 다섯 구간, 선택은 별도 상�
   for (const bucket of [1, 2, 3, 4, 5]) assert.match(css, new RegExp(`is-bucket-${bucket}`));
   assert.match(css, /analysis-property-icon\.is-selected/);
   assert.match(page, /<AnalysisPropertyTypeIcon type=\{type\} priceBucket=\{researchPriceBuckets\(row\.current\)\}/);
+  assert.match(page, /<AnalysisPropertyTypeIcon type=\{building\.propertyType\} priceBucket=\{researchPriceBuckets\(building\.lastAmount\)\}/);
+  assert.match(css, /is-bucket-1 \{ --analysis-bucket-color: #236b9b; \}/);
+  assert.match(css, /is-bucket-5 \{ --analysis-bucket-color: #b93f36; \}/);
   assert.doesNotMatch(page, /research-building tone-\$\{index % 5\}/);
 });
 

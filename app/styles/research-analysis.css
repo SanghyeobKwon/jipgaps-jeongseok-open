@@ -47,15 +47,15 @@
 .analysis-property-icon.is-sm svg { width: 1rem; height: 1rem; }
 .analysis-property-icon.is-selected { border-color: var(--hmi-action); box-shadow: 0 0 0 2px var(--hmi-surface), 0 0 0 4px var(--hmi-focus); }
 .analysis-property-icon.is-bucket-1,
-.analysis-price-legend .is-bucket-1 { --analysis-bucket-color: #65a6cb; }
+.analysis-price-legend .is-bucket-1 { --analysis-bucket-color: #236b9b; }
 .analysis-property-icon.is-bucket-2,
-.analysis-price-legend .is-bucket-2 { --analysis-bucket-color: #2c8aa8; }
+.analysis-price-legend .is-bucket-2 { --analysis-bucket-color: #287f91; }
 .analysis-property-icon.is-bucket-3,
-.analysis-price-legend .is-bucket-3 { --analysis-bucket-color: #0d9f8a; }
+.analysis-price-legend .is-bucket-3 { --analysis-bucket-color: #5f6f7f; }
 .analysis-property-icon.is-bucket-4,
-.analysis-price-legend .is-bucket-4 { --analysis-bucket-color: #d18a2d; }
+.analysis-price-legend .is-bucket-4 { --analysis-bucket-color: #b46a3c; }
 .analysis-property-icon.is-bucket-5,
-.analysis-price-legend .is-bucket-5 { --analysis-bucket-color: #b34c3f; }
+.analysis-price-legend .is-bucket-5 { --analysis-bucket-color: #b93f36; }
 
 .analysis-price-legend { display: flex; align-items: center; gap: var(--hmi-space-2); color: var(--hmi-ink-muted); font-size: var(--hmi-type-100); white-space: nowrap; }
 .analysis-price-legend ol { display: flex; gap: 2px; margin: 0; padding: 0; list-style: none; }

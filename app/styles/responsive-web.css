@@ -82,6 +82,7 @@
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]
     #price-analysis
     .watch-chart {
+    order: 0;
     grid-column: 2;
     grid-row: 1 / span 4;
     min-width: 0;
@@ -95,8 +96,8 @@
     #price-analysis
     .watch-chart
     .canvas-wrap {
-    height: clamp(300px, 26vw, 360px) !important;
-    min-height: 300px !important;
+    height: clamp(220px, 19vw, 250px) !important;
+    min-height: 220px !important;
   }
 
   .terminal-shell[data-view="chart"][data-analysis-mode="price"]

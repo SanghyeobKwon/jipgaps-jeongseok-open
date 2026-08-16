@@ -110,6 +110,15 @@
     display: block;
   }
 
+  .terminal-shell[data-view="chart"] .detail-terminal > .watch-chart {
+    order: 0;
+  }
+
+  .terminal-shell[data-view="chart"] .watch-chart .canvas-wrap {
+    height: 220px !important;
+    min-height: 220px !important;
+  }
+
   .terminal-shell .map-section .map-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) clamp(300px, 30vw, 352px);
@@ -228,4 +237,3 @@
     min-height: max(480px, 66dvh);
   }
 }
-

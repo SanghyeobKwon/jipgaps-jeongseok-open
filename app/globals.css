@@ -1506,7 +1506,7 @@ html[data-theme="dark"] .level-district .district-active-outline path{stroke:#67
 .watch-chart .chart-card{border:0!important;background:var(--atlas-surface,#fff)!important}
 .watch-chart .chart-legend{min-height:42px;padding:8px 10px!important;gap:8px!important;flex-wrap:wrap}
 .watch-chart .canvas-wrap{height:278px!important;min-height:278px!important}
-.detail-terminal>.ticker-head{order:1}.detail-terminal>.price-location-panel{order:2}.detail-terminal>.stat-strip{order:3}.detail-terminal>.facility-panel{order:4}.detail-terminal>.valuation-panel{order:5}
+.detail-terminal>.ticker-head{order:1}.detail-terminal>.price-location-panel{order:2}.detail-terminal>.stat-strip{order:3}.detail-terminal>.facility-panel{order:4}.detail-terminal>.valuation-panel{order:5}.detail-terminal>.watch-chart{order:6}
 .facility-result-tabs{margin:0 0 14px;padding:0!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;border:0!important;gap:7px!important}
 .facility-result-tabs button{min-height:58px!important;padding:8px 10px!important}
 .unified-map-picker>.field-selector-layout{border-radius:16px;background:var(--atlas-soft,#f3f6fa)}
@@ -1580,9 +1580,9 @@ html[data-theme="dark"] .level-district .district-active-outline path{stroke:#67
   .field-region-redirect button{grid-column:1/-1;width:100%}
 }
 
-/* Final compact chart contract: keep the price graph useful without pushing 생활권 below the fold. */
-.terminal-shell[data-view="chart"] .watch-chart .canvas-wrap{height:340px!important;min-height:300px!important}
-@media(max-width:760px){.terminal-shell[data-view="chart"] .watch-chart .canvas-wrap{height:260px!important;min-height:240px!important}}
+/* Price history is supporting evidence. Keep it compact so 생활권 remains the next primary read. */
+.terminal-shell[data-view="chart"] .watch-chart .canvas-wrap{height:230px!important;min-height:220px!important}
+@media(max-width:959px){.terminal-shell[data-view="chart"] .watch-chart .canvas-wrap{height:210px!important;min-height:200px!important}}
 
 /* Keep every recent-trade row on the same seven-column track as its header. */
 .trade-section .trade-table{width:100%}
